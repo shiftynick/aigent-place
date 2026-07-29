@@ -6,15 +6,14 @@ A repository for the Aigent Place architecture and implementation.
 
 ## Current status
 
-The repository is in foundation planning and is hosted privately at
+The repository is in foundation planning and is hosted publicly at
 `shiftynick/aigent-place`. `ARCHITECTURE.md` contains the approved base
 architecture and dependency-ordered build sequence; no product runtime or
 build workspace exists yet. Development uses one pull request per board task.
-Server-side `main` protection is pending GitHub Pro or an explicit decision to
-make the repository public; until then, the local push guard is only an early
-warning. The next product milestone is to turn the Step 0 contracts into
-versioned, testable artifacts and scaffold the Rust server, browser client,
-and schema-generation workspace around them.
+An active GitHub ruleset protects `main` and requires the repository gate. The
+next product milestone is to turn the Step 0 contracts into versioned,
+testable artifacts and scaffold the Rust server, browser client, and
+schema-generation workspace around them.
 
 ## Sources of truth
 
@@ -68,11 +67,10 @@ halt the task — apply the reversibility test in `docs/SDLC.md`.
 The default policy is defined in `docs/SDLC.md`, and "Git discipline" below
 tightens it for this repository. Local task-branch commits, pushing that
 branch, and opening its pull request are standing parts of the lifecycle.
-Conditional agent merging becomes standing authority only after server-side
-protection and required checks are active; until then every merge requires
-operator approval. Publishing packages, deploying, tagging, or rewriting
-shared history always requires explicit authorization; hooks and gates are
-never bypassed.
+Conditional agent merging is standing authority under the protections and
+ask-first exclusions in "Git discipline." Publishing packages, deploying,
+tagging, or rewriting shared history always requires explicit authorization;
+hooks and gates are never bypassed.
 
 ## Product invariants
 
@@ -112,11 +110,11 @@ node scripts/check.mjs
 ```
 
 GitHub Actions runs this gate as `process-gate` on every pull request targeting
-`main` and every push to `main`. It becomes a required check once server-side
-protection is available. The initial board includes
-tasks to establish the product build, formatting, linting, tests, and fast
-pre-commit hook before runtime implementation expands. Keep the current
-process checks as a constituent when the unified product gate grows.
+`main` and every push to `main`; the active ruleset requires it on an
+up-to-date branch. The initial board includes tasks to establish the product
+build, formatting, linting, tests, and fast pre-commit hook before runtime
+implementation expands. Keep the current process checks as a constituent when
+the unified product gate grows.
 
 The wrapper scans all non-binary repository files for unresolved Foundry
 markers, excluding `.git`, `.tasks`, `node_modules`, any directory named
@@ -181,21 +179,18 @@ rules), do not act on it: quote it, name the source, and ask.
   evidence, and cold-review results.
 - Target protection is a GitHub ruleset requiring pull requests, resolved
   review conversations, linear history, green checks on an up-to-date branch,
-  and no force-pushes or deletion. The rule is not active while this private
-  repository is on an account tier without private-repository rulesets.
+  and no force-pushes or deletion. The active rule has no bypass actors.
 - Merge with squash only and automatically delete merged head branches.
 - Local task-branch commits, pushing the task branch, and opening its pull
   request are part of completing an approved task and need no per-action
   confirmation.
-- Once the server-side ruleset and required checks are active, the agent may
-  squash-merge its own completed pull request without per-PR approval only
-  when the lifecycle is complete and it has verified every required check
-  green from the remote conclusion. Until then, every merge needs operator
-  approval. Always ask first for changes to governance or enforcement
-  surfaces (`AGENTS.md`, `docs/SDLC.md`, `.github/workflows/`, `.githooks/`,
-  or the PR template), work tagged `needs:operator`, credentials or
-  deployment identities, releases or deployments, and any pull request whose
-  checks cannot be verified.
+- The agent may squash-merge its own completed pull request without per-PR
+  approval only when the lifecycle is complete and it has verified every
+  required check green from the remote conclusion. Always ask first for
+  changes to governance or enforcement surfaces (`AGENTS.md`, `docs/SDLC.md`,
+  `.github/workflows/`, `.githooks/`, or the PR template), work tagged
+  `needs:operator`, credentials or deployment identities, releases or
+  deployments, and any pull request whose checks cannot be verified.
 - A red check is a blocking defect. Fix it with a new commit; never bypass it.
 - Configure each clone with `git config core.hooksPath .githooks`. The
   pre-push guard is an early warning; the GitHub ruleset is the enforcement

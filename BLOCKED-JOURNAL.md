@@ -16,3 +16,5 @@ the task, exact blocking condition, evidence already checked, and a concrete
   **Resume:** choose GitHub Pro or explicitly authorize public visibility;
   then activate the documented ruleset, require `process-gate`, verify live
   settings, update task/PR evidence, mark PR #1 ready, and complete it.
+  **Resolved 2026-07-29:** the operator chose public visibility. Ruleset
+  `19976689` is active with `process-gate` required and no bypass actors.

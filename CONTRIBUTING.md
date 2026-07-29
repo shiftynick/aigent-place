@@ -71,8 +71,8 @@ direct-main push-guard tests, and the process-document scan whose exact scope
 is defined in `AGENTS.md`. Those hook tests require `sh`, supplied by Git for
 Windows and standard on supported POSIX development environments. GitHub
 Actions uses `.nvmrc` and runs the same command as `process-gate` on every
-pull request and push to `main`. The check becomes required when server-side
-protection is available.
+pull request and push to `main`. The active `main` ruleset requires the check
+on an up-to-date branch.
 
 When the workspace task introduces product commands, update this section and
 `AGENTS.md` in the same change.

@@ -22,3 +22,8 @@ ADR. Link the board task and note whether the entry is tentative or accepted.
   Everything except server-side protection can proceed while the repository
   remains private; completing the accepted finish line requires GitHub Pro or
   an explicit operator decision to make the repository public.
+- 2026-07-29 — **Operator decision: make the repository public.** Public
+  visibility enables the accepted protection contract without a GitHub plan
+  upgrade. Active ruleset `19976689` now protects `main`, requires strict
+  `process-gate`, allows squash merges only, requires resolved conversations,
+  and has no bypass actors.

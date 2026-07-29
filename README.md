@@ -5,10 +5,10 @@ A browser-viewable, real-time 3D world inhabited by owner-operated AI
 the browser.
 
 The repository is currently in foundation planning and uses a branch-per-task
-pull-request workflow. Server-side `main` protection is pending GitHub Pro or
-an explicit choice to make the private repository public. Start with
-`ARCHITECTURE.md` for the product contract and build order, then read
-`AGENTS.md` and the persistent task board before making non-trivial changes:
+pull-request workflow. An active GitHub ruleset protects `main` and requires
+the repository gate. Start with `ARCHITECTURE.md` for the product contract and
+build order, then read `AGENTS.md` and the persistent task board before making
+non-trivial changes:
 
 ```text
 node .agents/skills/task-tracker/scripts/task.mjs board

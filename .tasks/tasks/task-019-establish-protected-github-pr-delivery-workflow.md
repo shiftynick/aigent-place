@@ -1,18 +1,18 @@
 ---
 id: task-019
 title: Establish protected GitHub PR delivery workflow
-status: blocked
+status: review
 priority: p0
-tags: [area:process, milestone:foundations, needs:operator]
+tags: [area:process, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-29T13:40:04Z"
-updatedAt: "2026-07-29T14:02:43Z"
+updatedAt: "2026-07-29T14:12:46Z"
 ---
 
 <!-- task-tracker:description -->
 ## Description
 
-Create the private personal GitHub remote and establish an agent-manageable branch-per-task delivery path before product development. Acceptance: the repository uses main and a personal-account remote; a tested direct-main push guard and evidence-based PR template are tracked; the current process gate runs on pull requests and main; main requires pull requests, linear history, green required checks, resolved conversations, and blocks deletion/force-push; squash merging and automatic head-branch deletion are configured; the standing agent push, PR, and conditional merge authority plus ask-first exclusions are documented; and the workflow is proven through an actual green bootstrap PR without changing the machine-global GitHub account.
+Create the personal GitHub remote and establish an agent-manageable branch-per-task delivery path before product development. Acceptance: the public repository uses main and the personal account; a tested direct-main push guard and evidence-based PR template are tracked; the current process gate runs on pull requests and main; main requires pull requests, linear history, green required checks, resolved conversations, and blocks deletion/force-push; squash merging and automatic head-branch deletion are configured; the standing agent push, PR, and conditional merge authority plus ask-first exclusions are documented; and the workflow is proven through an actual green bootstrap PR without changing the machine-global GitHub account.
 
 <!-- task-tracker:log -->
 ## Log
@@ -110,3 +110,44 @@ Create the private personal GitHub remote and establish an agent-manageable bran
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
 - 2026-07-29T14:02:43Z — note: Remote proof: draft PR #1 https://github.com/shiftynick/aigent-place/pull/1. Replacement pull_request run 30458820759 completed success; process-gate passed in 48s on a clean Ubuntu checkout with pinned checkout/setup-node commits and Node 22.22.2. No duplicate branch-push run was created after narrowing triggers. All local/remote acceptance is complete except server-side protection and required-check enforcement.
 - 2026-07-29T14:02:43Z — moved to blocked
+- 2026-07-29T14:11:00Z — edited (-tag needs:operator; description updated)
+- 2026-07-29T14:11:00Z — note: Operator resolved the blocker: make shiftynick/aigent-place public. Visibility verified PUBLIC. Created active repository ruleset 19976689 with no bypass actors: exact main ref, deletion and non-fast-forward blocked, linear history, PR required, squash-only, stale approvals dismissed, review threads resolved, 0 approvals while solo, and strict required process-gate. Resuming review for final documentation and live enforcement verification.
+- 2026-07-29T14:11:01Z — moved to review
+- 2026-07-29T14:12:25Z — run: node scripts/check.mjs
+  started 2026-07-29T14:12:09Z, exit 0 in 16.2s
+  output tail (truncated to last 30 lines):
+  |     # Subtest: soft-deletes by setting status=done and adding deleted:true tag
+  |     ok 1 - soft-deletes by setting status=done and adding deleted:true tag
+  |       ---
+  |       duration_ms: 126.2055
+  |       type: 'test'
+  |       ...
+  |     # Subtest: keeps dependents blocked when their blocker is soft-deleted
+  |     ok 2 - keeps dependents blocked when their blocker is soft-deleted
+  |       ---
+  |       duration_ms: 306.2395
+  |       type: 'test'
+  |       ...
+  |     1..2
+  | ok 121 - task rm
+  |   ---
+  |   duration_ms: 432.5401
+  |   type: 'suite'
+  |   ...
+  | 1..121
+  | # tests 289
+  | # suites 62
+  | # pass 289
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 15439.6746
+  |
+  | run-checks: PASS (skill-sync + 14 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
+- 2026-07-29T14:12:29Z — run: gh api repos/shiftynick/aigent-place/rulesets/19976689
+  started 2026-07-29T14:12:29Z, exit 0 in 0.5s
+  output:
+  | {"id":19976689,"name":"main protection","target":"branch","source_type":"Repository","source":"shiftynick/aigent-place","enforcement":"active","conditions":{"ref_name":{"exclude":[],"include":["refs/heads/main"]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"required_linear_history"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":true,"required_reviewers":[],"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":true,"allowed_merge_methods":["squash"]}},{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":true,"do_not_enforce_on_create":false,"required_status_checks":[{"context":"process-gate"}]}}],"node_id":"RRS_lACqUmVwb3NpdG9yec5Oc0cmzgEw0fE","created_at":"2026-07-29T10:10:27.660-04:00","updated_at":"2026-07-29T10:10:27.705-04:00","bypass_actors":[],"current_user_can_bypass":"never","_links":{"self":{"href":"https://api.github.com/repos/shiftynick/aigent-place/rulesets/19976689"},"html":{"href":"https://github.com/shiftynick/aigent-place/rules/19976689"}}}
+- 2026-07-29T14:12:46Z — note: Post-blocker closeout changed only operator-approved visibility state, the live ruleset, task state, and matching process documentation after the three-round cold-review cap. Self-review re-read AGENTS.md, README.md, CONTRIBUTING.md, HANDOFF.md, and both journals end to end; stale-claim search found no private/pending/protection contradiction in authoritative docs, and git diff --check passed. No additional cold-review round is permitted by the task lifecycle cap.
