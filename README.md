@@ -20,3 +20,9 @@ Use the exact Node.js version in `.nvmrc` for the local and CI gate; Node 20
 is the minimum runtime supported by the process tooling. The hook tests also
 require `sh`, supplied by Git for Windows or the POSIX environment. GitHub
 Actions runs the same gate on every pull request and push to `main`.
+
+The accepted v1 compatibility decision is
+[ADR-0001](docs/adr/0001-protocol-v1-compatibility-and-recovery.md). The
+[protocol v1 contract](protocol/v1/CONTRACT.md), canonical
+[`aigent.proto`](protocol/v1/aigent.proto), and executable semantic examples
+are the foundation for generated server, browser, and owner-SDK bindings.

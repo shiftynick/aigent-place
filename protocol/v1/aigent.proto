@@ -1,0 +1,306 @@
+syntax = "proto3";
+
+package aigent.protocol.v1;
+
+// Canonical v1 public envelope and control schema.
+//
+// All post-handshake traffic is encoded as Envelope. Unknown protobuf fields
+// are ignored. Validation rules that proto3 cannot express are normative in
+// CONTRACT.md.
+
+enum ConnectionRole {
+  CONNECTION_ROLE_UNSPECIFIED = 0;
+  CONNECTION_ROLE_AIGENT = 1;
+  CONNECTION_ROLE_VIEWER = 2;
+}
+
+enum ConnectionMode {
+  CONNECTION_MODE_UNSPECIFIED = 0;
+  CONNECTION_MODE_COMMAND_CAPABLE = 1;
+  CONNECTION_MODE_SPECTATE_ONLY = 2;
+}
+
+enum ProtocolErrorCode {
+  PROTOCOL_ERROR_CODE_UNSPECIFIED = 0;
+  PROTOCOL_ERROR_CODE_UNSUPPORTED_PROTOCOL = 1;
+  PROTOCOL_ERROR_CODE_UPGRADE_REQUIRED = 2;
+  PROTOCOL_ERROR_CODE_INVALID_ENVELOPE = 3;
+  PROTOCOL_ERROR_CODE_UNSUPPORTED_MESSAGE = 4;
+  PROTOCOL_ERROR_CODE_UNSUPPORTED_FEATURE = 5;
+}
+
+enum ProtocolCloseReason {
+  PROTOCOL_CLOSE_REASON_UNSPECIFIED = 0;
+  PROTOCOL_CLOSE_REASON_UNDECODABLE_FRAME = 1;
+  PROTOCOL_CLOSE_REASON_FRAME_TOO_LARGE = 2;
+  PROTOCOL_CLOSE_REASON_SUSTAINED_OUTBOUND_OVERFLOW = 3;
+}
+
+enum CommandKind {
+  COMMAND_KIND_UNSPECIFIED = 0;
+  COMMAND_KIND_MOVE = 1;
+  COMMAND_KIND_TURN = 2;
+  COMMAND_KIND_SET_POSE = 3;
+  COMMAND_KIND_CANCEL_INTENT = 4;
+  COMMAND_KIND_SAY = 5;
+  COMMAND_KIND_SEND = 6;
+  COMMAND_KIND_CHANNEL_POST = 7;
+  COMMAND_KIND_PLACE_OBJECT = 8;
+  COMMAND_KIND_MODIFY_OBJECT = 9;
+  COMMAND_KIND_REMOVE_OBJECT = 10;
+  COMMAND_KIND_SET_SHAPE = 11;
+  COMMAND_KIND_PROPOSE = 12;
+  COMMAND_KIND_VOTE = 13;
+  COMMAND_KIND_STOP = 14;
+}
+
+enum PerceptKind {
+  PERCEPT_KIND_UNSPECIFIED = 0;
+  PERCEPT_KIND_HEARD = 1;
+  PERCEPT_KIND_MESSAGE = 2;
+  PERCEPT_KIND_CHANNEL = 3;
+  PERCEPT_KIND_RULESET_CHANGED = 4;
+}
+
+enum CommandRejectionCode {
+  COMMAND_REJECTION_CODE_UNSPECIFIED = 0;
+  COMMAND_REJECTION_CODE_SPECTATE_ONLY = 1;
+  COMMAND_REJECTION_CODE_STALE_SESSION_EPOCH = 2;
+  COMMAND_REJECTION_CODE_SEQUENCE_GAP = 3;
+  COMMAND_REJECTION_CODE_SEQUENCE_CONTENT_CONFLICT = 4;
+  COMMAND_REJECTION_CODE_IDEMPOTENCY_CONFLICT = 5;
+  COMMAND_REJECTION_CODE_UNSUPPORTED_MESSAGE = 6;
+  reserved 7 to 9;
+  COMMAND_REJECTION_CODE_RULESET_VIOLATION = 10;
+  COMMAND_REJECTION_CODE_INVALID_INTENT = 11;
+  COMMAND_REJECTION_CODE_NOT_AUTHORIZED = 12;
+  COMMAND_REJECTION_CODE_RATE_LIMITED = 13;
+  COMMAND_REJECTION_CODE_BUDGET_EXCEEDED = 14;
+  COMMAND_REJECTION_CODE_CONFLICT = 15;
+}
+
+enum SnapshotResyncReason {
+  SNAPSHOT_RESYNC_REASON_UNSPECIFIED = 0;
+  SNAPSHOT_RESYNC_REASON_BASELINE_MISSING = 1;
+  SNAPSHOT_RESYNC_REASON_BASELINE_EXPIRED = 2;
+  SNAPSHOT_RESYNC_REASON_BASELINE_MISMATCHED = 3;
+  SNAPSHOT_RESYNC_REASON_AOI_TELEPORT = 4;
+  SNAPSHOT_RESYNC_REASON_SERVER_INITIATED = 5;
+}
+
+enum EventResyncReason {
+  EVENT_RESYNC_REASON_UNSPECIFIED = 0;
+  EVENT_RESYNC_REASON_CLIENT_DETECTED_GAP = 1;
+  EVENT_RESYNC_REASON_EVENT_NOT_ADMITTED = 2;
+  EVENT_RESYNC_REASON_SERVER_INITIATED = 3;
+  EVENT_RESYNC_REASON_EPOCH_MISMATCH = 4;
+}
+
+message FeatureOffer {
+  string feature_id = 1;
+  repeated uint32 supported_versions = 2;
+}
+
+message FeatureSelection {
+  string feature_id = 1;
+  uint32 selected_version = 2;
+}
+
+message FeatureUse {
+  string feature_id = 1;
+  uint32 version = 2;
+}
+
+message CompatibilityRecord {
+  uint32 protocol_major = 1;
+  int64 deprecated_at_unix_ms = 2;
+  int64 command_support_until_unix_ms = 3;
+  ConnectionMode current_mode = 4;
+}
+
+message ClientHello {
+  ConnectionRole role = 1;
+  repeated uint32 offered_protocol_majors = 2;
+  repeated FeatureOffer offered_features = 3;
+
+  // Required for an aigent and absent for a viewer. Authentication transport
+  // is outside this control schema.
+  bytes aigent_id = 4;
+}
+
+message UpgradeNotice {
+  ProtocolErrorCode code = 1;
+  string message = 2;
+  repeated CompatibilityRecord compatibility = 3;
+}
+
+message DeprecationNotice {
+  int64 deprecated_at_unix_ms = 1;
+  int64 command_support_until_unix_ms = 2;
+}
+
+message ServerHello {
+  bytes connection_id = 1;
+  uint32 selected_protocol_major = 2;
+  ConnectionRole role = 3;
+  ConnectionMode mode = 4;
+  repeated FeatureSelection selected_features = 5;
+  bytes session_epoch = 6;
+  optional UpgradeNotice upgrade_notice = 7;
+  optional DeprecationNotice deprecation_notice = 8;
+}
+
+message HandshakeReject {
+  ProtocolErrorCode code = 1;
+  string message = 2;
+  repeated CompatibilityRecord compatibility = 3;
+}
+
+message HandshakeFrame {
+  oneof body {
+    ClientHello client_hello = 1;
+    ServerHello server_hello = 2;
+    HandshakeReject handshake_reject = 3;
+  }
+}
+
+message EnvelopeMetadata {
+  repeated FeatureUse required_features = 1;
+}
+
+message CommandMetadata {
+  bytes session_epoch = 1;
+  uint64 sequence = 2;
+
+  // Scoped to (aigent_id, protocol_major), not session_epoch.
+  bytes idempotency_key = 3;
+}
+
+message Command {
+  CommandMetadata metadata = 1;
+  CommandKind kind = 2;
+
+  // Kind-specific data is unavailable until its owning contract adds a typed
+  // schema. CANCEL_INTENT is the only base command with an empty payload.
+  bytes payload = 3;
+}
+
+message EntityReference {
+  bytes entity_id = 1;
+  uint64 revision = 2;
+}
+
+message CommandAccepted {
+  repeated EntityReference affected_entities = 1;
+  bytes payload = 2;
+}
+
+message CommandRejected {
+  CommandRejectionCode code = 1;
+  string message = 2;
+  bytes payload = 3;
+}
+
+message CommandResult {
+  uint64 command_message_id = 1;
+  uint64 sequence = 2;
+  bytes idempotency_key = 3;
+
+  oneof outcome {
+    CommandAccepted accepted = 10;
+    CommandRejected rejected = 11;
+  }
+}
+
+message ProtocolError {
+  optional uint64 related_message_id = 1;
+  ProtocolErrorCode code = 2;
+  string message = 3;
+}
+
+message Percept {
+  PerceptKind kind = 1;
+  bytes payload = 2;
+}
+
+message FullSnapshot {
+  uint64 baseline_id = 1;
+  bytes payload = 2;
+}
+
+message SnapshotDelta {
+  uint64 baseline_id = 1;
+  bytes payload = 2;
+}
+
+message SnapshotResyncRequest {
+  optional uint64 baseline_id = 1;
+}
+
+message SnapshotResyncRequired {
+  SnapshotResyncReason reason = 1;
+  optional uint64 baseline_id = 2;
+}
+
+message EventCursor {
+  uint64 stream_epoch = 1;
+  uint64 sequence = 2;
+}
+
+message OrderedEvent {
+  EventCursor cursor = 1;
+  bytes payload = 2;
+}
+
+message EventAcknowledgement {
+  EventCursor acknowledged_through = 1;
+}
+
+message EventResumeRequest {
+  EventCursor last_acknowledged = 1;
+}
+
+message EventResyncRequired {
+  EventResyncReason reason = 1;
+  EventCursor last_acknowledged = 2;
+}
+
+message EventStreamReset {
+  uint64 previous_stream_epoch = 1;
+  uint64 unavailable_from_sequence = 2;
+  uint64 unavailable_through_sequence = 3;
+  uint64 new_stream_epoch = 4;
+}
+
+message ConnectionDisplaced {
+  bytes replaced_session_epoch = 1;
+}
+
+message Envelope {
+  uint32 protocol_major = 1;
+  bytes connection_id = 2;
+  uint64 message_id = 3;
+  EnvelopeMetadata metadata = 4;
+  reserved 5 to 9;
+  reserved 14 to 19;
+
+  // Client -> server: fields 10-13.
+  // Server -> client: fields 20-29.
+  oneof body {
+    Command command = 10;
+    SnapshotResyncRequest snapshot_resync_request = 11;
+    EventAcknowledgement event_acknowledgement = 12;
+    EventResumeRequest event_resume_request = 13;
+
+    CommandResult command_result = 20;
+    ProtocolError protocol_error = 21;
+    Percept percept = 22;
+    FullSnapshot full_snapshot = 23;
+    SnapshotDelta snapshot_delta = 24;
+    SnapshotResyncRequired snapshot_resync_required = 25;
+    OrderedEvent ordered_event = 26;
+    EventResyncRequired event_resync_required = 27;
+    EventStreamReset event_stream_reset = 28;
+    ConnectionDisplaced connection_displaced = 29;
+  }
+}
