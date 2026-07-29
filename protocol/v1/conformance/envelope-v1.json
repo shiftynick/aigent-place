@@ -1,0 +1,1477 @@
+{
+  "fixture_format": "aigent.protocol.semantic-fixtures",
+  "fixture_version": 1,
+  "contract": "protocol/v1/CONTRACT.md",
+  "limits": {
+    "outbound_queue_bytes": 262144,
+    "overflow_tick_observations": 40
+  },
+  "cases": [
+    {
+      "id": "negotiates-highest-major-and-feature-versions",
+      "initial": {
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": true,
+            "decoder": true,
+            "spectator_projection": true
+          },
+          {
+            "major": 2,
+            "command_capable": true,
+            "decoder": true,
+            "spectator_projection": true
+          }
+        ],
+        "features": {
+          "1": {
+            "command_capable": {}
+          },
+          "2": {
+            "command_capable": {
+              "aoi_delta": [
+                1,
+                2
+              ],
+              "entity_revision": [
+                1
+              ]
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "handshake",
+          "role": "aigent",
+          "aigent_id": "aigent-1",
+          "offered_majors": [
+            1,
+            2
+          ],
+          "offered_features": [
+            {
+              "feature_id": "future_feature",
+              "supported_versions": [
+                9
+              ]
+            },
+            {
+              "feature_id": "entity_revision",
+              "supported_versions": [
+                1
+              ]
+            },
+            {
+              "feature_id": "aoi_delta",
+              "supported_versions": [
+                1,
+                2
+              ]
+            }
+          ],
+          "session_epoch": "epoch-1",
+          "connection_id": "connection-1"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "handshake_accepted",
+            "mode": "command_capable",
+            "protocol_major": 2,
+            "features": [
+              {
+                "feature_id": "aoi_delta",
+                "version": 2
+              },
+              {
+                "feature_id": "entity_revision",
+                "version": 1
+              }
+            ],
+            "connection_id": "connection-1",
+            "session_epoch": "epoch-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "falls-back-to-highest-decodable-retired-major",
+      "initial": {
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": false,
+            "decoder": true,
+            "spectator_projection": true,
+            "deprecated_at_unix_ms": 1769817600000,
+            "command_support_until_unix_ms": 1785456000000
+          },
+          {
+            "major": 2,
+            "command_capable": false,
+            "decoder": true,
+            "spectator_projection": true,
+            "deprecated_at_unix_ms": 1769817600000,
+            "command_support_until_unix_ms": 1785456000000
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "handshake",
+          "role": "aigent",
+          "aigent_id": "aigent-1",
+          "offered_majors": [
+            1,
+            2
+          ],
+          "offered_features": [],
+          "connection_id": "connection-1",
+          "evaluation_time_unix_ms": 1785542400000
+        },
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "none",
+          "sequence": 1,
+          "idempotency_key": "key-1",
+          "content_digest": "digest-1",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 1,
+          "protocol_major": 2,
+          "connection_id": "connection-1"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "handshake_accepted",
+            "mode": "spectate_only",
+            "protocol_major": 2,
+            "features": [],
+            "notice": "upgrade_required",
+            "connection_id": "connection-1"
+          },
+          {
+            "type": "command_rejected",
+            "code": "spectate_only",
+            "sequence": 1,
+            "command_message_id": 1,
+            "idempotency_key": "key-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "rejects-when-no-offered-major-is-decodable",
+      "initial": {
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": true,
+            "decoder": true,
+            "spectator_projection": true
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "handshake",
+          "role": "aigent",
+          "aigent_id": "aigent-1",
+          "offered_majors": [
+            9
+          ],
+          "offered_features": [],
+          "connection_id": "connection-1"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "handshake_rejected",
+            "code": "unsupported_protocol"
+          }
+        ]
+      }
+    },
+    {
+      "id": "publishes-deprecation-notice-and-validates-six-calendar-months",
+      "initial": {
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": true,
+            "decoder": true,
+            "spectator_projection": true,
+            "deprecated_at_unix_ms": 1769817600000,
+            "command_support_until_unix_ms": 1785456000000
+          }
+        ],
+        "features": {
+          "1": {
+            "command_capable": {}
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "validate_compatibility"
+        },
+        {
+          "op": "handshake",
+          "role": "aigent",
+          "aigent_id": "aigent-1",
+          "offered_majors": [
+            1
+          ],
+          "offered_features": [],
+          "session_epoch": "epoch-1",
+          "connection_id": "connection-1",
+          "evaluation_time_unix_ms": 1780000000000
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "compatibility_policy",
+            "valid": true
+          },
+          {
+            "type": "handshake_accepted",
+            "mode": "command_capable",
+            "protocol_major": 1,
+            "features": [],
+            "deprecation_notice": {
+              "deprecated_at_unix_ms": 1769817600000,
+              "command_support_until_unix_ms": 1785456000000
+            },
+            "connection_id": "connection-1",
+            "session_epoch": "epoch-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "rejects-malformed-handshake-and-ineligible-retired-fallback",
+      "initial": {
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": false,
+            "decoder": true,
+            "spectator_projection": false,
+            "deprecated_at_unix_ms": 1769817600000,
+            "command_support_until_unix_ms": 1785456000000
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "handshake",
+          "role": "aigent",
+          "aigent_id": "aigent-1",
+          "offered_majors": [
+            0
+          ],
+          "offered_features": [],
+          "connection_id": "connection-1",
+          "evaluation_time_unix_ms": 1785542400000
+        },
+        {
+          "op": "handshake",
+          "role": "aigent",
+          "aigent_id": "aigent-1",
+          "offered_majors": [
+            1
+          ],
+          "offered_features": [],
+          "connection_id": "connection-1",
+          "evaluation_time_unix_ms": 1785542400000
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "handshake_rejected",
+            "code": "invalid_envelope"
+          },
+          {
+            "type": "handshake_rejected",
+            "code": "unsupported_protocol"
+          }
+        ]
+      }
+    },
+    {
+      "id": "rejects-short-deprecation-support-window",
+      "initial": {
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": true,
+            "decoder": true,
+            "spectator_projection": true,
+            "deprecated_at_unix_ms": 1769817600000,
+            "command_support_until_unix_ms": 1785369600000
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "validate_compatibility"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "compatibility_policy",
+            "valid": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "viewer-negotiates-read-only-without-command-epoch",
+      "initial": {
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": true,
+            "decoder": true,
+            "spectator_projection": true
+          }
+        ],
+        "features": {
+          "1": {
+            "spectate_only": {}
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "handshake",
+          "role": "viewer",
+          "offered_majors": [
+            1
+          ],
+          "offered_features": [],
+          "session_epoch": "must-not-be-issued",
+          "connection_id": "connection-1"
+        },
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "viewer",
+          "session_epoch": "must-not-be-issued",
+          "sequence": 1,
+          "idempotency_key": "key-1",
+          "content_digest": "digest-1",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 1,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "handshake_accepted",
+            "mode": "spectate_only",
+            "protocol_major": 1,
+            "features": [],
+            "connection_id": "connection-1"
+          },
+          {
+            "type": "command_rejected",
+            "code": "spectate_only",
+            "sequence": 1,
+            "command_message_id": 1,
+            "idempotency_key": "key-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "classifies-decoded-envelope-errors",
+      "initial": {
+        "connection": {
+          "mode": "command_capable",
+          "protocol_major": 1,
+          "role": "aigent",
+          "selected_features": {
+            "aoi_delta": 1
+          },
+          "connection_id": "connection-1",
+          "aigent_id": "aigent-1"
+        }
+      },
+      "steps": [
+        {
+          "op": "envelope",
+          "protocol_major": 1,
+          "connection_id": "",
+          "message_id": 1,
+          "direction": "client_to_server",
+          "body": "command"
+        },
+        {
+          "op": "envelope",
+          "protocol_major": 1,
+          "connection_id": "connection-1",
+          "message_id": 2,
+          "direction": "client_to_server",
+          "body": "command",
+          "available": false
+        },
+        {
+          "op": "envelope",
+          "protocol_major": 1,
+          "connection_id": "connection-1",
+          "message_id": 3,
+          "direction": "client_to_server",
+          "body": "command",
+          "required_features": [
+            {
+              "feature_id": "future_feature",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "op": "envelope",
+          "protocol_major": 1,
+          "connection_id": "connection-1",
+          "message_id": 4,
+          "direction": "server_to_client",
+          "body": "command"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "protocol_error",
+            "code": "invalid_envelope",
+            "effect": "none",
+            "related_message_id": 1
+          },
+          {
+            "type": "protocol_error",
+            "code": "unsupported_message",
+            "effect": "none",
+            "related_message_id": 2
+          },
+          {
+            "type": "protocol_error",
+            "code": "unsupported_feature",
+            "effect": "none",
+            "related_message_id": 3
+          },
+          {
+            "type": "protocol_error",
+            "code": "invalid_envelope",
+            "effect": "none",
+            "related_message_id": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "closes-undecodable-frame",
+      "initial": {},
+      "steps": [
+        {
+          "op": "decode_failure",
+          "encoded_bytes": 10,
+          "frame_limit_bytes": 1024
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "connection_closed",
+            "reason": "undecodable_frame"
+          }
+        ],
+        "final_state": {
+          "closed": true
+        }
+      },
+      "inspect": [
+        "closed"
+      ]
+    },
+    {
+      "id": "closes-frame-that-exceeds-published-limit",
+      "initial": {},
+      "steps": [
+        {
+          "op": "decode_failure",
+          "encoded_bytes": 1025,
+          "frame_limit_bytes": 1024
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "connection_closed",
+            "reason": "frame_too_large"
+          }
+        ],
+        "final_state": {
+          "closed": true
+        }
+      },
+      "inspect": [
+        "closed"
+      ]
+    },
+    {
+      "id": "classifies-invalid-sequence-and-unavailable-command-kind",
+      "initial": {
+        "connection": {
+          "mode": "command_capable",
+          "protocol_major": 1,
+          "role": "aigent",
+          "selected_features": {},
+          "connection_id": "connection-1",
+          "aigent_id": "aigent-1"
+        },
+        "session": {
+          "active_epoch": "epoch-1",
+          "next_sequence": 1,
+          "sequences": {}
+        }
+      },
+      "steps": [
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-1",
+          "sequence": 0,
+          "idempotency_key": "key-0",
+          "content_digest": "digest-0",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 1,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        },
+        {
+          "op": "command",
+          "kind": "move",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-1",
+          "sequence": 1,
+          "idempotency_key": "key-1",
+          "content_digest": "digest-1",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 2,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "protocol_error",
+            "code": "invalid_envelope",
+            "effect": "none",
+            "related_message_id": 1
+          },
+          {
+            "type": "command_rejected",
+            "code": "unsupported_message",
+            "command_message_id": 2,
+            "sequence": 1,
+            "idempotency_key": "key-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "replays-sequence-and-rejects-gap-or-content-reuse",
+      "initial": {
+        "connection": {
+          "mode": "command_capable",
+          "protocol_major": 1,
+          "connection_id": "connection-1",
+          "aigent_id": "aigent-1"
+        },
+        "session": {
+          "active_epoch": "epoch-1",
+          "next_sequence": 1,
+          "sequences": {}
+        }
+      },
+      "steps": [
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-1",
+          "sequence": 1,
+          "idempotency_key": "key-1",
+          "content_digest": "digest-1",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 1,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        },
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-1",
+          "sequence": 1,
+          "idempotency_key": "key-1",
+          "content_digest": "digest-1",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 2,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        },
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-1",
+          "sequence": 3,
+          "idempotency_key": "key-3",
+          "content_digest": "digest-3",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 3,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        },
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-1",
+          "sequence": 1,
+          "idempotency_key": "key-1",
+          "content_digest": "changed",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 4,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "command_result",
+            "sequence": 1,
+            "result": {
+              "accepted": true,
+              "affected_entities": [
+                {
+                  "entity_id": "entity-1",
+                  "revision": 7
+                }
+              ]
+            },
+            "command_message_id": 1,
+            "idempotency_key": "key-1"
+          },
+          {
+            "type": "command_result_replayed",
+            "sequence": 1,
+            "result": {
+              "accepted": true,
+              "affected_entities": [
+                {
+                  "entity_id": "entity-1",
+                  "revision": 7
+                }
+              ]
+            },
+            "command_message_id": 2,
+            "idempotency_key": "key-1"
+          },
+          {
+            "type": "command_rejected",
+            "code": "sequence_gap",
+            "sequence": 3,
+            "command_message_id": 3,
+            "idempotency_key": "key-3"
+          },
+          {
+            "type": "command_rejected",
+            "code": "sequence_content_conflict",
+            "sequence": 1,
+            "command_message_id": 4,
+            "idempotency_key": "key-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "replays-idempotency-key-across-session-epochs",
+      "initial": {
+        "idempotency": {
+          "aigent-1": {
+            "1": {
+              "key-1": {
+                "content_digest": "digest-1",
+                "result": {
+                  "accepted": true,
+                  "affected_entities": [
+                    {
+                      "entity_id": "entity-1",
+                      "revision": 7
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": true,
+            "decoder": true,
+            "spectator_projection": true
+          }
+        ],
+        "features": {
+          "1": {
+            "command_capable": {}
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "handshake",
+          "new_connection": true,
+          "role": "aigent",
+          "aigent_id": "aigent-1",
+          "offered_majors": [
+            1
+          ],
+          "offered_features": [],
+          "connection_id": "connection-1",
+          "session_epoch": "epoch-2"
+        },
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-2",
+          "sequence": 1,
+          "idempotency_key": "key-1",
+          "content_digest": "digest-1",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 1,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        },
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-2",
+          "sequence": 2,
+          "idempotency_key": "key-1",
+          "content_digest": "changed",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 2,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "handshake_accepted",
+            "mode": "command_capable",
+            "protocol_major": 1,
+            "connection_id": "connection-1",
+            "features": [],
+            "session_epoch": "epoch-2"
+          },
+          {
+            "type": "command_result_replayed",
+            "sequence": 1,
+            "result": {
+              "accepted": true,
+              "affected_entities": [
+                {
+                  "entity_id": "entity-1",
+                  "revision": 7
+                }
+              ]
+            },
+            "command_message_id": 1,
+            "idempotency_key": "key-1"
+          },
+          {
+            "type": "command_rejected",
+            "code": "idempotency_conflict",
+            "sequence": 2,
+            "command_message_id": 2,
+            "idempotency_key": "key-1"
+          }
+        ],
+        "final_state": {
+          "session": {
+            "active_epoch": "epoch-2",
+            "next_sequence": 3,
+            "sequences": {
+              "1": {
+                "content_digest": "digest-1",
+                "idempotency_key": "key-1",
+                "result": {
+                  "accepted": true,
+                  "affected_entities": [
+                    {
+                      "entity_id": "entity-1",
+                      "revision": 7
+                    }
+                  ]
+                }
+              },
+              "2": {
+                "content_digest": "changed",
+                "idempotency_key": "key-1",
+                "result": {
+                  "accepted": false,
+                  "code": "idempotency_conflict"
+                }
+              }
+            }
+          }
+        }
+      },
+      "inspect": [
+        "session"
+      ]
+    },
+    {
+      "id": "displaces-prior-session-before-new-epoch-commands",
+      "initial": {
+        "connection": {
+          "mode": "command_capable",
+          "protocol_major": 1,
+          "role": "aigent",
+          "selected_features": {},
+          "connection_id": "connection-1",
+          "aigent_id": "aigent-1"
+        },
+        "session": {
+          "active_epoch": "epoch-1",
+          "next_sequence": 1,
+          "sequences": {}
+        },
+        "compatibility": [
+          {
+            "major": 1,
+            "command_capable": true,
+            "decoder": true,
+            "spectator_projection": true
+          }
+        ],
+        "features": {
+          "1": {
+            "command_capable": {}
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "handshake",
+          "new_connection": true,
+          "role": "aigent",
+          "aigent_id": "aigent-1",
+          "offered_majors": [
+            1
+          ],
+          "offered_features": [],
+          "connection_id": "connection-1",
+          "session_epoch": "epoch-2"
+        },
+        {
+          "op": "command",
+          "kind": "cancel_intent",
+          "aigent_id": "aigent-1",
+          "session_epoch": "epoch-1",
+          "sequence": 1,
+          "idempotency_key": "key-1",
+          "content_digest": "digest-1",
+          "result": {
+            "accepted": true,
+            "affected_entities": [
+              {
+                "entity_id": "entity-1",
+                "revision": 7
+              }
+            ]
+          },
+          "message_id": 1,
+          "protocol_major": 1,
+          "connection_id": "connection-1"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "handshake_accepted",
+            "mode": "command_capable",
+            "protocol_major": 1,
+            "connection_id": "connection-1",
+            "features": [],
+            "session_epoch": "epoch-2"
+          },
+          {
+            "type": "connection_displaced",
+            "replaced_session_epoch": "epoch-1"
+          },
+          {
+            "type": "command_rejected",
+            "code": "stale_session_epoch",
+            "sequence": 1,
+            "command_message_id": 1,
+            "idempotency_key": "key-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "coalesces-at-limit-and-disconnects-on-fortieth-overflow-observation",
+      "initial": {},
+      "steps": [
+        {
+          "op": "enqueue_state",
+          "encoded_bytes": 262144
+        },
+        {
+          "op": "observe_queue"
+        },
+        {
+          "op": "enqueue_state",
+          "encoded_bytes": 262145
+        },
+        {
+          "op": "observe_queue",
+          "observations": 39
+        },
+        {
+          "op": "observe_queue"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "state_enqueued",
+            "queued_bytes": 262144,
+            "over_limit": false
+          },
+          {
+            "type": "queue_observed",
+            "over_limit_ticks": 0
+          },
+          {
+            "type": "state_coalesced",
+            "queued_bytes": 262145,
+            "over_limit": true
+          },
+          {
+            "type": "queue_observed",
+            "over_limit_ticks": 39
+          },
+          {
+            "type": "connection_closed",
+            "reason": "sustained_outbound_overflow",
+            "over_limit_ticks": 40
+          }
+        ],
+        "final_state": {
+          "closed": true,
+          "queue": {
+            "state_bytes": 262145,
+            "state_items": [
+              262145
+            ],
+            "event_bytes": 0,
+            "over_limit_ticks": 40
+          }
+        }
+      },
+      "inspect": [
+        "closed",
+        "queue"
+      ]
+    },
+    {
+      "id": "resets-overflow-counter-at-or-below-limit",
+      "initial": {
+        "queue": {
+          "state_bytes": 262145,
+          "event_bytes": 0,
+          "over_limit_ticks": 10
+        }
+      },
+      "steps": [
+        {
+          "op": "enqueue_state",
+          "encoded_bytes": 262144
+        },
+        {
+          "op": "observe_queue"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "state_coalesced",
+            "queued_bytes": 262144,
+            "over_limit": false
+          },
+          {
+            "type": "queue_observed",
+            "over_limit_ticks": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "replays-retained-events-after-a-gap",
+      "initial": {
+        "event_stream": {
+          "epoch": "event-epoch-1",
+          "expected_sequence": 42,
+          "highest_sent_sequence": 43,
+          "last_ack": 40,
+          "status": "live",
+          "journal": [
+            {
+              "sequence": 41
+            },
+            {
+              "sequence": 42
+            },
+            {
+              "sequence": 43
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "op": "receive_event",
+          "stream_epoch": "event-epoch-1",
+          "sequence": 43
+        },
+        {
+          "op": "resume_events",
+          "stream_epoch": "event-epoch-1",
+          "last_ack": 40,
+          "server_new_stream_epoch": "event-epoch-2"
+        },
+        {
+          "op": "receive_event",
+          "stream_epoch": "event-epoch-1",
+          "sequence": 44
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "event_resync_required",
+            "reason": "client_detected_gap",
+            "expected_sequence": 42,
+            "received_sequence": 43
+          },
+          {
+            "type": "events_replayed",
+            "sequences": [
+              41,
+              42,
+              43
+            ]
+          },
+          {
+            "type": "event_received",
+            "sequence": 44
+          }
+        ]
+      }
+    },
+    {
+      "id": "resets-event-stream-when-replay-is-unavailable",
+      "initial": {
+        "event_stream": {
+          "epoch": "event-epoch-1",
+          "expected_sequence": 43,
+          "highest_sent_sequence": 43,
+          "last_ack": 40,
+          "status": "event_resync_required",
+          "journal": [
+            {
+              "sequence": 43
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "op": "resume_events",
+          "stream_epoch": "event-epoch-1",
+          "last_ack": 40,
+          "server_new_stream_epoch": "event-epoch-2"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "event_stream_reset",
+            "previous_stream_epoch": "event-epoch-1",
+            "unavailable_from": 41,
+            "unavailable_through": 43,
+            "new_stream_epoch": "event-epoch-2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "event-admission-pressure-never-coalesces-an-event",
+      "initial": {
+        "queue": {
+          "state_bytes": 262140,
+          "event_bytes": 0,
+          "over_limit_ticks": 0
+        }
+      },
+      "steps": [
+        {
+          "op": "enqueue_event",
+          "encoded_bytes": 8,
+          "sequence": 1
+        },
+        {
+          "op": "resume_events",
+          "stream_epoch": "event-epoch-1",
+          "last_ack": 0,
+          "server_new_stream_epoch": "event-epoch-2"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "event_resync_required",
+            "reason": "event_not_admitted",
+            "state_coalesced": false
+          },
+          {
+            "type": "events_replayed",
+            "sequences": [
+              1
+            ]
+          }
+        ],
+        "final_state": {
+          "event_stream": {
+            "epoch": "event-epoch-1",
+            "expected_sequence": 2,
+            "highest_sent_sequence": 1,
+            "last_ack": 0,
+            "status": "live",
+            "journal": [
+              {
+                "sequence": 1
+              }
+            ]
+          }
+        }
+      },
+      "inspect": [
+        "event_stream"
+      ]
+    },
+    {
+      "id": "event-admission-coalesces-state-before-accepting-event",
+      "initial": {
+        "queue": {
+          "state_bytes": 262140,
+          "state_items": [
+            100000,
+            162140
+          ],
+          "event_bytes": 0,
+          "over_limit_ticks": 0
+        }
+      },
+      "steps": [
+        {
+          "op": "enqueue_event",
+          "encoded_bytes": 8,
+          "sequence": 1
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "event_enqueued",
+            "queued_event_bytes": 8,
+            "state_coalesced": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "acknowledgement-releases-retained-events",
+      "initial": {
+        "event_stream": {
+          "epoch": "event-epoch-1",
+          "expected_sequence": 4,
+          "highest_sent_sequence": 3,
+          "last_ack": 1,
+          "status": "live",
+          "journal": [
+            {
+              "sequence": 2
+            },
+            {
+              "sequence": 3
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "op": "acknowledge_event",
+          "stream_epoch": "event-epoch-1",
+          "sequence": 2
+        },
+        {
+          "op": "receive_event",
+          "stream_epoch": "event-epoch-1",
+          "sequence": 3
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "events_acknowledged",
+            "sequence": 2
+          },
+          {
+            "type": "event_duplicate_ignored",
+            "sequence": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "delivers-matching-baseline-and-derives-expired-baseline",
+      "initial": {
+        "snapshot": {
+          "baseline_id": "baseline-7",
+          "retained_baselines": [
+            "baseline-7"
+          ],
+          "status": "live"
+        }
+      },
+      "steps": [
+        {
+          "op": "deliver_delta",
+          "baseline_id": "baseline-7"
+        },
+        {
+          "op": "expire_baseline",
+          "baseline_id": "baseline-7"
+        },
+        {
+          "op": "deliver_delta",
+          "baseline_id": "baseline-7"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "delta_delivered",
+            "baseline_id": "baseline-7"
+          },
+          {
+            "type": "baseline_expired",
+            "baseline_id": "baseline-7"
+          },
+          {
+            "type": "snapshot_resync_required",
+            "reason": "baseline_expired",
+            "baseline_id": "baseline-7"
+          }
+        ],
+        "final_state": {
+          "snapshot": {
+            "baseline_id": "baseline-7",
+            "retained_baselines": [],
+            "status": "snapshot_resync_required"
+          }
+        }
+      },
+      "inspect": [
+        "snapshot"
+      ]
+    },
+    {
+      "id": "baseline-loss-resync-preserves-event-stream",
+      "initial": {
+        "event_stream": {
+          "epoch": "event-epoch-7",
+          "expected_sequence": 12,
+          "highest_sent_sequence": 11,
+          "last_ack": 10,
+          "status": "live",
+          "journal": [
+            {
+              "sequence": 11
+            }
+          ]
+        },
+        "snapshot": {
+          "baseline_id": "baseline-7",
+          "retained_baselines": [
+            "baseline-7"
+          ],
+          "status": "live"
+        }
+      },
+      "steps": [
+        {
+          "op": "deliver_delta",
+          "baseline_id": "baseline-8"
+        },
+        {
+          "op": "snapshot_resync",
+          "new_baseline_id": "baseline-9"
+        }
+      ],
+      "expect": {
+        "trace": [
+          {
+            "type": "snapshot_resync_required",
+            "reason": "baseline_mismatched",
+            "baseline_id": "baseline-8"
+          },
+          {
+            "type": "full_snapshot",
+            "baseline_id": "baseline-9"
+          }
+        ],
+        "final_state": {
+          "event_stream": {
+            "epoch": "event-epoch-7",
+            "expected_sequence": 12,
+            "highest_sent_sequence": 11,
+            "last_ack": 10,
+            "status": "live",
+            "journal": [
+              {
+                "sequence": 11
+              }
+            ]
+          },
+          "snapshot": {
+            "baseline_id": "baseline-9",
+            "retained_baselines": [
+              "baseline-9"
+            ],
+            "status": "live"
+          }
+        }
+      },
+      "inspect": [
+        "event_stream",
+        "snapshot"
+      ]
+    }
+  ]
+}

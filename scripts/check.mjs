@@ -105,7 +105,12 @@ function main() {
 
   run(
     process.execPath,
-    ["--test", "scripts/check.test.mjs", ".githooks/pre-push.test.mjs"],
+    [
+      "--test",
+      "scripts/check.test.mjs",
+      "scripts/protocol-contract.test.mjs",
+      ".githooks/pre-push.test.mjs",
+    ],
     root,
   );
   run(process.execPath, [".agent-foundry/run-checks.mjs"], root);

@@ -25,5 +25,4 @@ per decision.
 
 | ID | Title | Status |
 | --- | --- | --- |
-| _none_ | No architecture decisions recorded yet. | — |
-
+| [ADR-0001](0001-protocol-v1-compatibility-and-recovery.md) | Protocol v1 compatibility and recovery semantics | accepted |
