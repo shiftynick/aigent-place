@@ -26,3 +26,4 @@ per decision.
 | ID | Title | Status |
 | --- | --- | --- |
 | [ADR-0001](0001-protocol-v1-compatibility-and-recovery.md) | Protocol v1 compatibility and recovery semantics | accepted |
+| [ADR-0002](0002-world-geometry-and-displacement-semantics.md) | World geometry and displacement semantics | accepted |
