@@ -6,7 +6,7 @@ priority: p0
 tags: [area:process, milestone:foundations, needs:operator]
 blockedBy: []
 createdAt: "2026-07-29T13:40:04Z"
-updatedAt: "2026-07-29T13:57:41Z"
+updatedAt: "2026-07-29T14:01:27Z"
 ---
 
 <!-- task-tracker:description -->
@@ -61,3 +61,50 @@ Create the private personal GitHub remote and establish an agent-manageable bran
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
 - 2026-07-29T13:54:59Z — note: Cold review round 2, rung 1. Accepted and fixed: operator decision is explicit in the planning journal and GitHub Actions choice; handoff operator question now names Pro vs public; gate prerequisites and exact Node pin are documented; merge summary now denies standing merge authority until protection is active; hook adds a timeout plus unterminated allowed-line regression; attributes preserve CRLF for future cmd/bat files; CI concurrency deduplicates push/PR runs by head branch and cancels superseded non-main runs; protected-branch literal is documented. Verified the staged hook is mode 100755 with zero CR bytes. Rejected as expected lifecycle sequencing: untracked/staged deliverables and PR/CI proof are satisfied by the commit/push steps after review, not defects in the implementation packet. The full gate is now recorded green: 16 local tests and 289 Foundry tests. No recurring product defect pattern was found for REVIEW-STANDARDS.
 - 2026-07-29T13:57:41Z — note: Cold review round 3, rung 1 final local review. Fixed the two remaining material findings: concurrency now keys both push and PR events by the same normalized head/ref name, and HANDOFF pickup explicitly resolves task-019 before task-002. Also removed stale AGENTS future-tense claiming branch CI still needed. Byte probes confirmed no replacement characters in the PR template/task log; pinned Action SHAs were resolved live from their official GitHub tags before use. Review cap reached with no unresolved local must-fix finding; only the disclosed external GitHub tier decision and remote PR proof remain.
+- 2026-07-29T13:58:06Z — run: git push --dry-run origin HEAD:main
+  started 2026-07-29T13:58:05Z, exit 1 in 0.7s
+  output:
+  |
+  | pre-push: refusing to push directly to refs/heads/main.
+  |
+  |   This project uses one task branch and pull request per task.
+  |   Push task-NNN-short-slug and open a PR instead.
+  |
+  |   See AGENTS.md "Git discipline".
+  |
+  | error: failed to push some refs to 'github.com:shiftynick/aigent-place.git'
+- 2026-07-29T13:58:13Z — note: Expected negative-path evidence: the recorded dry-run push of HEAD to refs/heads/main exited 1 because .githooks/pre-push refused the update with branch-per-task guidance. This is the required success condition for the guard, not a validation defect.
+- 2026-07-29T14:01:11Z — note: CI diagnosis: run 30458552046 was cancelled by concurrency when PR run 30458602666 started; the repository gate did not fail. The PR run passed in 47s, proving checkout, pinned Actions, Node 22.22.2 resolution, POSIX hook tests, and the clean Ubuntu gate. Because gh pr checks reports the cancelled duplicate as fail, narrowed CI to pull requests plus main pushes, matching the operator-approved design and avoiding ambiguous duplicate process-gate contexts. This correction landed after the three-round review cap; it directly implements the final reviewer recommendation and will be validated by the replacement PR run.
+- 2026-07-29T14:01:27Z — run: node scripts/check.mjs
+  started 2026-07-29T14:01:11Z, exit 0 in 15.3s
+  output tail (truncated to last 30 lines):
+  |     # Subtest: soft-deletes by setting status=done and adding deleted:true tag
+  |     ok 1 - soft-deletes by setting status=done and adding deleted:true tag
+  |       ---
+  |       duration_ms: 126.2409
+  |       type: 'test'
+  |       ...
+  |     # Subtest: keeps dependents blocked when their blocker is soft-deleted
+  |     ok 2 - keeps dependents blocked when their blocker is soft-deleted
+  |       ---
+  |       duration_ms: 330.8428
+  |       type: 'test'
+  |       ...
+  |     1..2
+  | ok 121 - task rm
+  |   ---
+  |   duration_ms: 457.1931
+  |   type: 'suite'
+  |   ...
+  | 1..121
+  | # tests 289
+  | # suites 62
+  | # pass 289
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 14582.0547
+  |
+  | run-checks: PASS (skill-sync + 14 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)

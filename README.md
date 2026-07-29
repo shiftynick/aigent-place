@@ -19,4 +19,4 @@ Claude Code uses the matching `.claude/skills/task-tracker/` command path.
 Use the exact Node.js version in `.nvmrc` for the local and CI gate; Node 20
 is the minimum runtime supported by the process tooling. The hook tests also
 require `sh`, supplied by Git for Windows or the POSIX environment. GitHub
-Actions runs the same gate on every branch, pull request, and `main`.
+Actions runs the same gate on every pull request and push to `main`.

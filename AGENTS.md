@@ -111,9 +111,9 @@ authoritative executable process gate is:
 node scripts/check.mjs
 ```
 
-GitHub Actions runs this gate as `process-gate` on every pushed branch, every
-pull request targeting `main`, and every push to `main`. It becomes a required
-check once server-side protection is available. The initial board includes
+GitHub Actions runs this gate as `process-gate` on every pull request targeting
+`main` and every push to `main`. It becomes a required check once server-side
+protection is available. The initial board includes
 tasks to establish the product build, formatting, linting, tests, and fast
 pre-commit hook before runtime implementation expands. Keep the current
 process checks as a constituent when the unified product gate grows.
