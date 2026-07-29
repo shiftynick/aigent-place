@@ -9,10 +9,10 @@ refreshing their state.
 ## TL;DR
 
 The repository contains an approved base architecture and an Agent Foundry
-workflow, but no product runtime or build workspace. Bootstrap task `task-001`
-installed and tailored the project contract without overwriting the existing
-Claude skill. Continue with the dependency-ordered foundation tasks on the
-board, starting with the versioned Step 0 contracts.
+workflow, but no product runtime or build workspace. It is hosted privately at
+`shiftynick/aigent-place`; task `task-019` is establishing the branch-per-task
+pull-request workflow before product work begins. Continue with the versioned
+Step 0 contracts after that governance task is complete.
 
 ## To pick up tomorrow
 
@@ -25,6 +25,8 @@ node .agents/skills/task-tracker/scripts/task.mjs board
 ```
 
 Then read the active task and its log before changing any file.
+If `task-019` is still blocked, resolve GitHub Pro versus public repository
+visibility before starting `task-002`.
 
 ## What's where
 
@@ -69,14 +71,20 @@ generic industry concept.
 
 ## What's in progress / half-done
 
-No product implementation is half-done. The dependency-ordered foundation
-front is queued on the board.
+No product implementation is half-done. `task-019` has created the private
+remote, renamed the default branch to `main`, and added the local workflow
+packet. GitHub Actions and the task PR still need to be proven remotely.
+Server-side branch protection cannot be enabled on this private repository
+under the current GitHub account tier; GitHub requires either Pro or public
+visibility. The repository must remain private until the operator chooses.
 
 ## Open questions for the human
 
-The unresolved product questions are listed under `ARCHITECTURE.md` → "Open
-questions" and tracked by `task-017` with `needs:operator`; none blocks the
-first foundation tasks.
+Choose whether to enable private-repository rulesets with GitHub Pro or make
+the repository public. That decision blocks `task-019`, which in turn blocks
+the first product task. The unresolved product questions are listed under
+`ARCHITECTURE.md` → "Open questions" and tracked by `task-017`; they do not
+otherwise block the first foundation contracts.
 
 ## Validation state
 
@@ -87,17 +95,19 @@ product build or runtime validation exists yet.
 
 ## Worktree and operational state
 
-The bootstrap closeout creates the repository's initial local task-scoped
-commit on `master`, including the pre-existing architecture and local Claude
-bridge alongside the Foundry install. There are no running services,
-credentials, deployments, or remote operations associated with this work;
-nothing was pushed. Task-001 tailored the README entry point and left
-`ARCHITECTURE.md` unchanged.
+The bootstrap commit is published as the initial `main` of the private
+`git@github.com:shiftynick/aigent-place.git` remote. Governance work is on
+`task-019-github-governance`. The clone uses `.githooks` through
+`core.hooksPath`. There are no running services, credentials, or deployments.
+Task-001 tailored the README entry point and left `ARCHITECTURE.md` unchanged.
 
 ## Known blockers and risks
 
-No current blocker is recorded. The main delivery risk is implementing runtime
-code before the Step 0 contracts and executable quality gate are established.
+The current GitHub account tier cannot enforce branch rules on a private
+repository. Resolve that by upgrading to GitHub Pro or explicitly making the
+repository public; do not silently weaken the acceptance criteria. The main
+product risk remains implementing runtime code before the Step 0 contracts and
+executable quality gate are established.
 
 ## Common pitfalls
 

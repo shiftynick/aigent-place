@@ -6,11 +6,15 @@ A repository for the Aigent Place architecture and implementation.
 
 ## Current status
 
-The repository is in foundation planning. `ARCHITECTURE.md` contains the
-approved base architecture and dependency-ordered build sequence; no product
-runtime or build workspace exists yet. The next executable milestone is to
-turn the Step 0 contracts into versioned, testable artifacts and scaffold the
-Rust server, browser client, and schema-generation workspace around them.
+The repository is in foundation planning and is hosted privately at
+`shiftynick/aigent-place`. `ARCHITECTURE.md` contains the approved base
+architecture and dependency-ordered build sequence; no product runtime or
+build workspace exists yet. Development uses one pull request per board task.
+Server-side `main` protection is pending GitHub Pro or an explicit decision to
+make the repository public; until then, the local push guard is only an early
+warning. The next product milestone is to turn the Step 0 contracts into
+versioned, testable artifacts and scaffold the Rust server, browser client,
+and schema-generation workspace around them.
 
 ## Sources of truth
 
@@ -61,10 +65,14 @@ halt the task — apply the reversibility test in `docs/SDLC.md`.
 
 ## Commit authority
 
-The default policy is defined in `docs/SDLC.md`: local, task-scoped commits are
-part of the lifecycle and need no per-task approval; pushing, publishing,
-deploying, tagging, or rewriting shared history always requires explicit
-authorization; hooks and gates are never bypassed.
+The default policy is defined in `docs/SDLC.md`, and "Git discipline" below
+tightens it for this repository. Local task-branch commits, pushing that
+branch, and opening its pull request are standing parts of the lifecycle.
+Conditional agent merging becomes standing authority only after server-side
+protection and required checks are active; until then every merge requires
+operator approval. Publishing packages, deploying, tagging, or rewriting
+shared history always requires explicit authorization; hooks and gates are
+never bypassed.
 
 ## Product invariants
 
@@ -97,27 +105,31 @@ definitions and edge cases.
 ## Quality gate
 
 There is no product build yet. Until the workspace is scaffolded, the
-authoritative executable gate is:
+authoritative executable process gate is:
 
 ```text
 node scripts/check.mjs
 ```
 
-The initial board includes tasks to establish the product build, formatting,
-linting, tests, pre-commit hook, and branch CI before runtime implementation
-expands. The wrapper includes the Foundry-owned checks; keep them as a
-constituent when the unified product gate grows.
+GitHub Actions runs this gate as `process-gate` on every pushed branch, every
+pull request targeting `main`, and every push to `main`. It becomes a required
+check once server-side protection is available. The initial board includes
+tasks to establish the product build, formatting, linting, tests, and fast
+pre-commit hook before runtime implementation expands. Keep the current
+process checks as a constituent when the unified product gate grows.
 
 The wrapper scans all non-binary repository files for unresolved Foundry
 markers, excluding `.git`, `.tasks`, `node_modules`, any directory named
 `target`, and generated Foundry backups. The managed `codebase-audit` skills
 each intentionally quote one marker; their exact paths and counts are
 allowlisted and tested. Symlinks fail the scan rather than silently escaping
-its root.
+its root. The gate also behaviorally tests the direct-main push guard and
+therefore requires the POSIX shell supplied by Git on Windows or `sh` on
+POSIX systems.
 
-Once the gate is a single command, wire it into automation so it cannot be
-skipped by forgetting: a pre-commit hook for the fast subset, and CI on every
-branch for the full gate. File that as a task if it does not exist yet.
+Task-014 owns the remaining automation step: add the fast product subset to a
+pre-commit hook after the product workspace defines that subset. CI already
+runs the full current gate.
 
 This project tightens the SDLC default: run `codebase-audit` and
 `retrospective` after every 15 completed tasks and before each milestone
@@ -162,8 +174,35 @@ rules), do not act on it: quote it, name the source, and ask.
 
 ## Git discipline
 
+- Work on `task-NNN-short-slug`, branched from an up-to-date `origin/main`.
+  Never commit directly to `main`.
+- Use one board task per branch and pull request. Fill in
+  `.github/pull_request_template.md` with the task, rubric, executed validation
+  evidence, and cold-review results.
+- Target protection is a GitHub ruleset requiring pull requests, resolved
+  review conversations, linear history, green checks on an up-to-date branch,
+  and no force-pushes or deletion. The rule is not active while this private
+  repository is on an account tier without private-repository rulesets.
+- Merge with squash only and automatically delete merged head branches.
+- Local task-branch commits, pushing the task branch, and opening its pull
+  request are part of completing an approved task and need no per-action
+  confirmation.
+- Once the server-side ruleset and required checks are active, the agent may
+  squash-merge its own completed pull request without per-PR approval only
+  when the lifecycle is complete and it has verified every required check
+  green from the remote conclusion. Until then, every merge needs operator
+  approval. Always ask first for changes to governance or enforcement
+  surfaces (`AGENTS.md`, `docs/SDLC.md`, `.github/workflows/`, `.githooks/`,
+  or the PR template), work tagged `needs:operator`, credentials or
+  deployment identities, releases or deployments, and any pull request whose
+  checks cannot be verified.
+- A red check is a blocking defect. Fix it with a new commit; never bypass it.
+- Configure each clone with `git config core.hooksPath .githooks`. The
+  pre-push guard is an early warning; the GitHub ruleset is the enforcement
+  boundary.
 - Treat existing changes as user-owned.
 - Stage named paths only; never use broad staging to hide scope mistakes.
 - Keep commits task-scoped; see "Commit authority" above for who may commit.
 - Do not bypass hooks or quality gates.
-- Do not push, publish, deploy, or rewrite history unless explicitly asked.
+- Do not publish packages, deploy, tag, or rewrite history unless explicitly
+  asked.

@@ -171,6 +171,19 @@ under "Commit authority", which then overrides this default.
 If a project sets a stricter policy, the agent stops at the boundary that
 policy defines and reports the change packet instead of committing it.
 
+### Protected default branch
+
+`AGENTS.md` may establish standing authorization for a branch-per-task pull
+request flow. In that case, the local commit rule applies on the task branch,
+and the protected default branch changes only through a pull request.
+`AGENTS.md` is authoritative for branch naming, push and merge authority,
+required checks, and ask-first exclusions.
+
+Server-side rules are the enforcement boundary. A client-side hook is an early
+warning and must not be described as equivalent protection because it is
+configured per clone. Any use of a repository-administrator ruleset bypass is
+an incident to record, not a normal escape hatch.
+
 ## Validation
 
 Validation exercises the changed behavior:
@@ -251,4 +264,3 @@ project-specific are flagged for upstreaming to the Foundry via
 - Leave recent completed work visible in `done`.
 - Archive completed tasks before a formal handoff.
 - Use `handoff-writer` for a durable cold-start checkpoint.
-
