@@ -9,10 +9,10 @@ refreshing their state.
 ## TL;DR
 
 The repository contains an approved base architecture and an Agent Foundry
-workflow, but no product runtime or build workspace. Bootstrap task `task-001`
-installed and tailored the project contract without overwriting the existing
-Claude skill. Continue with the dependency-ordered foundation tasks on the
-board, starting with the versioned Step 0 contracts.
+workflow, but no product runtime or build workspace. It is hosted publicly at
+`shiftynick/aigent-place`; task `task-019` established the protected
+branch-per-task pull-request workflow. Continue with `task-002`, the versioned
+protocol envelope and compatibility contract.
 
 ## To pick up tomorrow
 
@@ -69,35 +69,37 @@ generic industry concept.
 
 ## What's in progress / half-done
 
-No product implementation is half-done. The dependency-ordered foundation
-front is queued on the board.
+No product implementation is half-done. `task-019` created the public remote,
+protected `main`, and proved `process-gate` locally and on a clean Ubuntu
+checkout. The dependency-ordered Step 0 contract front is ready.
 
 ## Open questions for the human
 
 The unresolved product questions are listed under `ARCHITECTURE.md` → "Open
-questions" and tracked by `task-017` with `needs:operator`; none blocks the
-first foundation tasks.
+questions" and tracked by `task-017`; they do not block the first foundation
+contracts.
 
 ## Validation state
 
-The Foundry installer completed its bundled validation. The final
-`node scripts/check.mjs` result for the tailored packet is recorded in
-`task-001`; it includes the Foundry suites and the repository marker check. No
-product build or runtime validation exists yet.
+The current `node scripts/check.mjs` evidence is recorded in `task-019`: 16
+local tests and all 289 Foundry tests pass. GitHub Actions run `30459765418`
+passed `process-gate` in 30 seconds on a clean Ubuntu checkout with the pinned
+Node version and active `main` ruleset. No product build or runtime validation
+exists yet.
 
 ## Worktree and operational state
 
-The bootstrap closeout creates the repository's initial local task-scoped
-commit on `master`, including the pre-existing architecture and local Claude
-bridge alongside the Foundry install. There are no running services,
-credentials, deployments, or remote operations associated with this work;
-nothing was pushed. Task-001 tailored the README entry point and left
-`ARCHITECTURE.md` unchanged.
+The bootstrap commit is published as the initial `main` of the public
+`git@github.com:shiftynick/aigent-place.git` remote. Governance work is on
+`main` after squash-merging PR #1. The clone uses `.githooks` through
+`core.hooksPath`. There are no running services, credentials, or deployments.
+Task-001 tailored the README entry point and left `ARCHITECTURE.md` unchanged.
 
 ## Known blockers and risks
 
-No current blocker is recorded. The main delivery risk is implementing runtime
-code before the Step 0 contracts and executable quality gate are established.
+No current delivery blocker is recorded. The main product risk remains
+implementing runtime code before the Step 0 contracts and executable quality
+gate are established.
 
 ## Common pitfalls
 

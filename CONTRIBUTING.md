@@ -9,8 +9,29 @@ node .agents/skills/task-tracker/scripts/task.mjs board
 node .agents/skills/task-tracker/scripts/task.mjs next
 ```
 
+Update `main`, then create a branch and optional worktree for the assigned
+task:
+
+```text
+git fetch origin
+git worktree add ../aigent-place-task-NNN -b task-NNN-short-slug origin/main
+```
+
+The explicit `origin/main` start point prevents a new task from inheriting
+another task branch's unmerged commits. Use one agent per worktree.
+
+Enable the repository's direct-main push guard once per clone:
+
+```text
+git config core.hooksPath .githooks
+```
+
 ## Changes
 
+- Work on one `task-NNN-short-slug` branch and pull request per board task;
+  never commit or push directly to `main`.
+- Complete `.github/pull_request_template.md` honestly. Validation evidence
+  names commands that actually ran, and the task log remains authoritative.
 - Use a board task for non-trivial code, configuration, architecture, process,
   or documentation work.
 - Keep one coherent objective per task and commit.
@@ -44,8 +65,14 @@ change:
 node scripts/check.mjs
 ```
 
-The gate requires Node.js 20 or newer. It runs the Foundry suites and the
-process-document scan whose exact scope is defined in `AGENTS.md`.
+Use the exact Node.js version in `.nvmrc`; Node 20 is only the minimum runtime
+supported by the process tooling. The gate runs the Foundry suites, the
+direct-main push-guard tests, and the process-document scan whose exact scope
+is defined in `AGENTS.md`. Those hook tests require `sh`, supplied by Git for
+Windows and standard on supported POSIX development environments. GitHub
+Actions uses `.nvmrc` and runs the same command as `process-gate` on every
+pull request and push to `main`. The active `main` ruleset requires the check
+on an up-to-date branch.
 
 When the workspace task introduces product commands, update this section and
 `AGENTS.md` in the same change.

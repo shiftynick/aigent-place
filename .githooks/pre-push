@@ -1,0 +1,28 @@
+#!/bin/sh
+# Refuse direct pushes to the protected default branch. GitHub rules are the
+# enforcement boundary; this hook gives an earlier, local explanation.
+#
+# Enable per clone: git config core.hooksPath .githooks
+
+# Keep this literal aligned with the documented and remote default branch.
+protected_branch="refs/heads/main"
+
+# stdin: <local ref> <local sha> <remote ref> <remote sha>
+while read -r _local_ref _local_sha remote_ref _remote_sha ||
+	[ -n "${remote_ref}" ]; do
+	[ -z "${remote_ref}" ] && continue
+
+	if [ "${remote_ref}" = "${protected_branch}" ]; then
+		echo "" >&2
+		echo "pre-push: refusing to push directly to ${protected_branch}." >&2
+		echo "" >&2
+		echo "  This project uses one task branch and pull request per task." >&2
+		echo "  Push task-NNN-short-slug and open a PR instead." >&2
+		echo "" >&2
+		echo "  See AGENTS.md \"Git discipline\"." >&2
+		echo "" >&2
+		exit 1
+	fi
+done
+
+exit 0

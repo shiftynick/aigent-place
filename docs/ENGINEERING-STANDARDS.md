@@ -60,8 +60,9 @@ project-specific recurring review lessons in `docs/REVIEW-STANDARDS.md`.
 - Test meaningful error, retry, cancellation, empty-state, and recovery paths.
 - Keep fixtures deterministic and platform-independent where practical.
 - Make the gate unskippable rather than remembered: the fast subset runs in a
-  pre-commit hook, the full gate runs in CI on every branch. A check that only
-  runs when someone remembers it is not a gate.
+  pre-commit hook, and the full gate runs in CI on every pull request and push
+  to the default branch. A check that only runs when someone remembers it is
+  not a gate.
 
 ## Dependencies
 

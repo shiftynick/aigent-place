@@ -103,7 +103,11 @@ function run(command, args, root) {
 function main() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-  run(process.execPath, ["--test", "scripts/check.test.mjs"], root);
+  run(
+    process.execPath,
+    ["--test", "scripts/check.test.mjs", ".githooks/pre-push.test.mjs"],
+    root,
+  );
   run(process.execPath, [".agent-foundry/run-checks.mjs"], root);
 
   const markerHits = findCustomizationMarkers(root);
