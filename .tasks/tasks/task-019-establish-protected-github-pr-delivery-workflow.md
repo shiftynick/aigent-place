@@ -1,12 +1,12 @@
 ---
 id: task-019
 title: Establish protected GitHub PR delivery workflow
-status: review
+status: blocked
 priority: p0
 tags: [area:process, milestone:foundations, needs:operator]
 blockedBy: []
 createdAt: "2026-07-29T13:40:04Z"
-updatedAt: "2026-07-29T14:01:27Z"
+updatedAt: "2026-07-29T14:02:43Z"
 ---
 
 <!-- task-tracker:description -->
@@ -108,3 +108,5 @@ Create the private personal GitHub remote and establish an agent-manageable bran
   |
   | run-checks: PASS (skill-sync + 14 suites)
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
+- 2026-07-29T14:02:43Z — note: Remote proof: draft PR #1 https://github.com/shiftynick/aigent-place/pull/1. Replacement pull_request run 30458820759 completed success; process-gate passed in 48s on a clean Ubuntu checkout with pinned checkout/setup-node commits and Node 22.22.2. No duplicate branch-push run was created after narrowing triggers. All local/remote acceptance is complete except server-side protection and required-check enforcement.
+- 2026-07-29T14:02:43Z — moved to blocked

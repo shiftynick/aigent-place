@@ -72,11 +72,11 @@ generic industry concept.
 ## What's in progress / half-done
 
 No product implementation is half-done. `task-019` has created the private
-remote, renamed the default branch to `main`, and added the local workflow
-packet. GitHub Actions and the task PR still need to be proven remotely.
-Server-side branch protection cannot be enabled on this private repository
-under the current GitHub account tier; GitHub requires either Pro or public
-visibility. The repository must remain private until the operator chooses.
+remote, renamed the default branch to `main`, published draft PR #1, and
+proved `process-gate` on a clean Ubuntu checkout. Server-side branch protection
+cannot be enabled on this private repository under the current GitHub account
+tier; GitHub requires either Pro or public visibility. The repository must
+remain private until the operator chooses.
 
 ## Open questions for the human
 
@@ -88,18 +88,19 @@ otherwise block the first foundation contracts.
 
 ## Validation state
 
-The Foundry installer completed its bundled validation. The final
-`node scripts/check.mjs` result for the tailored packet is recorded in
-`task-001`; it includes the Foundry suites and the repository marker check. No
-product build or runtime validation exists yet.
+The current `node scripts/check.mjs` evidence is recorded in `task-019`: 16
+local tests and all 289 Foundry tests pass. GitHub Actions run `30458820759`
+passed `process-gate` in 48 seconds on a clean Ubuntu checkout with the pinned
+Node version. No product build or runtime validation exists yet.
 
 ## Worktree and operational state
 
 The bootstrap commit is published as the initial `main` of the private
 `git@github.com:shiftynick/aigent-place.git` remote. Governance work is on
-`task-019-github-governance`. The clone uses `.githooks` through
-`core.hooksPath`. There are no running services, credentials, or deployments.
-Task-001 tailored the README entry point and left `ARCHITECTURE.md` unchanged.
+`task-019-github-governance` with draft PR #1. The clone uses `.githooks`
+through `core.hooksPath`. There are no running services, credentials, or
+deployments. Task-001 tailored the README entry point and left
+`ARCHITECTURE.md` unchanged.
 
 ## Known blockers and risks
 
