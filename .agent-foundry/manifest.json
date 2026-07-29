@@ -1,0 +1,307 @@
+{
+  "schemaVersion": 1,
+  "foundryVersion": "0.6.0",
+  "installedAt": "2026-07-29T12:41:50.207Z",
+  "files": {
+    ".agent-foundry.json": {
+      "tier": "mold",
+      "sha256": "310635fe7cc2c06e1a1e11c17cc3879115d05b1492e689e87b4245e7ab5f9f1f"
+    },
+    ".agent-foundry/LOCAL-CHANGES.md": {
+      "tier": "seed",
+      "sha256": "7f269a4c0ed2ab7a5b4abc0fa775a43946600addf9cf2c48c4f0aa9fc798cc5e"
+    },
+    ".agent-foundry/README.md": {
+      "tier": "mold",
+      "sha256": "d453fcc1837e74dc703007eac1102904bc3d39ff7f7063fc48396afe35d5a2f6"
+    },
+    ".agent-foundry/check-foundry-drift.mjs": {
+      "tier": "mold",
+      "sha256": "7761bea642248734c65f81a0c5e67f5a78a12c8ded97c1c119a9e0ae78683684"
+    },
+    ".agent-foundry/check-foundry-drift.test.mjs": {
+      "tier": "mold",
+      "sha256": "4f31719da3f97e9849ded58f7facf0f82a43f2afea0946c5ce6eced1215cd89c"
+    },
+    ".agent-foundry/check-skill-sync.mjs": {
+      "tier": "mold",
+      "sha256": "3fe2a230fc18b77d6f06718825d3d4cfa3e4ed94edb571848e6cbcdaced8af9d"
+    },
+    ".agent-foundry/check-skill-sync.test.mjs": {
+      "tier": "mold",
+      "sha256": "9fed1497e11ef594e1f6ad71c53d3590626f0504acbd252ca7a3f4a288ceb678"
+    },
+    ".agent-foundry/run-checks.mjs": {
+      "tier": "mold",
+      "sha256": "68cf594ccd708393c3ac1e98c3c31dab075e894d52c4552e53e97942a534c28b"
+    },
+    ".agent-foundry/run-checks.test.mjs": {
+      "tier": "mold",
+      "sha256": "0b5b104be259c35db6f35cd262803d7a9305daba99dcb4cc4565347f16e05491"
+    },
+    ".agents/skills/README.md": {
+      "tier": "mold",
+      "sha256": "5a83a45057572ff591bd75afa0adb40b8c28b59eb8925244ce5f06a92b1beb53"
+    },
+    ".agents/skills/adr/SKILL.md": {
+      "tier": "mold",
+      "sha256": "38ad9630e444ed57536fc765d7b8e813ee8473961702eb5d0a9fe45655689647"
+    },
+    ".agents/skills/claude-in-codex/SKILL.md": {
+      "tier": "mold",
+      "sha256": "ed2a788da0fc9745cced12acce7432bc17b48edd6bac9998cb2150eb77cdb3b2"
+    },
+    ".agents/skills/claude-in-codex/scripts/claude-ask.mjs": {
+      "tier": "mold",
+      "sha256": "7c0eaa0fce447516cb0ac9367b432d04ef9f89029121ddcd25862502db21a417"
+    },
+    ".agents/skills/claude-in-codex/scripts/claude-ask.test.mjs": {
+      "tier": "mold",
+      "sha256": "4b596f832e2b8e199ce99b2a330a6da6dce365e5cf70c8d913f1901ebf64d579"
+    },
+    ".agents/skills/codebase-audit/SKILL.md": {
+      "tier": "mold",
+      "sha256": "103cd7fcf8f0b6dc078216fad9ff2858e0d2c0c185852ee77ce6f17d171d9670"
+    },
+    ".agents/skills/codebase-audit/scripts/churn-report.mjs": {
+      "tier": "mold",
+      "sha256": "71344bf219792e4d3492ae21b779998fdf3f914614f3833aa848df650a2de2fe"
+    },
+    ".agents/skills/codebase-audit/scripts/churn-report.test.mjs": {
+      "tier": "mold",
+      "sha256": "849bc798ffdf569b66c1581d7dfac73099944d995303cf9d6e46166bfc405203"
+    },
+    ".agents/skills/diagnosing-bugs/SKILL.md": {
+      "tier": "mold",
+      "sha256": "de27e251726130823d8c643ad373b07f021c151b5bc90b8d90246cfca690f75a"
+    },
+    ".agents/skills/diagnosing-bugs/scripts/hitl-loop.template.mjs": {
+      "tier": "mold",
+      "sha256": "74724c75e1ded6df9b935e7bc5bd06cdc17d4c95133dc7bc207687dbc1c9e574"
+    },
+    ".agents/skills/efficient-orchestration/SKILL.md": {
+      "tier": "mold",
+      "sha256": "a5fed331f523d3259fc311a2d51f8cebebf2052bce0dd03df52834dc9cd4a0e9"
+    },
+    ".agents/skills/execute-task/SKILL.md": {
+      "tier": "mold",
+      "sha256": "4da9025698d93b735a464ad9ab9306a6cb5fd0d7fec25b58091e92ca90f60506"
+    },
+    ".agents/skills/grill-me/SKILL.md": {
+      "tier": "mold",
+      "sha256": "67a94b5bb7110cb91a387daef6fe213c628d06a3b9df41bb4690fd7ccbaa3b16"
+    },
+    ".agents/skills/handoff-writer/SKILL.md": {
+      "tier": "mold",
+      "sha256": "8e89870f3b08eaffafbfdbf852d4358d916c0801d4f06c01411f9fee91986a56"
+    },
+    ".agents/skills/plan-milestone/SKILL.md": {
+      "tier": "mold",
+      "sha256": "81f0153482a769f7289c8f31a518961d3aede3b2c19564ac32050097b6367aba"
+    },
+    ".agents/skills/retrospective/SKILL.md": {
+      "tier": "mold",
+      "sha256": "5de5f62323f298e9dea9c5973957aecfbb9a1a91a592a3deb4703d9b195c61a8"
+    },
+    ".agents/skills/retrospective/scripts/process-signals.mjs": {
+      "tier": "mold",
+      "sha256": "194a24f5d9798b101d094f9dcf344eb5963c52a1550aa8380c0f14a7ece78048"
+    },
+    ".agents/skills/retrospective/scripts/process-signals.test.mjs": {
+      "tier": "mold",
+      "sha256": "3aa1c7ed910f8a14440dbd05d581020660160eb8f5cfd9e97ff20aa8e356d2ea"
+    },
+    ".agents/skills/task-tracker/README.md": {
+      "tier": "mold",
+      "sha256": "2f6dcc006138477238d3891b5985039739abcc88175c72e05b238a0ce026b269"
+    },
+    ".agents/skills/task-tracker/SKILL.md": {
+      "tier": "mold",
+      "sha256": "4a1dc8d07ee6dcb1c6ef2aeb01034dae2f91ca49f39ab862d8c190b237fae529"
+    },
+    ".agents/skills/task-tracker/scripts/_lib.mjs": {
+      "tier": "mold",
+      "sha256": "c849382cb428cdfed9944ebe5ece6016d35f26eac8d30567d04156ec9c227c47"
+    },
+    ".agents/skills/task-tracker/scripts/_lib.test.mjs": {
+      "tier": "mold",
+      "sha256": "c56883efb5623b773dd011aa9a676254acb6cb6345122547e4822c60e323d96e"
+    },
+    ".agents/skills/task-tracker/scripts/board-html.mjs": {
+      "tier": "mold",
+      "sha256": "3ba20db6b88995e8eabcf61c26275e3f07e9ce9a7dcdacd1d1ebf7a70415bfe5"
+    },
+    ".agents/skills/task-tracker/scripts/board-html.test.mjs": {
+      "tier": "mold",
+      "sha256": "ec10ae55d95edec52280304ac88c6eed3254de1bed0df357d6c837c64f44841e"
+    },
+    ".agents/skills/task-tracker/scripts/task.mjs": {
+      "tier": "mold",
+      "sha256": "100a16b67a7accacca28517acb63c8073173ab9c7310c9362a0b978d94d94b3a"
+    },
+    ".agents/skills/task-tracker/scripts/task.test.mjs": {
+      "tier": "mold",
+      "sha256": "f69a01ece58fb0a90bcba8f7b4cd31bb3931d1bd57c392e7633cd87560e3ea3b"
+    },
+    ".agents/skills/the-fool/SKILL.md": {
+      "tier": "mold",
+      "sha256": "5b009030981813e94fcf18822b261bc41520adf0c7417646588b885797bc6dcb"
+    },
+    ".claude/skills/README.md": {
+      "tier": "mold",
+      "sha256": "74898a63cc2dbfa74466da8f6f895231e5e6e959b0224917a093f486293b47c0"
+    },
+    ".claude/skills/adr/SKILL.md": {
+      "tier": "mold",
+      "sha256": "38ad9630e444ed57536fc765d7b8e813ee8473961702eb5d0a9fe45655689647"
+    },
+    ".claude/skills/codebase-audit/SKILL.md": {
+      "tier": "mold",
+      "sha256": "95cb993389a7951b9d693c7382de11408f6284ab1d5069f8053b50b0f49da7b3"
+    },
+    ".claude/skills/codebase-audit/scripts/churn-report.mjs": {
+      "tier": "mold",
+      "sha256": "142015096433b09263a31f1e35ed2f1f51ef1c70c1d2ee440ad63a4f569d2777"
+    },
+    ".claude/skills/codebase-audit/scripts/churn-report.test.mjs": {
+      "tier": "mold",
+      "sha256": "849bc798ffdf569b66c1581d7dfac73099944d995303cf9d6e46166bfc405203"
+    },
+    ".claude/skills/codex-in-claude/SKILL.md": {
+      "tier": "mold",
+      "sha256": "4dea84254d95195ccf3560ac8fa8486c77381306478049dd119a5ead434bb072"
+    },
+    ".claude/skills/diagnosing-bugs/SKILL.md": {
+      "tier": "mold",
+      "sha256": "e4567dcdbd1278ac0739804d3223500ce85ec440e44842653bbd9daef4cdbd24"
+    },
+    ".claude/skills/diagnosing-bugs/scripts/hitl-loop.template.mjs": {
+      "tier": "mold",
+      "sha256": "74724c75e1ded6df9b935e7bc5bd06cdc17d4c95133dc7bc207687dbc1c9e574"
+    },
+    ".claude/skills/efficient-orchestration/SKILL.md": {
+      "tier": "mold",
+      "sha256": "a5fed331f523d3259fc311a2d51f8cebebf2052bce0dd03df52834dc9cd4a0e9"
+    },
+    ".claude/skills/execute-task/SKILL.md": {
+      "tier": "mold",
+      "sha256": "bafcffa78a22747278a906af78e640f8b45395299b22d1e9efa1b8a9e1eb30f2"
+    },
+    ".claude/skills/grill-me/SKILL.md": {
+      "tier": "mold",
+      "sha256": "67a94b5bb7110cb91a387daef6fe213c628d06a3b9df41bb4690fd7ccbaa3b16"
+    },
+    ".claude/skills/handoff-writer/SKILL.md": {
+      "tier": "mold",
+      "sha256": "7aad04db1dfffa7499fe0dfe5f1315cd005815548f4c2806ed9289e839c04ea2"
+    },
+    ".claude/skills/plan-milestone/SKILL.md": {
+      "tier": "mold",
+      "sha256": "20da5e53ae286c9936ccc9172b0dc05ace16b2380e8db1d8d3a1bb2a1b96a921"
+    },
+    ".claude/skills/retrospective/SKILL.md": {
+      "tier": "mold",
+      "sha256": "12311dfceeb440436bd3369104d3f5b4dd946b2deeaea032cf4cee286b45f6f8"
+    },
+    ".claude/skills/retrospective/scripts/process-signals.mjs": {
+      "tier": "mold",
+      "sha256": "ab80614a3f9dbff6574bf7625c82975943472c3ffb293d95106da9dc35f97086"
+    },
+    ".claude/skills/retrospective/scripts/process-signals.test.mjs": {
+      "tier": "mold",
+      "sha256": "3aa1c7ed910f8a14440dbd05d581020660160eb8f5cfd9e97ff20aa8e356d2ea"
+    },
+    ".claude/skills/task-tracker/README.md": {
+      "tier": "mold",
+      "sha256": "e5777759edacb1ef6661b8be3b7858a52d679824f0862b6350742cf9bec70893"
+    },
+    ".claude/skills/task-tracker/SKILL.md": {
+      "tier": "mold",
+      "sha256": "9df72538700c5e7c46bcba167ff3fbb0357a4eb6ad3483b4f71cb846516a4dae"
+    },
+    ".claude/skills/task-tracker/scripts/_lib.mjs": {
+      "tier": "mold",
+      "sha256": "c849382cb428cdfed9944ebe5ece6016d35f26eac8d30567d04156ec9c227c47"
+    },
+    ".claude/skills/task-tracker/scripts/_lib.test.mjs": {
+      "tier": "mold",
+      "sha256": "c56883efb5623b773dd011aa9a676254acb6cb6345122547e4822c60e323d96e"
+    },
+    ".claude/skills/task-tracker/scripts/board-html.mjs": {
+      "tier": "mold",
+      "sha256": "db249bdd35f53b1be7f18c67174ac5819fc08d2fe2a60d93fb9fd435d972e7c1"
+    },
+    ".claude/skills/task-tracker/scripts/board-html.test.mjs": {
+      "tier": "mold",
+      "sha256": "ec10ae55d95edec52280304ac88c6eed3254de1bed0df357d6c837c64f44841e"
+    },
+    ".claude/skills/task-tracker/scripts/task.mjs": {
+      "tier": "mold",
+      "sha256": "100a16b67a7accacca28517acb63c8073173ab9c7310c9362a0b978d94d94b3a"
+    },
+    ".claude/skills/task-tracker/scripts/task.test.mjs": {
+      "tier": "mold",
+      "sha256": "f69a01ece58fb0a90bcba8f7b4cd31bb3931d1bd57c392e7633cd87560e3ea3b"
+    },
+    ".claude/skills/the-fool/SKILL.md": {
+      "tier": "mold",
+      "sha256": "5b009030981813e94fcf18822b261bc41520adf0c7417646588b885797bc6dcb"
+    },
+    ".tasks/archive/.gitkeep": {
+      "tier": "mold",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    ".tasks/tasks/.gitkeep": {
+      "tier": "mold",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    "AGENTS.md": {
+      "tier": "seed",
+      "sha256": "f8eb3a9dc4f6414dc75b369ea43dd7c3fd490fee4487943e2317e6a554b868bf"
+    },
+    "BLOCKED-JOURNAL.md": {
+      "tier": "seed",
+      "sha256": "4d9682f3ae76b4794a9ed0dec32e54c5dfa3696833ccef6dc139d7ca4fe937e2"
+    },
+    "CLAUDE.md": {
+      "tier": "seed",
+      "sha256": "ab8932eb639d44e8908a1a34426e3e34d2fed89723fa463b9700a639898bc448"
+    },
+    "CONTRIBUTING.md": {
+      "tier": "seed",
+      "sha256": "573ed0089fe550f9512f987c07762e8a96ac7dc8386b4f6272a09d679c90b9df"
+    },
+    "HANDOFF.md": {
+      "tier": "seed",
+      "sha256": "39cbaec319279047cb60933e18ef8517fb72503d4e35661e0bdda10ea72aaa89"
+    },
+    "PLANNING-JOURNAL.md": {
+      "tier": "seed",
+      "sha256": "e52c1fd51f15c255ac48044609f5d32705fbde573ac3a91a3dbc4294e4a2450f"
+    },
+    "docs/ENGINEERING-STANDARDS.md": {
+      "tier": "seed",
+      "sha256": "08af715789a7cb9a8547df1d439dc260b1c489e59f4cd4780a1a121df569dafd"
+    },
+    "docs/REVIEW-STANDARDS.md": {
+      "tier": "seed",
+      "sha256": "5a97e95505cab0d6fad71cf160d69753f3164e0acb033f6adc6704f0dc428edf"
+    },
+    "docs/SDLC.md": {
+      "tier": "mold",
+      "sha256": "7b3f0f82ffe25c137047ac8b1f4e480dd1c0389c2ca77967dc11370e124a23a5"
+    },
+    "docs/adr/README.md": {
+      "tier": "seed",
+      "sha256": "ac2767a2dbd646a421b2fda9a4d2358af13278732ccba4b7fd4df75e3703fb95"
+    },
+    "docs/adr/template.md": {
+      "tier": "mold",
+      "sha256": "dffc54048e3650790665726a73166f18e77be70f129cb0422d73554a85c3b82a"
+    },
+    "docs/out-of-scope/README.md": {
+      "tier": "seed",
+      "sha256": "5a9d01988d4f90d23b1c7a921be6a442bd439aebab5a61cb5de7eeda6ada6d65"
+    }
+  }
+}

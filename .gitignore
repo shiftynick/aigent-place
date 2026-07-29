@@ -1,0 +1,12 @@
+# Agent Foundry generated/transient state
+.agent-foundry-backups/
+.tasks/board.html
+.tasks/.write-lock
+.tasks/tasks/.*.tmp
+.tasks/tasks/.*.bak
+.tasks/archive/.*.tmp
+.tasks/archive/.*.bak
+
+# Toolchain output
+node_modules/
+target/
