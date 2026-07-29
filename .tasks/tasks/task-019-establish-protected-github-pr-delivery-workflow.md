@@ -1,12 +1,12 @@
 ---
 id: task-019
 title: Establish protected GitHub PR delivery workflow
-status: review
+status: done
 priority: p0
 tags: [area:process, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-29T13:40:04Z"
-updatedAt: "2026-07-29T14:12:46Z"
+updatedAt: "2026-07-29T14:14:00Z"
 ---
 
 <!-- task-tracker:description -->
@@ -151,3 +151,9 @@ Create the personal GitHub remote and establish an agent-manageable branch-per-t
   output:
   | {"id":19976689,"name":"main protection","target":"branch","source_type":"Repository","source":"shiftynick/aigent-place","enforcement":"active","conditions":{"ref_name":{"exclude":[],"include":["refs/heads/main"]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"required_linear_history"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":true,"required_reviewers":[],"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":true,"allowed_merge_methods":["squash"]}},{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":true,"do_not_enforce_on_create":false,"required_status_checks":[{"context":"process-gate"}]}}],"node_id":"RRS_lACqUmVwb3NpdG9yec5Oc0cmzgEw0fE","created_at":"2026-07-29T10:10:27.660-04:00","updated_at":"2026-07-29T10:10:27.705-04:00","bypass_actors":[],"current_user_can_bypass":"never","_links":{"self":{"href":"https://api.github.com/repos/shiftynick/aigent-place/rulesets/19976689"},"html":{"href":"https://github.com/shiftynick/aigent-place/rules/19976689"}}}
 - 2026-07-29T14:12:46Z — note: Post-blocker closeout changed only operator-approved visibility state, the live ruleset, task state, and matching process documentation after the three-round cold-review cap. Self-review re-read AGENTS.md, README.md, CONTRIBUTING.md, HANDOFF.md, and both journals end to end; stale-claim search found no private/pending/protection contradiction in authoritative docs, and git diff --check passed. No additional cold-review round is permitted by the task lifecycle cap.
+- 2026-07-29T14:13:49Z — run: gh api repos/shiftynick/aigent-place/rules/branches/main
+  started 2026-07-29T14:13:48Z, exit 0 in 0.3s
+  output:
+  | [{"type":"deletion","ruleset_source_type":"Repository","ruleset_source":"shiftynick/aigent-place","ruleset_id":19976689},{"type":"non_fast_forward","ruleset_source_type":"Repository","ruleset_source":"shiftynick/aigent-place","ruleset_id":19976689},{"type":"required_linear_history","ruleset_source_type":"Repository","ruleset_source":"shiftynick/aigent-place","ruleset_id":19976689},{"type":"pull_request","parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":true,"required_reviewers":[],"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":true,"allowed_merge_methods":["squash"]},"ruleset_source_type":"Repository","ruleset_source":"shiftynick/aigent-place","ruleset_id":19976689},{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":true,"do_not_enforce_on_create":false,"required_status_checks":[{"context":"process-gate"}]},"ruleset_source_type":"Repository","ruleset_source":"shiftynick/aigent-place","ruleset_id":19976689}]
+- 2026-07-29T14:14:00Z — note: Final protected-head proof: PR run 30459765418 passed process-gate in 30s on commit 8f836c1 after public-state documentation. GET /rules/branches/main resolved all five active rules from ruleset 19976689, including strict required process-gate. Rubric satisfied: identity/remote, server enforcement, hook tests, CI, PR/SDLC authority, and live green PR evidence are all recorded.
+- 2026-07-29T14:14:00Z — moved to done

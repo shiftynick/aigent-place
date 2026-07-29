@@ -82,9 +82,10 @@ contracts.
 ## Validation state
 
 The current `node scripts/check.mjs` evidence is recorded in `task-019`: 16
-local tests and all 289 Foundry tests pass. GitHub Actions run `30458820759`
-passed `process-gate` in 48 seconds on a clean Ubuntu checkout with the pinned
-Node version. No product build or runtime validation exists yet.
+local tests and all 289 Foundry tests pass. GitHub Actions run `30459765418`
+passed `process-gate` in 30 seconds on a clean Ubuntu checkout with the pinned
+Node version and active `main` ruleset. No product build or runtime validation
+exists yet.
 
 ## Worktree and operational state
 
