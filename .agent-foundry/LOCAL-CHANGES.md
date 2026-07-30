@@ -27,6 +27,21 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Upstream:** yes (generic — propose to Agent Foundry) | no (project-specific).
 ```
 
-<!-- Add entries below. Delete this line once the first one exists. -->
+## docs/SDLC.md
 
-_No local changes recorded yet._
+- **Changed:** adds a `### Protected default branch` subsection under "Commit
+  authority", stating that a branch-per-task PR flow authorized in `AGENTS.md`
+  leaves the default branch changeable only through a pull request, that
+  `AGENTS.md` owns branch naming and push/merge authority, and that
+  server-side rules — not the client-side hook — are the enforcement boundary.
+- **Why:** task-019 made `main` a protected branch with a required-checks
+  ruleset and a local `.githooks` push guard. Without this, stock commit
+  authority reads as permission to commit straight to `main`, and the
+  client-side hook gets mistaken for the real protection.
+- **On upgrade:** re-apply on top of the new "Commit authority" section unless
+  upstream Foundry grows an equivalent protected-branch rule; drop then.
+- **Upstream:** yes (generic — protected default branches are common; proposed
+  for Agent Foundry).
+
+_Recorded during the 0.6.0 → 0.9.0 upgrade (task-024); the change itself
+predates the entry and was re-applied by hand._

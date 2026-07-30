@@ -151,11 +151,12 @@ Never report a planned or unavailable command as passing.
 | `handoff-writer` | Restart-from-cold `HANDOFF.md`. |
 | `the-fool` | Pre-implementation adversarial review. |
 | `grill-me` | One-question-at-a-time decision clarification. |
+| `cursor-cli` | Operator-selected Cursor model for read-only review or isolated work. |
 | `claude-in-codex` | Codex-only Foundry bridge for cold Claude review. |
 | `codex-in-claude` | Claude-only Foundry bridge for cold Codex review. |
 | `codex-in-cc` | Legacy local Claude bridge retained from before Foundry; prefer `codex-in-claude` for the shared task lifecycle. |
 
-The eleven shared workflows are mirrored between `.agents/skills/` and
+The twelve shared workflows are mirrored between `.agents/skills/` and
 `.claude/skills/`; the two Foundry bridges are harness-specific, and the
 unmanaged `codex-in-cc` bridge is a preserved local extension. Preserve shared
 workflow behavior while retaining harness-specific paths and counterpart
