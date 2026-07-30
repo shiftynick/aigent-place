@@ -1,7 +1,8 @@
 # HANDOFF — Aigent Place, 2026-07-30
 
-Cold-start checkpoint after completing the first three executable foundation
-contracts and pausing before task-012.
+Cold-start checkpoint after a workflow-maintenance session. Foundation
+contracts are unchanged; the repository's operational state was cleaned up and
+the installed workflow kit was upgraded.
 
 ---
 
@@ -9,44 +10,30 @@ contracts and pausing before task-012.
 
 Aigent Place is still in foundation-contract work; there is no Rust/browser
 product workspace or runtime yet. Protocol v1, deterministic world geometry,
-and replay/persistence contracts are now merged into public `main` through PRs
-#2, #6, and #8, with their architecture decisions accepted. No task is active
-or blocked on the current board. Resume with `task-012`, which specifies the
-ruleset schema and constitution boundary; do not resume from the stale dirty
-root checkout without first isolating or preserving its user-owned task-023
-card edit.
+and replay/persistence contracts are merged into public `main` with their ADRs
+accepted. This session shipped no product code: it upgraded Agent Foundry
+0.6.0 → 0.9.0, deleted 17 stale worktrees and 11 merged branches, and archived
+the completed cards. Resume with `task-012` (ruleset schema and constitution
+boundary) from the single remaining checkout at `N:\aigent-place`.
 
 ---
 
 ## To pick up next
 
-The clean current `main` checkout is presently
-`N:\aigent-place-task022-delivery`, despite its historical name:
+There is now exactly one checkout, it is clean, and it is on `main`:
 
 ```powershell
-Set-Location N:\aigent-place-task022-delivery
+Set-Location N:\aigent-place
 git status -sb
 git pull --ff-only
-node .agents/skills/task-tracker/scripts/task.mjs next
-node .agents/skills/task-tracker/scripts/task.mjs show task-012
+node .claude/skills/task-tracker/scripts/task.mjs next
+node .claude/skills/task-tracker/scripts/task.mjs show task-012
 ```
 
-`task.mjs next` returned `task-012` at this checkpoint. Use the
-`execute-task` lifecycle: log a checkable rubric before claiming, then work on
-a new `task-012-*` branch created from current `origin/main`. Do not commit
-directly to `main`.
-
-If the historical worktrees are cleaned up first, resolve and preserve the
-dirty root checkout before removing anything:
-
-```powershell
-git -C N:\aigent-place status --short
-git -C N:\aigent-place diff -- .tasks/tasks/task-023-accept-heightfield-sampling-and-terrain-collision-.md
-git -C N:\aigent-place worktree list
-```
-
-The root checkout's task-023 modification is user-owned and must not be
-discarded merely because task-023 is already merged on `main`.
+`task.mjs next` returned `task-012` at this checkpoint. Use the `execute-task`
+lifecycle: log a checkable rubric before claiming, then work on a new
+`task-012-*` branch cut from current `origin/main`. `main` is protected — never
+commit to it directly; deliver through a PR that passes `process-gate`.
 
 ## What's where
 
@@ -63,6 +50,8 @@ discarded merely because task-023 is already merged on `main`.
 | Replay semantic oracle and focused tests | `scripts/replay-contract.mjs`, `scripts/replay-contract.test.mjs` |
 | Unified current process/contract gate | `scripts/check.mjs` |
 | Review lenses learned from completed work | `docs/REVIEW-STANDARDS.md` |
+| Installed workflow kit metadata and checks | `.agent-foundry/` |
+| Deliberate divergence from stock Foundry | `.agent-foundry/LOCAL-CHANGES.md` |
 | Planning and historical blockers | `PLANNING-JOURNAL.md`, `BLOCKED-JOURNAL.md` |
 
 ## Mental model (don't lose this)
@@ -88,108 +77,113 @@ discarded merely because task-023 is already merged on `main`.
 - Convex was evaluated and rejected for this design. Keep the authoritative
   fixed-tick Rust server and explicit replay/persistence model unless a later
   accepted ADR changes it.
+- The installed workflow under `.agents/` and `.claude/` is a *vendored* kit
+  (Agent Foundry), not project code. It has an upstream at `N:\agent-foundry`
+  and its own upgrade procedure. Files are tiered `seed` (this project owns
+  them) or `mold` (upstream owns them; divergence must be recorded).
 
 ## What was finished this session
 
-- Accepted and merged the remaining architecture decisions needed by the first
-  executable contract front:
-  - ADR-0002 through PR #3 (`1adec35`)
-  - ADR-0003 through PR #4 (`06f2d0a`)
-  - ADR-0004 through PR #5 (`c50f017`)
-  - ADR-0005 through PR #7 (`7b1ffdf`)
-- Completed deterministic world geometry, shapes, terrain collision, movement,
-  restore, sleep, revisions, and conformance behavior in task-010; squash
-  merged PR #6 as `0512cb7`.
-- Completed task-011's normative replay/persistence contract, executable
-  fixtures, semantic oracle, protocol persistence carriers, recovery rules,
-  retention behavior, queue saturation behavior, and gate integration.
-- Remediated all material cold-review findings, including same-generation
-  tentative idempotency/session overlays, lossless durable bytes, uint64
-  exhaustion, RNG audit ownership, atomic tail validation, retention-state
-  reconstruction, payload-mode consistency, and writer-state error
-  precedence.
-- Final independent tool-disabled Claude reviews returned SPEC PASS and
-  STANDARDS PASS on the complete task-011 packet.
-- Task-011 PR #8 passed the protected remote `process-gate` and squash-merged
-  as `3fbeb0b7da755d4acb898e7c3dd7033921df02ea`. The remote task branch was
-  deleted.
-- Fast-forwarded the clean `main` worktree at
-  `N:\aigent-place-task022-delivery` to `3fbeb0b`.
+No product contract changed. All four PRs were process/workflow work.
+
+- **Upgraded Agent Foundry 0.6.0 → 0.9.0** (PR #9, `9171ebe`), applying the
+  upgrade actions of every intervening release:
+  - 0.7.0 agent-boundary convention in `docs/SDLC.md`
+  - 0.8.0 slimmed `execute-task` / `task-tracker` entrypoints with detail moved
+    into routed `references/` files
+  - 0.9.0 shared `cursor-cli` skill in both harness trees, plus its wrapper
+    test suites
+  Seed files were restored from Git and re-merged; the sole `mold` divergence
+  (the task-019 "Protected default branch" section in `docs/SDLC.md`) was
+  re-applied and is now recorded in `.agent-foundry/LOCAL-CHANGES.md`.
+- **Cleaned up the worktree sprawl.** Removed 17 stale worktrees and deleted 11
+  merged/superseded local branches. Verified before deleting that every branch
+  was either merged into `origin/main` or a strict subset of it — `main`'s
+  `world/` tree is byte-identical to the merged task-010 branch.
+- **Closed out and archived the board** (PR #10, `f21a139`): 11 completed cards
+  moved to `.tasks/archive/`.
+- **Documented `CURSOR_AGENT_BIN`** in `AGENTS.md` (PR #11, `b0f18d9`) after
+  the `cursor-cli` smoke test found Cursor's shim is not on a non-interactive
+  shell's `PATH`.
+- **Smoke-tested `cursor-cli`** read-only against `docs/SDLC.md` with
+  `cursor-grok-4.5-low-fast`; output was verified line by line against the
+  source file.
+- Refreshed this handoff and removed a stale `N:/cadre` path from
+  `.claude/skills/codex-in-cc/SKILL.md` (task-028).
 
 ## What's in progress / half-done
 
-No board task is currently `in_progress`, `review`, or `blocked` on current
-`main`.
+No board task is `in_progress`, `review`, or `blocked` beyond task-028, which
+is this handoff refresh.
 
-Operational cleanup is intentionally unfinished:
-
-- `N:\aigent-place` is on old branch `task-010-physics-contract` at `351126b`
-  and has an uncommitted modification to
-  `.tasks/tasks/task-023-accept-heightfield-sampling-and-terrain-collision-.md`.
-  That edit is user-owned.
-- `N:\aigent-place-task011-final` is clean at local commit `edbd79b`; its
-  remote branch is gone because PR #8 was squash-merged.
-- Multiple old delivery and detached review worktrees remain. Do not delete
-  them in bulk without first resolving absolute paths and checking every
-  worktree for changes.
 - The repository still has no product workspace, build, runtime service,
-  credentials, deployment, or running server.
+  credentials, deployment, or running server. That is expected at this phase.
+- 15 backlog tasks remain, all foundation or world-core work.
 
 ## Open questions for the human
 
-No operator decision currently blocks the next board task. Deferred product
-questions remain on task-017 and do not block task-012.
+No operator decision blocks the next board task. `task-017` carries
+`needs:operator` for deferred product questions and does **not** block
+`task-012`. Check the operator queue with:
+
+```powershell
+node .claude/skills/task-tracker/scripts/task.mjs list --tag needs:operator
+```
 
 ## Validation state
 
-Task-011's final reviewed state recorded:
+Verified on `main` at `b0f18d9` this session:
 
 ```text
-node --test scripts/replay-contract.test.mjs
-PASS — 21/21
-
 node scripts/check.mjs
-PASS — 68/68 repository tests
-PASS — 289/289 installed Foundry workflow tests
-PASS — skill sync and unresolved-marker scan
+PASS — repository contract tests
+PASS — run-checks: skill-sync + 16 installed Foundry suites
+PASS — process-docs: no unresolved markers
 
-git diff --check
-PASS
+node .agent-foundry/run-checks.mjs
+PASS (skill-sync + 16 suites)
 ```
 
-GitHub Actions run `30565142977` completed `process-gate` successfully before
-PR #8 merged. Current `main` is `3fbeb0b` and is clean in
-`N:\aigent-place-task022-delivery`.
+The Foundry suite count rose 14 → 16 with the two `cursor-agent` wrapper
+suites. Two of their tests are POSIX-only and **skip** on Windows; that is
+expected, not a failure.
+
+`process-gate` passed on GitHub Actions for PRs #9, #10, and #11 before each
+merge.
 
 ## Worktree and operational state
 
 - Public remote: `git@github.com:shiftynick/aigent-place.git`
-- Protected branch: `main`
-- Current remote/main commit: `3fbeb0b`
-- Current clean main worktree: `N:\aigent-place-task022-delivery`
-- Root checkout: stale task branch with a dirty user-owned task card
-- Open GitHub PRs: none at this checkpoint
+- Protected branch: `main`, ruleset `19976689`, strict `process-gate` required,
+  squash merges only, no bypass actors
+- Current `main` commit: `b0f18d9`
+- **Checkouts: exactly one, `N:\aigent-place`, clean, on `main`**
+- Open GitHub PRs: none
 - Services/deployments: none
-- Git hooks: repository clones should use `core.hooksPath=.githooks`
-
-The GitHub connector available to Codex was authenticated as a non-collaborator
-and could not create PR #8. The authenticated `gh` CLI account `shiftynick`
-worked and is the verified fallback for this repository.
+- Git hooks: clones should set `core.hooksPath=.githooks`
+- Installed workflow kit: Agent Foundry 0.9.0, upstream at `N:\agent-foundry`
+- The 0.6.0→0.9.0 upgrade backup under `.agent-foundry-backups/` was deleted
+  after operator acceptance
 
 ## Known blockers and risks
 
-There is no product-design blocker. The immediate operational risk is acting
-on stale task-board state from an old worktree. Always confirm current
-`origin/main` and use the clean main worktree before selecting or claiming the
-next task.
+No product-design blocker.
 
 The main project risk remains writing runtime code before the remaining Step 0
-contracts and product quality gate are established. Task-012 and task-013 are
-still foundation contracts; task-003 scaffolds the product workspace.
+contracts and the product quality gate exist. `task-012` and `task-013` are
+still foundation contracts; `task-003` scaffolds the product workspace.
+
+The prior operational risk — acting on stale board state from an old worktree —
+is now resolved by there being only one checkout. If you create worktrees for
+parallel agents again, note that `.tasks/` is versioned, so board state is
+per-worktree and a claim is invisible elsewhere until merged.
 
 ## Recent commit history
 
 ```text
+b0f18d9 task-027: document CURSOR_AGENT_BIN for the cursor-cli skill (#11)
+f21a139 task-026: close out Foundry upgrade card (#10)
+9171ebe task-026: upgrade Agent Foundry 0.6.0 -> 0.9.0 (#9)
 3fbeb0b task-011: specify replay and persistence ordering contracts (#8)
 7b1ffdf task-025: accept durable replay and backpressure ADR (#7)
 0512cb7 task-010: specify deterministic world geometry contracts (#6)
@@ -204,15 +198,16 @@ c50f017 task-024: accept terminal revision safety (#5)
 ## Frequently-needed commands
 
 ```powershell
-# Work from current main, not the stale root checkout.
-Set-Location N:\aigent-place-task022-delivery
+# Orientation. One checkout, already on main.
+Set-Location N:\aigent-place
 git status -sb
 git pull --ff-only
 
-# Board orientation.
-node .agents/skills/task-tracker/scripts/task.mjs board
-node .agents/skills/task-tracker/scripts/task.mjs next
-node .agents/skills/task-tracker/scripts/task.mjs show task-012
+# Board.
+node .claude/skills/task-tracker/scripts/task.mjs board
+node .claude/skills/task-tracker/scripts/task.mjs next
+node .claude/skills/task-tracker/scripts/task.mjs show task-012
+node .claude/skills/task-tracker/scripts/task.mjs list --tag needs:operator
 
 # Authoritative repository gate.
 node scripts/check.mjs
@@ -222,40 +217,66 @@ node --test scripts/protocol-contract.test.mjs
 node --test scripts/world-contract.test.mjs
 node --test scripts/replay-contract.test.mjs
 
-# Verify shared Foundry skills remain mirrored.
+# Installed workflow kit: gate, sync, and divergence report.
+node .agent-foundry/run-checks.mjs
 node .agent-foundry/check-skill-sync.mjs
+node .agent-foundry/check-foundry-drift.mjs
+
+# Operator-selected Cursor call (read-only). Model must be named; auto is rejected.
+$env:CURSOR_AGENT_BIN = "$env:LOCALAPPDATA\cursor-agent\agent.cmd"
+node .claude/skills/cursor-cli/scripts/cursor-agent.mjs --list-models
 
 # Inspect remote PR/check state.
 gh pr list
-gh pr checks <number> --watch --interval 5
+gh pr checks <number> --watch --interval 10
 ```
 
 ## Common pitfalls
 
-- `N:\aigent-place` is not current `main`. Its board says task-010/task-011 are
-  unfinished because it predates their squash merges. Do not treat that stale
-  board as current.
-- A clean worktree with a historical name can still be the canonical `main`
-  checkout; check `git branch --show-current` and `git status -sb`, not the
-  directory name.
-- Never discard or fold the root task-023 card edit into unrelated work. It is
-  user-owned even though task-023 is already merged.
 - Cold reviewers must receive `git diff --binary HEAD` plus the complete
-  contents of every untracked file. A bare diff or staged-index assumption
-  hides important new contract/oracle files.
+  contents of every untracked file (`git ls-files --others --exclude-standard`).
+  A bare `git diff` is working-tree-versus-index and hides exactly the staged
+  contract/oracle files the review exists to check.
+- **Task IDs collide across branches.** The board mints the next free ID from
+  the *current branch's* `.tasks/`, so a card filed on a stale branch can
+  duplicate one `main` already used. This session hit it: the Foundry upgrade
+  was filed as task-024 while `main` had minted task-024 for an ADR, and
+  `task.mjs board` then failed with `ERROR: duplicate task id`. Cut task
+  branches from current `origin/main`.
+- **Check what a branch is based on before opening its PR.** The upgrade branch
+  was cut from a stale task-010 line and carried 4 superseded commits; a PR from
+  it would have reverted contracts `main` had already delivered. Verify with
+  `git log --oneline origin/main..HEAD` and rebuild by cherry-picking onto
+  current `main` if the base is wrong.
+- Do not put machine-specific absolute paths in shared docs or skills. Use
+  `$LOCALAPPDATA` / `$HOME`, or resolve with
+  `git rev-parse --show-toplevel`. This bit both `AGENTS.md` (nearly) and
+  `codex-in-cc/SKILL.md` (actually).
+- Cursor's `agent` shim is not on a non-interactive shell's `PATH`; the
+  `cursor-cli` wrapper fails with "agent was not found" until
+  `CURSOR_AGENT_BIN` names it. See `AGENTS.md` → "Cursor Agent binary".
+- Cursor is operator-selected only, and `auto` is rejected because Cursor routes
+  across model families. A Claude model through Cursor is only cold-review
+  rung 2 against a Claude implementer; pick a different family for rung 1.
+- `task.mjs archive` takes no task ID — it is `archive [--dry-run]` and sweeps
+  every `done` card. `task.mjs archive task-NNN` fails with
+  `ERROR: unknown flag`.
+- `gh pr merge --squash --delete-branch` can merge remotely and *then* exit
+  nonzero when it tries to switch to a `main` that is checked out elsewhere.
+  Query `gh pr view` after such an error before retrying; the remote operation
+  may already have succeeded.
+- The GitHub connector and local `gh` CLI can represent different accounts. The
+  connector failed PR creation with "must be a collaborator"; `gh auth status`
+  confirmed `shiftynick` and the CLI succeeded. The CLI is the verified path.
 - On Windows, launching the Claude wrapper through `Start-Process` can split a
-  multiword prompt into invalid arguments. Direct PowerShell invocation with
+  multiword prompt into invalid arguments. Direct invocation with
   `& node ... --prompt $prompt` is the verified path.
-- `gh pr merge --squash --delete-branch` merged PR #8 remotely, then exited
-  nonzero because it tried to switch to `main`, which was already checked out
-  in another worktree. Always query `gh pr view` after such an error before
-  retrying; the remote operation may already have succeeded.
-- The GitHub connector and local `gh` CLI can represent different accounts.
-  Connector PR creation failed with “must be a collaborator”; `gh auth status`
-  confirmed `shiftynick` and the CLI succeeded.
 - Do not simplify replay/persistence precedence casually. Availability,
   structural validity, sequence replay, writer state, oversize classification,
   idempotency, and domain rejection are intentionally ordered, and cold
   recovery must reproduce the same outcome.
+- Editing a `mold` file without recording it in `.agent-foundry/LOCAL-CHANGES.md`
+  means the next Foundry upgrade silently reverts it. The task-019 SDLC section
+  survived this upgrade only because the drift report caught it.
 - Never report a planned or unavailable command as passing. Record executable
   evidence through the task tracker.

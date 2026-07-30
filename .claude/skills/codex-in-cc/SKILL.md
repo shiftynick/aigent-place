@@ -57,17 +57,24 @@ Flags that matter (from `codex exec --help`):
 | `--add-dir <DIR>` | Extra writable dir alongside the workspace |
 | `--ephemeral` | Don't persist a session file (no resume afterward) |
 
-Canonical read-only review call (matches what works on this box):
+`-C` takes the repository root. Resolve it rather than hardcoding a path, so
+the call works from any checkout or worktree:
 
 ```bash
-codex exec --skip-git-repo-check -C "N:/cadre" -s read-only \
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+```
+
+Canonical read-only review call:
+
+```bash
+codex exec --skip-git-repo-check -C "$REPO_ROOT" -s read-only \
   -o "$SCRATCH/codex-review.md" "$(cat prompt.txt)"
 ```
 
 Canonical write-capable implementation call:
 
 ```bash
-codex exec --skip-git-repo-check -C "N:/cadre" -s workspace-write \
+codex exec --skip-git-repo-check -C "$REPO_ROOT" -s workspace-write \
   -o "$SCRATCH/codex-result.md" "$(cat prompt.txt)"
 ```
 
