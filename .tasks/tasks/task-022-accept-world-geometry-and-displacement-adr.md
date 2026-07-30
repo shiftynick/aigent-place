@@ -1,12 +1,12 @@
 ---
 id: task-022
 title: Accept world geometry and displacement ADR
-status: review
+status: done
 priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-29T22:49:11Z"
-updatedAt: "2026-07-29T23:44:57Z"
+updatedAt: "2026-07-29T23:47:13Z"
 ---
 
 <!-- task-tracker:description -->
@@ -64,3 +64,5 @@ Review ADR-0002 and explicitly accept it, reject it, or request specific changes
   | run-checks: PASS (skill-sync + 14 suites)
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
 - 2026-07-29T23:44:57Z — note: round 1 cold review: rung 1 Claude counterpart CLI, separate SPEC and STANDARDS calls. Both found that task-010 still carried needs:operator/blocked state while the journal said resolved, and STANDARDS found missing recorded gate evidence. Fixed by removing the operator tag, recording acceptance on task-010, returning it to backlog pending task-022 completion, clarifying the journal, naming acceptance files in task-022, and recording diff-check plus full gate. A round-2 counterpart attempt failed before review with the Claude weekly-limit message; descending to rung 2 fresh subagents for the required re-review.
+- 2026-07-29T23:47:13Z — note: final cold review: round 2 used rung 2 fresh subagents after the counterpart weekly limit, with separate SPEC and STANDARDS calls against commit ffc78e6. SPEC passed with no defects. STANDARDS confirmed all round-1 gaps resolved and reported only the historical low-severity ordering smell that the card entered review before the acceptance edits were logged; no correction can change past ordering, and the governing SDLC rule already requires implementation/documentation readiness before review, so no new standards lens is warranted.
+- 2026-07-29T23:47:13Z — moved to done
