@@ -1,12 +1,14 @@
 ---
 id: task-010
 title: "Specify physics, shape, and coordinate contracts"
-status: blocked
+status: in_progress
 priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: [task-022, task-023, task-024]
 createdAt: "2026-07-29T12:55:19Z"
-updatedAt: "2026-07-30T00:41:15Z"
+updatedAt: "2026-07-30T00:45:38Z"
+claimedBy: codex-root
+claimedAt: "2026-07-30T00:45:37Z"
 ---
 
 <!-- task-tracker:description -->
@@ -147,3 +149,6 @@ Write the normative Step 0 contract for collision, sleeping/waking bodies, place
 - 2026-07-30T00:20:05Z — moved to blocked
 - 2026-07-30T00:41:15Z — edited (+blockedBy task-024)
 - 2026-07-30T00:41:15Z — note: ADR-0004 was explicitly accepted as proposed; task-010 remains dependency-blocked only until task-024 completes its independent review and delivery.
+- 2026-07-30T00:45:37Z — moved to backlog
+- 2026-07-30T00:45:37Z — moved to in_progress (claimed by codex-root)
+- 2026-07-30T00:45:38Z — note: resumed after task-024 merged: accepted ADR-0004 reserves terminal revision for forced sleep. This clean branch contains only task-010 product and task-log changes on top of current origin/main.
