@@ -33,3 +33,9 @@ The accepted world-geometry decision is
 [physics/shape conformance fixtures](world/v1/conformance/physics-shapes-v1.json)
 define entity IDs, coordinate quantization, shape trees, collision, placement,
 sleep/wake recovery, and deterministic `unstick` behavior.
+
+The accepted durable replay decision is
+[ADR-0005](docs/adr/0005-durable-command-replay-and-backpressure.md). The
+[replay and persistence v1 contract](replay/v1/CONTRACT.md) defines canonical
+command admission, atomic durable generations, retry/event retention, crash
+recovery, and counter-based seeded randomness.

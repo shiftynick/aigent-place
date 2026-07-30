@@ -192,6 +192,16 @@ test("the authored proto has unique message field numbers and reserved gaps", ()
   assert.match(source, /message Envelope \{/);
   assert.match(source, /reserved 5 to 9;/);
   assert.match(source, /reserved 14 to 19;/);
+  for (const additivePersistenceSurface of [
+    "PROTOCOL_ERROR_CODE_PERSISTENCE_BACKPRESSURE = 6;",
+    "PROTOCOL_ERROR_CODE_PERSISTENCE_RECORD_TOO_LARGE = 7;",
+    "PROTOCOL_ERROR_CODE_PERSISTENCE_UNAVAILABLE = 8;",
+    "PROTOCOL_CLOSE_REASON_PERSISTENCE_RECORD_TOO_LARGE = 4;",
+    "PROTOCOL_CLOSE_REASON_PERSISTENCE_UNAVAILABLE = 5;",
+    "optional uint32 retry_after_ticks = 4;",
+  ]) {
+    assert.ok(source.includes(additivePersistenceSurface));
+  }
 
   const messageStarts = [...source.matchAll(/^message ([A-Za-z0-9_]+) \{/gm)];
   for (const match of messageStarts) {
@@ -260,6 +270,7 @@ test("protocol documentation links resolve and canonical ordering is locale-free
     "aigent.proto",
     "conformance/envelope-v1.json",
     "../../docs/adr/0001-protocol-v1-compatibility-and-recovery.md",
+    "../../replay/v1/CONTRACT.md",
   ]) {
     assert.ok(
       fs.existsSync(path.resolve(path.dirname(contractPath), relativeLink)),
@@ -271,8 +282,10 @@ test("protocol documentation links resolve and canonical ordering is locale-free
       path.join(root, "README.md"),
       [
         "docs/adr/0001-protocol-v1-compatibility-and-recovery.md",
+        "docs/adr/0005-durable-command-replay-and-backpressure.md",
         "protocol/v1/CONTRACT.md",
         "protocol/v1/aigent.proto",
+        "replay/v1/CONTRACT.md",
       ],
     ],
     [
