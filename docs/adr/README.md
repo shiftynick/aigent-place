@@ -29,3 +29,4 @@ per decision.
 | [ADR-0002](0002-world-geometry-and-displacement-semantics.md) | World geometry and displacement semantics | accepted |
 | [ADR-0003](0003-heightfield-sampling-and-terrain-collision.md) | Heightfield sampling and terrain collision | accepted |
 | [ADR-0004](0004-terminal-revision-and-forced-sleep.md) | Terminal revision and forced sleep | accepted |
+| [ADR-0005](0005-durable-command-replay-and-backpressure.md) | Durable command replay and persistence backpressure | accepted |

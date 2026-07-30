@@ -83,3 +83,20 @@ the task, exact blocking condition, evidence already checked, and a concrete
   **Resolved 2026-07-29:** the operator explicitly accepted ADR-0004 as
   written. Task-024 records the decision; task-010 may resume when that
   decision card completes its validation and review.
+
+- 2026-07-29 — `task-011` cannot encode the persisted replay and
+  backpressure contract until the operator decides proposed
+  [ADR-0005](docs/adr/0005-durable-command-replay-and-backpressure.md).
+  Independent source and option scans confirmed that the accepted architecture
+  fixes durable-before-publication ordering and same-build replay, but not the
+  writer admission cut point, transient wire outcome, retention constants,
+  durable framing, corruption policy, or RNG derivation. These choices affect
+  public retry guarantees and persisted data. Task `task-025` is the
+  `needs:operator` decision card.
+  **Resume:** accept ADR-0005, reject it, or request specific changes; then
+  complete task-025, remove `needs:operator` from task-011, return task-011 to
+  `in_progress`, and encode the normative contract, additive protocol fields,
+  and executable replay/recovery fixtures.
+  **Resolved 2026-07-30:** the operator explicitly accepted ADR-0005 as
+  written. Task-025 records the decision; task-011 remains blocked only until
+  that decision card completes validation and protected delivery.
