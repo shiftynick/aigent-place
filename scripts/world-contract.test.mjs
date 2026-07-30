@@ -150,6 +150,16 @@ test("shape validation rejects cycles, duplicate IDs, and invalid quaternions", 
     validateShape(fixture.shape_catalog["invalid-quaternion"]),
     { ok: false, reason: "invalid_shape" },
   );
+  assert.deepEqual(
+    validateShape({
+      nodes: [
+        { id: 1, parent_id: 2, translation: { x: 0, y: 0, z: 0 }, rotation: identity, primitive },
+        { id: 2, parent_id: 999, translation: { x: 0, y: 0, z: 0 }, rotation: identity, primitive },
+        { id: 3, parent_id: 0, translation: { x: 0, y: 0, z: 0 }, rotation: identity, primitive },
+      ],
+    }),
+    { ok: false, reason: "invalid_shape" },
+  );
 });
 
 test("all six primitive kinds have closed-form canonical bounds", () => {
@@ -528,6 +538,32 @@ test("move commands use the full arrival-tick, aigent-ID, sequence order indepen
   ]);
 });
 
+test("move ordering rejects non-canonical metadata and duplicate command tuples", () => {
+  const initial = {
+    rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 1 },
+    shape_catalog: fixture.shape_catalog,
+    entities: [{ id: "1", kind: "aigent", lifecycle: "active", revision: "1", position: { x: 0, y: 500, z: 0 }, shape: "cube" }],
+    next_entity_id: "2",
+  };
+  assert.throws(
+    () => evaluateScenario(initial, [{
+      op: "resolve_moves",
+      moves: [{ entity_id: "1", arrival_tick: 0, aigent_id: "aigent-1", sequence: "1", target: { x: 0, z: 0 } }],
+    }], { entity_ids: ["1"] }),
+    /invalid move command metadata/,
+  );
+  assert.throws(
+    () => evaluateScenario(initial, [{
+      op: "resolve_moves",
+      moves: [
+        { entity_id: "1", arrival_tick: "0", aigent_id: "aigent-1", sequence: "1", target: { x: -1000, z: 0 } },
+        { entity_id: "1", arrival_tick: "0", aigent_id: "aigent-1", sequence: "1", target: { x: 1000, z: 0 } },
+      ],
+    }], { entity_ids: ["1"] }),
+    /duplicate move command order/,
+  );
+});
+
 test("terminal revision reserves forced sleep and recovery repairs active terminal state", () => {
   const terminal = evaluateScenario(
     {
@@ -648,6 +684,21 @@ test("fixture validation rejects duplicate IDs and malformed headers", () => {
   const malformed = structuredClone(fixture);
   malformed.fixture_version = 2;
   assert.throws(() => validateFixture(malformed), /invalid world fixture header/);
+});
+
+test("scenario evaluation rejects invalid initial active overlap before any step", () => {
+  assert.throws(
+    () => evaluateScenario({
+      rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 1 },
+      shape_catalog: fixture.shape_catalog,
+      entities: [
+        { id: "1", kind: "object", lifecycle: "active", revision: "1", position: { x: 0, y: 500, z: 0 }, shape: "cube" },
+        { id: "2", kind: "aigent", lifecycle: "active", revision: "1", position: { x: 0, y: 500, z: 0 }, shape: "cube" },
+      ],
+      next_entity_id: "3",
+    }, [], { entity_ids: ["1", "2"] }),
+    /active entities 1 and 2 overlap/,
+  );
 });
 
 test("world contract links resolve and protobuf owns typed geometry messages", () => {

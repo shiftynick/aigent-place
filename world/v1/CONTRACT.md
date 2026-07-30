@@ -253,7 +253,8 @@ exists.
   accepted position participates in later sweeps. Every conformance move
   supplies a canonical non-negative decimal `arrival_tick`, a non-empty opaque
   `aigent_id`, and a positive canonical decimal `sequence`; the oracle rejects
-  missing or malformed ordering metadata rather than inventing a fallback.
+  missing, malformed, or duplicate ordering tuples rather than inventing a
+  fallback or preserving input order.
 
 Conformance comparisons represent slab entry and exit times as reduced or
 cross-multiplication-safe rational numerator/denominator pairs. Runtime
@@ -408,7 +409,7 @@ global lattice indices, not millimetre positions. The evaluator:
   grounding, and displacement candidates from fixture inputs;
 - never accepts fixture-provided collision or nearest-position oracles;
 - performs no network, storage, wall-clock, locale, random, or scheduler work;
-  and
+  validates the recovered initial active state before evaluating any step; and
 - canonicalizes only fields whose order is explicitly non-semantic.
 
 Task-004 replaces semantic payload stand-ins with generated/binary protobuf

@@ -1,12 +1,12 @@
 ---
 id: task-010
 title: "Specify physics, shape, and coordinate contracts"
-status: review
+status: done
 priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: [task-022, task-023, task-024]
 createdAt: "2026-07-29T12:55:19Z"
-updatedAt: "2026-07-30T01:13:57Z"
+updatedAt: "2026-07-30T01:21:35Z"
 ---
 
 <!-- task-tracker:description -->
@@ -219,3 +219,71 @@ Write the normative Step 0 contract for collision, sleeping/waking bodies, place
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
 - 2026-07-30T00:58:27Z — moved to review
 - 2026-07-30T01:13:57Z — note: round-2 adjudication: fixed every verified SPEC/STANDARDS finding. set_shape now rejects terrain penetration and canonicalizes absent/empty tags; restore batches sort numeric IDs; exact predecessor restore remains non-mutating while displaced predecessor restore rejects; all move fixtures require the full command-order tuple; versioned terrain fixtures cover signed cell and 64m chunk boundaries plus restore after heightfield change; PhysicsCommandResult reserves the redundant ID field and WorldRecoveryDiagnostic has a typed Percept publication boundary. Focused suite passes 20/20 and the full process gate passes.
+- 2026-07-30T01:21:08Z — note: round-3 cold review: rung 2 fresh subagents, separate SPEC and STANDARDS calls. At the three-round cap they found three must-fixes: duplicate/non-canonical command tuples could preserve input order, invalid initial active states were not checked before step execution, and a deep broken-parent chain could throw instead of returning invalid_shape. All three were fixed with focused regressions. No findings remain open; no follow-up task is needed. The cap outcome was surfaced to the operator before promotion.
+- 2026-07-30T01:21:08Z — run: node --test scripts/world-contract.test.mjs
+  started 2026-07-30T01:21:08Z, exit 0 in 0.2s
+  output tail (truncated to last 30 lines):
+  |   duration_ms: 0.4031
+  |   type: 'test'
+  |   ...
+  | # Subtest: fixture validation rejects duplicate IDs and malformed headers
+  | ok 20 - fixture validation rejects duplicate IDs and malformed headers
+  |   ---
+  |   duration_ms: 0.4759
+  |   type: 'test'
+  |   ...
+  | # Subtest: scenario evaluation rejects invalid initial active overlap before any step
+  | ok 21 - scenario evaluation rejects invalid initial active overlap before any step
+  |   ---
+  |   duration_ms: 0.1588
+  |   type: 'test'
+  |   ...
+  | # Subtest: world contract links resolve and protobuf owns typed geometry messages
+  | ok 22 - world contract links resolve and protobuf owns typed geometry messages
+  |   ---
+  |   duration_ms: 0.8527
+  |   type: 'test'
+  |   ...
+  | 1..22
+  | # tests 22
+  | # suites 0
+  | # pass 22
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 91.0157
+- 2026-07-30T01:21:25Z — run: node scripts/check.mjs
+  started 2026-07-30T01:21:11Z, exit 0 in 13.9s
+  output tail (truncated to last 30 lines):
+  |     # Subtest: soft-deletes by setting status=done and adding deleted:true tag
+  |     ok 1 - soft-deletes by setting status=done and adding deleted:true tag
+  |       ---
+  |       duration_ms: 107.2018
+  |       type: 'test'
+  |       ...
+  |     # Subtest: keeps dependents blocked when their blocker is soft-deleted
+  |     ok 2 - keeps dependents blocked when their blocker is soft-deleted
+  |       ---
+  |       duration_ms: 274.9365
+  |       type: 'test'
+  |       ...
+  |     1..2
+  | ok 121 - task rm
+  |   ---
+  |   duration_ms: 382.2439
+  |   type: 'suite'
+  |   ...
+  | 1..121
+  | # tests 289
+  | # suites 62
+  | # pass 289
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 13210.446
+  |
+  | run-checks: PASS (skill-sync + 14 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
+- 2026-07-30T01:21:35Z — moved to done

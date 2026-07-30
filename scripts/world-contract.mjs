@@ -388,7 +388,9 @@ export function validateShape(shape) {
         return { ok: false, reason: "invalid_shape" };
       }
       seen.add(cursor.id);
-      cursor = byId.get(cursor.parent_id);
+      const parent = byId.get(cursor.parent_id);
+      if (!parent) return { ok: false, reason: "invalid_shape" };
+      cursor = parent;
     }
   }
   return { ok: true };
@@ -1055,11 +1057,19 @@ function applyMoves(state, step) {
       (move) =>
         typeof move.aigent_id !== "string" ||
         move.aigent_id.length === 0 ||
-        !/^(0|[1-9]\d*)$/.test(String(move.arrival_tick)) ||
-        !/^[1-9]\d*$/.test(String(move.sequence)),
+        typeof move.arrival_tick !== "string" ||
+        !/^(0|[1-9]\d*)$/.test(move.arrival_tick) ||
+        typeof move.sequence !== "string" ||
+        !/^[1-9]\d*$/.test(move.sequence),
     )
   ) {
     throw new Error("invalid move command metadata");
+  }
+  const commandKeys = step.moves.map(({ arrival_tick, aigent_id, sequence }) =>
+    JSON.stringify([arrival_tick, aigent_id, sequence]),
+  );
+  if (new Set(commandKeys).size !== commandKeys.length) {
+    throw new Error("duplicate move command order");
   }
   const moves = [...step.moves].sort((a, b) => {
     const tick = compareBigInts(
@@ -1458,6 +1468,7 @@ export function evaluateScenario(initial, steps, inspect) {
     return next;
   });
   const trace = [...recovery];
+  assertState(state);
   for (const step of materializedSteps) {
     let output;
     switch (step.op) {
