@@ -9,9 +9,10 @@ not another wire schema.
 
 This contract implements
 [ADR-0001](../../docs/adr/0001-protocol-v1-compatibility-and-recovery.md).
-Domain payload schemas, authentication, persistence retention periods,
-generated bindings, and binary protobuf conformance are deliberately outside
-task-002.
+Domain payload schemas are added by their owning accepted Step 0 contracts;
+the first is the [world geometry contract](../../world/v1/CONTRACT.md).
+Authentication, persistence retention periods, generated bindings, and binary
+protobuf conformance remain outside task-002.
 
 ## Connection lifecycle
 
@@ -112,16 +113,22 @@ An exact-next, well-formed command produces and records one authoritative
 accepted or rejected `CommandResult`, then advances the expected sequence.
 Retries replay that recorded result. Accepted results identify every affected
 entity and its resulting non-zero revision; revision zero is invalid at the
-protocol boundary. Durable publication ordering, canonical
+protocol boundary. Existing opaque identities remain in
+`CommandAccepted.affected_entities`. Geometry commands governed by the world
+v1 contract use `affected_world_entities`, whose IDs are numeric `uint64`
+values; a result MUST NOT describe the same mutation in both fields. Durable
+publication ordering, canonical
 content digesting, idempotency retention, and replay-journal retention are
 owned by the replay and persistence contract.
 
-`CANCEL_INTENT` and bare `STOP` are base v1 commands with empty payloads and
-may be accepted before domain payload contracts exist. Every other command kind whose
-`payload` does not yet have an accepted typed schema is unavailable and
-returns `UNSUPPORTED_MESSAGE`. The bytes field is a reserved transport slot,
-not permission to define private hand-copied payload types. The semantic
-fixtures use `CANCEL_INTENT` when exercising accepted-result behavior.
+`CANCEL_INTENT` and bare `STOP` are base v1 commands with empty payloads.
+ADR-0002 and the world geometry contract additionally make `PLACE_OBJECT`,
+`SET_SHAPE`, and `UNSTICK` available with their typed protobuf payloads. Every
+other command kind whose `payload` does not yet have an accepted typed schema
+is unavailable and returns `UNSUPPORTED_MESSAGE`. The bytes field is a
+reserved transport slot for the named schema, not permission to define private
+hand-copied payload types. The protocol semantic fixtures use `CANCEL_INTENT`
+when exercising accepted-result behavior.
 
 The authenticated identity layer must bind `ClientHello.aigent_id` to the
 connection before idempotency lookup; the client-provided bytes are never

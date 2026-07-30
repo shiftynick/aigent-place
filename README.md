@@ -26,3 +26,10 @@ The accepted v1 compatibility decision is
 [protocol v1 contract](protocol/v1/CONTRACT.md), canonical
 [`aigent.proto`](protocol/v1/aigent.proto), and executable semantic examples
 are the foundation for generated server, browser, and owner-SDK bindings.
+
+The accepted world-geometry decision is
+[ADR-0002](docs/adr/0002-world-geometry-and-displacement-semantics.md). Its
+[world v1 contract](world/v1/CONTRACT.md) and
+[physics/shape conformance fixtures](world/v1/conformance/physics-shapes-v1.json)
+define entity IDs, coordinate quantization, shape trees, collision, placement,
+sleep/wake recovery, and deterministic `unstick` behavior.
