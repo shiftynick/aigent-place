@@ -1,14 +1,12 @@
 ---
 id: task-010
 title: "Specify physics, shape, and coordinate contracts"
-status: in_progress
+status: review
 priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: [task-022, task-023, task-024]
 createdAt: "2026-07-29T12:55:19Z"
-updatedAt: "2026-07-30T00:45:38Z"
-claimedBy: codex-root
-claimedAt: "2026-07-30T00:45:37Z"
+updatedAt: "2026-07-30T00:58:27Z"
 ---
 
 <!-- task-tracker:description -->
@@ -152,3 +150,71 @@ Write the normative Step 0 contract for collision, sleeping/waking bodies, place
 - 2026-07-30T00:45:37Z — moved to backlog
 - 2026-07-30T00:45:37Z — moved to in_progress (claimed by codex-root)
 - 2026-07-30T00:45:38Z — note: resumed after task-024 merged: accepted ADR-0004 reserves terminal revision for forced sleep. This clean branch contains only task-010 product and task-log changes on top of current origin/main.
+- 2026-07-30T00:58:07Z — note: round-1 findings addressed: signed wire dimensions and additive world-entity references preserve v1 wire compatibility; coordinate/tree/derived-bound/allocation precedence is explicit; semantic no-ops preserve revisions; command ordering uses the full architecture tuple; exact rational sweep and BigInt displacement comparisons replace numeric equality/sorts; accepted ADR-0003 terrain columns and ADR-0004 terminal sleep are executable. Heightfield fixture samples use global lattice indices and duplicate coordinates reject so input order cannot select a value.
+- 2026-07-30T00:58:08Z — run: node --test scripts/world-contract.test.mjs
+  started 2026-07-30T00:58:07Z, exit 0 in 0.2s
+  output tail (truncated to last 30 lines):
+  |   duration_ms: 1.2076
+  |   type: 'test'
+  |   ...
+  | # Subtest: displacement and swept-contact oracle comparisons stay exact rather than numeric-sort based
+  | ok 15 - displacement and swept-contact oracle comparisons stay exact rather than numeric-sort based
+  |   ---
+  |   duration_ms: 0.3648
+  |   type: 'test'
+  |   ...
+  | # Subtest: fixture validation rejects duplicate IDs and malformed headers
+  | ok 16 - fixture validation rejects duplicate IDs and malformed headers
+  |   ---
+  |   duration_ms: 0.6157
+  |   type: 'test'
+  |   ...
+  | # Subtest: world contract links resolve and protobuf owns typed geometry messages
+  | ok 17 - world contract links resolve and protobuf owns typed geometry messages
+  |   ---
+  |   duration_ms: 0.7075
+  |   type: 'test'
+  |   ...
+  | 1..17
+  | # tests 17
+  | # suites 0
+  | # pass 17
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 78.2468
+- 2026-07-30T00:58:22Z — run: node scripts/check.mjs
+  started 2026-07-30T00:58:08Z, exit 0 in 14.5s
+  output tail (truncated to last 30 lines):
+  |     # Subtest: soft-deletes by setting status=done and adding deleted:true tag
+  |     ok 1 - soft-deletes by setting status=done and adding deleted:true tag
+  |       ---
+  |       duration_ms: 114.5993
+  |       type: 'test'
+  |       ...
+  |     # Subtest: keeps dependents blocked when their blocker is soft-deleted
+  |     ok 2 - keeps dependents blocked when their blocker is soft-deleted
+  |       ---
+  |       duration_ms: 267.2861
+  |       type: 'test'
+  |       ...
+  |     1..2
+  | ok 121 - task rm
+  |   ---
+  |   duration_ms: 382.1204
+  |   type: 'suite'
+  |   ...
+  | 1..121
+  | # tests 289
+  | # suites 62
+  | # pass 289
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 13857.3175
+  |
+  | run-checks: PASS (skill-sync + 14 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
+- 2026-07-30T00:58:27Z — moved to review

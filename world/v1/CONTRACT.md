@@ -7,7 +7,9 @@ displacement, and `unstick`.
 It implements
 [ADR-0002](../../docs/adr/0002-world-geometry-and-displacement-semantics.md)
 and
-[ADR-0003](../../docs/adr/0003-heightfield-sampling-and-terrain-collision.md).
+[ADR-0003](../../docs/adr/0003-heightfield-sampling-and-terrain-collision.md),
+with terminal revision behavior fixed by
+[ADR-0004](../../docs/adr/0004-terminal-revision-and-forced-sleep.md).
 The public message definitions live in
 [`aigent.proto`](../../protocol/v1/aigent.proto). The executable semantic
 examples are
@@ -49,9 +51,20 @@ accepted command sequence.
 - A command that mutates several entities increments each changed entity once
   and returns every affected `(entity_id, revision)` pair in numeric ID order
   through `CommandAccepted.affected_world_entities`.
-- Exhausting the `uint64` ID or revision space is a typed no-effect capacity
-  rejection (`ENTITY_ID_EXHAUSTED` or `REVISION_EXHAUSTED`); arithmetic MUST
-  NOT wrap to zero.
+- Revision `18446744073709551615` is reserved for terminal forced sleep.
+  Externally requested mutations at revision `18446744073709551614` or greater
+  reject without effect as `REVISION_EXHAUSTED`, preserving one final
+  increment for disconnect safety.
+- Disconnecting an active entity at the reserved predecessor cancels leases,
+  sleeps it, and increments to the terminal revision. Terminal entities remain
+  permanently sleeping and non-colliding; wake, restore-to-active, movement,
+  `set_shape`, and `unstick` reject as `REVISION_EXHAUSTED`.
+- An active entity loaded at the terminal revision is invalid persisted state.
+  Recovery makes it terminal sleeping without arithmetic, emits a typed
+  recovery diagnostic, and never admits it to the active broadphase.
+- Exhausting the `uint64` ID space or externally usable revision space is a
+  typed no-effect capacity rejection (`ENTITY_ID_EXHAUSTED` or
+  `REVISION_EXHAUSTED`); arithmetic MUST NOT wrap to zero.
 
 JavaScript and JSON tooling MUST use a lossless 64-bit representation such as
 generated `bigint` or canonical unsigned decimal strings. Ordinary JavaScript
@@ -223,14 +236,15 @@ exists.
 - Initial positive-volume overlap is an invalid world state and MUST be
   repaired through restore displacement before normal movement.
 - Zero-length movement in a legal state is an accepted semantic no-op.
-- Equal contact times report the lowest blocking entity ID among entity
-  blockers. Terrain ties use signed global `(cell_x, cell_z)` order. When an
-  entity and terrain blocker otherwise have the same exact contact time and
-  numeric key, the entity sorts first.
+- Equal-time blockers use a normalized signed-integer key. An entity key is
+  `(entity_id, 0)` and a terrain key is global `(cell_x, cell_z)`;
+  lexicographically lower keys win. When the exact time and both key
+  components are equal, the entity sorts first.
 - Commands are resolved by the architecture's exact
   `(arrival_tick, aigent_id, sequence)` tuple. Entity-ID ordering governs
   collection iteration and multi-entity restore, not command order. An
-  earlier accepted position participates in later sweeps.
+  `aigent_id` is compared as an unsigned lexicographic byte string. An earlier
+  accepted position participates in later sweeps.
 
 Conformance comparisons represent slab entry and exit times as reduced or
 cross-multiplication-safe rational numerator/denominator pairs. Runtime
@@ -254,11 +268,12 @@ footprint.
 
 Validation order is:
 
-1. payload, coordinate, tree, transform, and primitive validity;
-2. complete collider inside the world bound;
-3. ruleset ownership, part, joint, size, area, and object budgets;
-4. positive-volume overlap with active bodies or objects;
-5. enclosure of an active aigent.
+1. payload framing and supplied-coordinate validity;
+2. tree, transform, and primitive validity;
+3. complete collider inside the world bound;
+4. ruleset ownership, part, joint, size, area, and object budgets;
+5. positive-volume overlap with active bodies or objects;
+6. enclosure of an active aigent.
 
 Enclosure means the candidate object's aggregate AABB strictly contains an
 active aigent's aggregate AABB on both horizontal axes and covers its full
@@ -303,10 +318,12 @@ entity revision exactly once.
 ## 8. Sleep, wake, restore, and displacement
 
 Disconnect first cancels every active lease, then marks the body sleeping and
-removes it from the active broadphase. An already-sleeping body is a semantic
-no-op. The sleeping body retains identity, revision, shape, and stored
-position. Because it does not collide, active bodies may cross it and objects
-may be placed through its stored location.
+removes it from the active broadphase. This forced transition increments once,
+including from the reserved predecessor to terminal revision. An
+already-sleeping body is a semantic no-op at every revision. The sleeping body
+retains identity, revision, shape, and stored position. Because it does not
+collide, active bodies may cross it and objects may be placed through its
+stored location.
 
 Wake and restore test the stored position against the current frozen ruleset,
 heightfield, world bound, and active colliders. The exact stored pose is legal
@@ -370,7 +387,10 @@ and idempotent result replay remain unchanged.
 
 The semantic fixture format is not a wire schema. It uses canonical decimal
 strings for 64-bit IDs and exact decimal coordinate inputs so JavaScript
-cannot silently lose precision. The evaluator:
+cannot silently lose precision. Opaque aigent IDs use their UTF-8 fixture
+bytes for the protocol's unsigned bytewise order. Heightfield samples use
+integer `sample_x`, `sample_z`, and `height_mm` fields; sample coordinates are
+global lattice indices, not millimetre positions. The evaluator:
 
 - derives quantization, shape bounds, overlap, swept contact, command order,
   grounding, and displacement candidates from fixture inputs;

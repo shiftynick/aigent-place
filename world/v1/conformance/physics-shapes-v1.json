@@ -856,10 +856,10 @@
           "heightfield_y_mm": 0,
           "heightfield_cell_size_mm": 1000,
           "heightfield_samples": [
-            { "x_mm": 1000, "z_mm": 0, "height_mm": 1000 },
-            { "x_mm": 0, "z_mm": 0, "height_mm": 0 },
-            { "x_mm": 1000, "z_mm": 1000, "height_mm": 0 },
-            { "x_mm": 0, "z_mm": 1000, "height_mm": 0 }
+            { "sample_x": 1, "sample_z": 0, "height_mm": 1000 },
+            { "sample_x": 0, "sample_z": 0, "height_mm": 0 },
+            { "sample_x": 1, "sample_z": 1, "height_mm": 0 },
+            { "sample_x": 0, "sample_z": 1, "height_mm": 0 }
           ],
           "displacement_step_mm": 1000,
           "max_displacement_radius_mm": 2000,
@@ -897,10 +897,10 @@
           "heightfield_y_mm": 0,
           "heightfield_cell_size_mm": 1000,
           "heightfield_samples": [
-            { "x_mm": 0, "z_mm": 0, "height_mm": 1000 },
-            { "x_mm": 1000, "z_mm": 0, "height_mm": 0 },
-            { "x_mm": 0, "z_mm": 1000, "height_mm": 0 },
-            { "x_mm": 1000, "z_mm": 1000, "height_mm": 0 }
+            { "sample_x": 0, "sample_z": 0, "height_mm": 1000 },
+            { "sample_x": 1, "sample_z": 0, "height_mm": 0 },
+            { "sample_x": 0, "sample_z": 1, "height_mm": 0 },
+            { "sample_x": 1, "sample_z": 1, "height_mm": 0 }
           ],
           "displacement_step_mm": 1000,
           "max_displacement_radius_mm": 2000,

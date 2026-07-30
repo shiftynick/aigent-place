@@ -23,9 +23,7 @@ function compareEntityIds(left, right) {
 }
 
 function cleanNumber(value) {
-  if (Object.is(value, -0)) return 0;
-  if (Number.isInteger(value)) return value;
-  return Number(value.toFixed(12));
+  return Object.is(value, -0) ? 0 : value;
 }
 
 function fraction(value) {
@@ -67,6 +65,13 @@ function fractionToNumber(value) {
 
 function compareBigInts(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function compareAigentIds(left, right) {
+  return Buffer.compare(
+    Buffer.from(String(left), "utf8"),
+    Buffer.from(String(right), "utf8"),
+  );
 }
 
 function floorFraction(value) {
@@ -578,15 +583,26 @@ function terrainDefinition(state) {
   for (const sample of samples ?? []) {
     if (
       !sample ||
-      !finiteInteger(sample.x_mm) ||
-      !finiteInteger(sample.z_mm) ||
-      !finiteInteger(sample.height_mm) ||
-      sample.x_mm % cellSize !== 0 ||
-      sample.z_mm % cellSize !== 0
+      !finiteInteger(sample.sample_x) ||
+      !finiteInteger(sample.sample_z) ||
+      !finiteInteger(sample.height_mm)
     ) {
       throw new Error("invalid heightfield sample");
     }
-    byCoordinate.set(`${sample.x_mm},${sample.z_mm}`, sample.height_mm);
+    const sampleX = BigInt(sample.sample_x);
+    const sampleZ = BigInt(sample.sample_z);
+    const key = `${sample.sample_x},${sample.sample_z}`;
+    if (
+      Math.abs(sample.height_mm) > WORLD_LIMIT_MM ||
+      sampleX * BigInt(cellSize) < -BigInt(WORLD_LIMIT_MM) ||
+      sampleX * BigInt(cellSize) > BigInt(WORLD_LIMIT_MM) ||
+      sampleZ * BigInt(cellSize) < -BigInt(WORLD_LIMIT_MM) ||
+      sampleZ * BigInt(cellSize) > BigInt(WORLD_LIMIT_MM) ||
+      byCoordinate.has(key)
+    ) {
+      throw new Error("invalid heightfield sample");
+    }
+    byCoordinate.set(key, sample.height_mm);
   }
   return { cellSize, byCoordinate };
 }
@@ -621,10 +637,10 @@ function terrainCellsForAggregate(state, aggregate) {
       const xMm = Number(x * size);
       const zMm = Number(z * size);
       const top = Math.max(
-        terrainSampleHeight(state, terrain, xMm, zMm),
-        terrainSampleHeight(state, terrain, xMm + terrain.cellSize, zMm),
-        terrainSampleHeight(state, terrain, xMm, zMm + terrain.cellSize),
-        terrainSampleHeight(state, terrain, xMm + terrain.cellSize, zMm + terrain.cellSize),
+        terrainSampleHeight(state, terrain, x, z),
+        terrainSampleHeight(state, terrain, x + 1n, z),
+        terrainSampleHeight(state, terrain, x, z + 1n),
+        terrainSampleHeight(state, terrain, x + 1n, z + 1n),
       );
       cells.push({
         x: x.toString(),
@@ -747,10 +763,6 @@ function applyCoordinateStep(step) {
 }
 
 function applyPlace(state, step) {
-  const validation = validateShape(step.shape);
-  if (!validation.ok) {
-    return { type: "place_object", outcome: "rejected", reason: "invalid_shape" };
-  }
   if (
     !finiteInteger(step.x_mm) ||
     !finiteInteger(step.z_mm) ||
@@ -762,6 +774,10 @@ function applyPlace(state, step) {
       outcome: "rejected",
       reason: "out_of_world_bounds",
     };
+  }
+  const validation = validateShape(step.shape);
+  if (!validation.ok) {
+    return { type: "place_object", outcome: "rejected", reason: "invalid_shape" };
   }
   const entity = {
     id: "0",
@@ -982,40 +998,27 @@ export function sweepFirstContact(state, entity, target) {
     return undefined;
   }
   let best;
+  const blockerOrder = (left, right) => {
+    const leftKey =
+      left.kind === "entity"
+        ? [BigInt(left.entity_id), 0n]
+        : [BigInt(left.terrain_cell.x), BigInt(left.terrain_cell.z)];
+    const rightKey =
+      right.kind === "entity"
+        ? [BigInt(right.entity_id), 0n]
+        : [BigInt(right.terrain_cell.x), BigInt(right.terrain_cell.z)];
+    return (
+      compareBigInts(leftKey[0], rightKey[0]) ||
+      compareBigInts(leftKey[1], rightKey[1]) ||
+      (left.kind === right.kind ? 0 : left.kind === "entity" ? -1 : 1)
+    );
+  };
   const consider = (time, blocker) => {
     if (time === undefined) return;
     if (best !== undefined) {
       const timeOrder = fractionCompare(time, best.time);
       if (timeOrder > 0) return;
-      if (timeOrder === 0) {
-        if (blocker.kind === "terrain" && best.kind === "entity") return;
-        if (blocker.kind === "entity" && best.kind === "terrain") {
-          best = { time, ...blocker };
-          return;
-        }
-        if (
-          blocker.kind === "entity" &&
-          compareEntityIds(blocker.entity_id, best.entity_id) >= 0
-        ) {
-          return;
-        }
-        if (blocker.kind === "terrain") {
-          const xOrder = compareBigInts(
-            BigInt(blocker.terrain_cell.x),
-            BigInt(best.terrain_cell.x),
-          );
-          if (
-            xOrder > 0 ||
-            (xOrder === 0 &&
-              compareBigInts(
-                BigInt(blocker.terrain_cell.z),
-                BigInt(best.terrain_cell.z),
-              ) >= 0)
-          ) {
-            return;
-          }
-        }
-      }
+      if (timeOrder === 0 && blockerOrder(blocker, best) >= 0) return;
     }
     best = { time, ...blocker };
   };
@@ -1046,10 +1049,10 @@ function applyMoves(state, step) {
       BigInt(b.arrival_tick ?? 0),
     );
     if (tick !== 0) return tick;
-    const aigent = compareEntityIds(
-      String(a.aigent_id ?? a.entity_id),
-      String(b.aigent_id ?? b.entity_id),
-    );
+    const aigent =
+      a.aigent_id === undefined && b.aigent_id === undefined
+        ? compareEntityIds(String(a.entity_id), String(b.entity_id))
+        : compareAigentIds(a.aigent_id ?? a.entity_id, b.aigent_id ?? b.entity_id);
     if (aigent !== 0) return aigent;
     return compareBigInts(BigInt(a.sequence ?? 0), BigInt(b.sequence ?? 0));
   });

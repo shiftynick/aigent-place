@@ -331,12 +331,19 @@ test("transform bounds, allocation precedence, and canonical semantic no-ops are
     [
       { op: "place", x_mm: 0, z_mm: 0, shape: "cube" },
       { op: "place", x_mm: 0, z_mm: 0, shape: outOfBoundsShape },
+      {
+        op: "place",
+        x_mm: 100_000_001,
+        z_mm: 0,
+        shape: outOfBoundsShape,
+      },
     ],
     {},
   );
   assert.deepEqual(precedence.trace.map(({ reason }) => reason), [
     "overlap",
     "invalid_shape",
+    "out_of_world_bounds",
   ]);
 
   const noOps = evaluateScenario(
@@ -373,9 +380,9 @@ test("move commands use the full arrival-tick, aigent-ID, sequence order indepen
     next_entity_id: "3",
   };
   const moves = [
-    { entity_id: "2", aigent_id: "2", arrival_tick: "1", sequence: "0", target: { x: 0, z: 0 } },
-    { entity_id: "1", aigent_id: "1", arrival_tick: "0", sequence: "2", target: { x: 0, z: 0 } },
-    { entity_id: "1", aigent_id: "1", arrival_tick: "0", sequence: "1", target: { x: -1000, z: 0 } },
+    { entity_id: "2", aigent_id: "aigent-2", arrival_tick: "1", sequence: "0", target: { x: 0, z: 0 } },
+    { entity_id: "1", aigent_id: "aigent-1", arrival_tick: "0", sequence: "2", target: { x: 0, z: 0 } },
+    { entity_id: "1", aigent_id: "aigent-1", arrival_tick: "0", sequence: "1", target: { x: -1000, z: 0 } },
   ];
   const ordered = evaluateScenario(initial, [{ op: "resolve_moves", moves }], {});
   const permuted = evaluateScenario(initial, [{ op: "resolve_moves", moves: [...moves].reverse() }], {});
@@ -448,7 +455,7 @@ test("integer heightfield samples use conservative shared-column maxima, order-i
       rules: {
         heightfield_y_mm: 0,
         heightfield_cell_size_mm: 1000,
-        heightfield_samples: [{ x_mm: 0, z_mm: 0, height_mm: 1000 }],
+        heightfield_samples: [{ sample_x: 0, sample_z: 0, height_mm: 1000 }],
         displacement_step_mm: 1000,
         max_displacement_radius_mm: 2000,
         unstick_blocked_ticks: 1,
@@ -467,7 +474,7 @@ test("integer heightfield samples use conservative shared-column maxima, order-i
       rules: {
         heightfield_y_mm: 0,
         heightfield_cell_size_mm: 1000,
-        heightfield_samples: [{ x_mm: 0, z_mm: 0, height_mm: 1000 }],
+        heightfield_samples: [{ sample_x: 0, sample_z: 0, height_mm: 1000 }],
         displacement_step_mm: 1000,
         max_displacement_radius_mm: 2000,
         unstick_blocked_ticks: 1,
@@ -504,6 +511,8 @@ test("world contract links resolve and protobuf owns typed geometry messages", (
   const contractPath = path.join(root, "world/v1/CONTRACT.md");
   for (const relativeLink of [
     "../../docs/adr/0002-world-geometry-and-displacement-semantics.md",
+    "../../docs/adr/0003-heightfield-sampling-and-terrain-collision.md",
+    "../../docs/adr/0004-terminal-revision-and-forced-sleep.md",
     "../../protocol/v1/aigent.proto",
     "../../protocol/v1/CONTRACT.md",
     "conformance/physics-shapes-v1.json",
@@ -535,10 +544,16 @@ test("world contract links resolve and protobuf owns typed geometry messages", (
     "message SetShapePayload {",
     "message UnstickPayload {}",
     "message PhysicsCommandResult {",
-    "uint64 entity_id = 1;",
+    "message WorldEntityReference {",
+    "repeated WorldEntityReference affected_world_entities = 3;",
+    "sint64 size_x_mm = 1;",
   ]) {
     assert.match(proto, new RegExp(definition.replace(/[{}]/g, "\\$&")));
   }
+  assert.match(
+    proto,
+    /message EntityReference \{[\s\S]*?bytes entity_id = 1;[\s\S]*?uint64 revision = 2;[\s\S]*?\}/,
+  );
 
   const evaluator = fs.readFileSync(
     path.join(root, "scripts/world-contract.mjs"),
