@@ -6,7 +6,7 @@ priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-30T00:11:47Z"
-updatedAt: "2026-07-30T00:14:22Z"
+updatedAt: "2026-07-30T00:20:29Z"
 ---
 
 <!-- task-tracker:description -->
@@ -26,3 +26,41 @@ Review ADR-0003 and explicitly accept it, reject it, or request specific changes
 - 2026-07-30T00:14:22Z — note: rubric: (1) ADR-0003 status and ADR index both record accepted without changing the approved decision text. (2) The operator's exact response is logged and the blocked journal marks the decision condition resolved. (3) Repository diff checks and the full process gate pass, and a cold review finds no acceptance-record contradiction.
 - 2026-07-30T00:14:22Z — moved to in_progress (claimed by codex-root)
 - 2026-07-30T00:14:22Z — moved to review
+- 2026-07-30T00:20:05Z — run: git diff --check 503f7be^ 503f7be
+  started 2026-07-30T00:20:05Z, exit 0 in 0.1s
+  output:
+  | (no output)
+- 2026-07-30T00:20:19Z — run: node scripts/check.mjs
+  started 2026-07-30T00:20:05Z, exit 0 in 13.8s
+  output tail (truncated to last 30 lines):
+  |     # Subtest: soft-deletes by setting status=done and adding deleted:true tag
+  |     ok 1 - soft-deletes by setting status=done and adding deleted:true tag
+  |       ---
+  |       duration_ms: 112.6767
+  |       type: 'test'
+  |       ...
+  |     # Subtest: keeps dependents blocked when their blocker is soft-deleted
+  |     ok 2 - keeps dependents blocked when their blocker is soft-deleted
+  |       ---
+  |       duration_ms: 266.8427
+  |       type: 'test'
+  |       ...
+  |     1..2
+  | ok 121 - task rm
+  |   ---
+  |   duration_ms: 379.6264
+  |   type: 'suite'
+  |   ...
+  | 1..121
+  | # tests 289
+  | # suites 62
+  | # pass 289
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 13186.6538
+  |
+  | run-checks: PASS (skill-sync + 14 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
+- 2026-07-30T00:20:29Z — note: round 1 cold review: rung 2 fresh subagents, separate SPEC and STANDARDS. Confirmed delivery must use its own task branch/PR, task-010 must durably record the task-023 dependency, and validation evidence must be recorded in this card. Fixed all three by splitting task-023 from task-010, updating task-010 to blocked by task-023, and recording diff-check plus full-gate runs. Adjudication: the ADR workflow explicitly permits an initial accepted commit when the operator already decided; the exact proposed text was presented before the operator replied Accept, and the accepted commit changes only its status relative to that presented text.
