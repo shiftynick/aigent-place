@@ -1,6 +1,6 @@
 # ADR 0005: Durable command replay and persistence backpressure
 
-**Status:** proposed  
+**Status:** accepted
 **Date:** 2026-07-29  
 **Task:** task-011
 
