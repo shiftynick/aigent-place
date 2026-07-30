@@ -66,3 +66,20 @@ the task, exact blocking condition, evidence already checked, and a concrete
   **Resolved 2026-07-29:** the operator explicitly accepted ADR-0003 as
   written. Task-023 records the decision; task-010 may resume when that
   decision card completes its validation and review.
+
+- 2026-07-29 — `task-010` cannot finish revision-exhaustion and forced-sleep
+  behavior until the operator decides proposed
+  [ADR-0004](docs/adr/0004-terminal-revision-and-forced-sleep.md).
+  The first cold STANDARDS review found that rejecting sleep at maximum
+  revision leaves an ownerless active collider, while sleeping without an
+  increment violates the accepted one-change/one-revision rule. The accepted
+  decision reserves the maximum revision for terminal forced sleep and rejects
+  ordinary mutations one increment earlier. Task `task-024` is the
+  `needs:operator` decision card.
+  **Resume:** accept ADR-0004, reject it, or request specific changes; then
+  complete task-024, remove `needs:operator` from task-010, return task-010 to
+  `in_progress`, implement the terminal revision cases alongside the remaining
+  terrain/evaluator fixes, and re-run separate cold SPEC and STANDARDS reviews.
+  **Resolved 2026-07-29:** the operator explicitly accepted ADR-0004 as
+  written. Task-024 records the decision; task-010 may resume when that
+  decision card completes its validation and review.
