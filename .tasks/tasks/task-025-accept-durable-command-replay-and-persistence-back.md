@@ -1,12 +1,12 @@
 ---
 id: task-025
 title: Accept durable command replay and persistence backpressure ADR
-status: review
+status: done
 priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-30T01:31:37Z"
-updatedAt: "2026-07-30T11:56:58Z"
+updatedAt: "2026-07-30T11:58:37Z"
 ---
 
 <!-- task-tracker:description -->
@@ -24,3 +24,42 @@ Review proposed ADR-0005 and explicitly accept, revise, or reject its durable ge
 - 2026-07-30T11:54:07Z — note: operator explicitly accepted ADR-0005 as proposed on 2026-07-30; this task records and delivers that decision.
 - 2026-07-30T11:54:07Z — moved to review
 - 2026-07-30T11:56:58Z — note: round-1 cold review: rung 2 fresh subagents, separate SPEC and STANDARDS calls. Both verified the ADR decision body remained unchanged. Fixed stale task-011 needs:operator state; STANDARDS additionally required the blocker journal resolution and removal of inherited ADR header trailing whitespace.
+- 2026-07-30T11:58:15Z — note: round-2 cold review: rung 2 fresh subagents, separate SPEC and STANDARDS calls; both PASS with no findings. ADR-0005 decision body is unchanged from the proposed packet, and ADR/index/task/journal state is consistent.
+- 2026-07-30T11:58:15Z — run: git diff --check origin/main
+  started 2026-07-30T11:58:15Z, exit 0 in 0.1s
+  output:
+  | (no output)
+- 2026-07-30T11:58:30Z — run: node scripts/check.mjs
+  started 2026-07-30T11:58:15Z, exit 0 in 14.9s
+  output tail (truncated to last 30 lines):
+  |     # Subtest: soft-deletes by setting status=done and adding deleted:true tag
+  |     ok 1 - soft-deletes by setting status=done and adding deleted:true tag
+  |       ---
+  |       duration_ms: 117.1417
+  |       type: 'test'
+  |       ...
+  |     # Subtest: keeps dependents blocked when their blocker is soft-deleted
+  |     ok 2 - keeps dependents blocked when their blocker is soft-deleted
+  |       ---
+  |       duration_ms: 293.8983
+  |       type: 'test'
+  |       ...
+  |     1..2
+  | ok 121 - task rm
+  |   ---
+  |   duration_ms: 411.1418
+  |   type: 'suite'
+  |   ...
+  | 1..121
+  | # tests 289
+  | # suites 62
+  | # pass 289
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 14153.0154
+  |
+  | run-checks: PASS (skill-sync + 14 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
+- 2026-07-30T11:58:37Z — moved to done
