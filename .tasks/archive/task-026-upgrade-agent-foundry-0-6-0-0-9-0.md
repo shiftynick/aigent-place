@@ -1,14 +1,12 @@
 ---
 id: task-026
 title: "Upgrade Agent Foundry 0.6.0 -> 0.9.0"
-status: in_progress
+status: done
 priority: p1
 tags: [area:process, phase:upgrade]
 blockedBy: []
 createdAt: "2026-07-30T18:21:51Z"
-updatedAt: "2026-07-30T18:26:19Z"
-claimedBy: "shift@Shiftor"
-claimedAt: "2026-07-30T18:22:06Z"
+updatedAt: "2026-07-30T18:41:53Z"
 ---
 
 <!-- task-tracker:description -->
@@ -99,3 +97,6 @@ claimedAt: "2026-07-30T18:22:06Z"
   |
   | run-checks: PASS (skill-sync + 16 suites)
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
+- 2026-07-30T18:41:53Z — moved to review
+- 2026-07-30T18:41:53Z — note: delivered via PR #9 (squash 9171ebe); process-gate passed on the PR; backup .agent-foundry-backups/20260730T182236331Z deleted after operator acceptance
+- 2026-07-30T18:41:53Z — moved to done
