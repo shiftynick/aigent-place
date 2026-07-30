@@ -82,7 +82,9 @@ reporting — not just how long it thinks.
 ## Handoff packets
 
 Write every delegated prompt as if the worker has seen nothing — because it
-hasn't. Include:
+hasn't. Apply `docs/SDLC.md` → "Agent boundaries": capability does not imply
+assignment, and every packet names its objective, mutation ceiling, and scope.
+Include:
 
 - The repo path and exact objective.
 - Files, packages, or surfaces in scope, and anything explicitly out of scope.

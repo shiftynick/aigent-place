@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.6.0",
-  "installedAt": "2026-07-29T12:41:50.207Z",
+  "foundryVersion": "0.9.0",
+  "installedAt": "2026-07-30T18:22:36.331Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "310635fe7cc2c06e1a1e11c17cc3879115d05b1492e689e87b4245e7ab5f9f1f"
+      "sha256": "0d8046f469074d5ec4c8677625b51f4d86b0ea148025d8f3058cc6ae964a9a92"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
@@ -49,7 +49,7 @@
     },
     ".agents/skills/claude-in-codex/SKILL.md": {
       "tier": "mold",
-      "sha256": "ed2a788da0fc9745cced12acce7432bc17b48edd6bac9998cb2150eb77cdb3b2"
+      "sha256": "ed032a2cb38d2461ee97ebe14a4d8c7795fa2782dddb269923b3677c5a64c22c"
     },
     ".agents/skills/claude-in-codex/scripts/claude-ask.mjs": {
       "tier": "mold",
@@ -71,6 +71,18 @@
       "tier": "mold",
       "sha256": "849bc798ffdf569b66c1581d7dfac73099944d995303cf9d6e46166bfc405203"
     },
+    ".agents/skills/cursor-cli/SKILL.md": {
+      "tier": "mold",
+      "sha256": "94949d7565533f9aa62a90e656c91c0c298e2bd275db08dfe933dcd2969f2d83"
+    },
+    ".agents/skills/cursor-cli/scripts/cursor-agent.mjs": {
+      "tier": "mold",
+      "sha256": "c28341dd61042f7ea5b2570e524c9b5332afb7816d646831796ccbb621305e4c"
+    },
+    ".agents/skills/cursor-cli/scripts/cursor-agent.test.mjs": {
+      "tier": "mold",
+      "sha256": "c4f74765cfd2aa7ab9c2f0816a42c2c460920361b7b29590536fd2ff1b6dcc6a"
+    },
     ".agents/skills/diagnosing-bugs/SKILL.md": {
       "tier": "mold",
       "sha256": "de27e251726130823d8c643ad373b07f021c151b5bc90b8d90246cfca690f75a"
@@ -81,11 +93,19 @@
     },
     ".agents/skills/efficient-orchestration/SKILL.md": {
       "tier": "mold",
-      "sha256": "a5fed331f523d3259fc311a2d51f8cebebf2052bce0dd03df52834dc9cd4a0e9"
+      "sha256": "4d659378ecc59d6fdb111185c5148082ae43ddf9d843cd97108ca7ca80fcb1ff"
     },
     ".agents/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "4da9025698d93b735a464ad9ab9306a6cb5fd0d7fec25b58091e92ca90f60506"
+      "sha256": "4ba44aa01414ff155bbac63bff974c668631296ac9362cf96b1e737ca1d811f5"
+    },
+    ".agents/skills/execute-task/references/cold-review.md": {
+      "tier": "mold",
+      "sha256": "6e76e049f41b799954f7e0c12f9eaeee78cd10fe35c0b2fb426213b4174f9cce"
+    },
+    ".agents/skills/execute-task/references/decisions-and-blockers.md": {
+      "tier": "mold",
+      "sha256": "c91b65d1df5b8ef3007aed3ff643780e587d187b23574a562f30f690817b1d1d"
     },
     ".agents/skills/grill-me/SKILL.md": {
       "tier": "mold",
@@ -117,7 +137,19 @@
     },
     ".agents/skills/task-tracker/SKILL.md": {
       "tier": "mold",
-      "sha256": "4a1dc8d07ee6dcb1c6ef2aeb01034dae2f91ca49f39ab862d8c190b237fae529"
+      "sha256": "1c075ef30a690a5610e5c0d804b2cc5848ff400a62eeb3da657a8aa74dbfd7f4"
+    },
+    ".agents/skills/task-tracker/references/cli-reference.md": {
+      "tier": "mold",
+      "sha256": "a2e1f853a268f49e1a04577c9677b1f97985a8611c652a62df61692addfbcedd"
+    },
+    ".agents/skills/task-tracker/references/concurrency.md": {
+      "tier": "mold",
+      "sha256": "930fc7747f8c37e0ac6e7ed70f3a4a62a8fd7790f8830dcbc7838cc6a114e9b7"
+    },
+    ".agents/skills/task-tracker/references/task-authoring.md": {
+      "tier": "mold",
+      "sha256": "c7e74a781c238b7be74ff35588b38923abc859d4e09fc757ccfc3f919006f19e"
     },
     ".agents/skills/task-tracker/scripts/_lib.mjs": {
       "tier": "mold",
@@ -169,7 +201,19 @@
     },
     ".claude/skills/codex-in-claude/SKILL.md": {
       "tier": "mold",
-      "sha256": "4dea84254d95195ccf3560ac8fa8486c77381306478049dd119a5ead434bb072"
+      "sha256": "2f856fb475f3f03adb646f6570525948be84ba1159bb0cd661f19f780c98f758"
+    },
+    ".claude/skills/cursor-cli/SKILL.md": {
+      "tier": "mold",
+      "sha256": "7da8bc1b828e6b4322c1056bc4d973d36afaa2633139c616dd187e6598bab2ac"
+    },
+    ".claude/skills/cursor-cli/scripts/cursor-agent.mjs": {
+      "tier": "mold",
+      "sha256": "c28341dd61042f7ea5b2570e524c9b5332afb7816d646831796ccbb621305e4c"
+    },
+    ".claude/skills/cursor-cli/scripts/cursor-agent.test.mjs": {
+      "tier": "mold",
+      "sha256": "c4f74765cfd2aa7ab9c2f0816a42c2c460920361b7b29590536fd2ff1b6dcc6a"
     },
     ".claude/skills/diagnosing-bugs/SKILL.md": {
       "tier": "mold",
@@ -181,11 +225,19 @@
     },
     ".claude/skills/efficient-orchestration/SKILL.md": {
       "tier": "mold",
-      "sha256": "a5fed331f523d3259fc311a2d51f8cebebf2052bce0dd03df52834dc9cd4a0e9"
+      "sha256": "4d659378ecc59d6fdb111185c5148082ae43ddf9d843cd97108ca7ca80fcb1ff"
     },
     ".claude/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "bafcffa78a22747278a906af78e640f8b45395299b22d1e9efa1b8a9e1eb30f2"
+      "sha256": "9ce2194b918316c412615359250687ed0756d8a14bd97eec5194a08f3dedb020"
+    },
+    ".claude/skills/execute-task/references/cold-review.md": {
+      "tier": "mold",
+      "sha256": "6e76e049f41b799954f7e0c12f9eaeee78cd10fe35c0b2fb426213b4174f9cce"
+    },
+    ".claude/skills/execute-task/references/decisions-and-blockers.md": {
+      "tier": "mold",
+      "sha256": "c91b65d1df5b8ef3007aed3ff643780e587d187b23574a562f30f690817b1d1d"
     },
     ".claude/skills/grill-me/SKILL.md": {
       "tier": "mold",
@@ -217,7 +269,19 @@
     },
     ".claude/skills/task-tracker/SKILL.md": {
       "tier": "mold",
-      "sha256": "9df72538700c5e7c46bcba167ff3fbb0357a4eb6ad3483b4f71cb846516a4dae"
+      "sha256": "cee2a80d5f0c9efb1f7a14365654d724d43592799e3d02397f85f343d26964ff"
+    },
+    ".claude/skills/task-tracker/references/cli-reference.md": {
+      "tier": "mold",
+      "sha256": "1331517f7c22b5b93c6b451f56ac1cc0f469288c73f772a2fa33c5852cc088a8"
+    },
+    ".claude/skills/task-tracker/references/concurrency.md": {
+      "tier": "mold",
+      "sha256": "930fc7747f8c37e0ac6e7ed70f3a4a62a8fd7790f8830dcbc7838cc6a114e9b7"
+    },
+    ".claude/skills/task-tracker/references/task-authoring.md": {
+      "tier": "mold",
+      "sha256": "a20096381d3810702bb3d7562db57798b396073c8ca2c7b73364608ff8a327fd"
     },
     ".claude/skills/task-tracker/scripts/_lib.mjs": {
       "tier": "mold",
@@ -257,11 +321,11 @@
     },
     "AGENTS.md": {
       "tier": "seed",
-      "sha256": "f8eb3a9dc4f6414dc75b369ea43dd7c3fd490fee4487943e2317e6a554b868bf"
+      "sha256": "6e4c51e9a8a7ae1ea6e5858b970325c9b1911a4ebbc7c8766206a46627b37fde"
     },
     "BLOCKED-JOURNAL.md": {
       "tier": "seed",
-      "sha256": "4d9682f3ae76b4794a9ed0dec32e54c5dfa3696833ccef6dc139d7ca4fe937e2"
+      "sha256": "365f6f7a716fa8bb01fd3985c4441024c70b0e8b307f7da594ff414db590d2a5"
     },
     "CLAUDE.md": {
       "tier": "seed",
@@ -277,7 +341,7 @@
     },
     "PLANNING-JOURNAL.md": {
       "tier": "seed",
-      "sha256": "e52c1fd51f15c255ac48044609f5d32705fbde573ac3a91a3dbc4294e4a2450f"
+      "sha256": "c7a8c37b06201604ba2c9ae83b08682cdae04eaf356bea41a3a1a15fc531bd6e"
     },
     "docs/ENGINEERING-STANDARDS.md": {
       "tier": "seed",
@@ -289,7 +353,7 @@
     },
     "docs/SDLC.md": {
       "tier": "mold",
-      "sha256": "7b3f0f82ffe25c137047ac8b1f4e480dd1c0389c2ca77967dc11370e124a23a5"
+      "sha256": "525a8a7c9099c60d104f87813f610c24ec2dd33bca1ef8190e1ea18f112e69b6"
     },
     "docs/adr/README.md": {
       "tier": "seed",
