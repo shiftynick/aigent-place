@@ -1,12 +1,12 @@
 ---
 id: task-024
 title: Accept terminal revision and forced-sleep ADR
-status: review
+status: done
 priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-30T00:41:15Z"
-updatedAt: "2026-07-30T00:41:33Z"
+updatedAt: "2026-07-30T00:43:46Z"
 ---
 
 <!-- task-tracker:description -->
@@ -60,3 +60,5 @@ Review ADR-0004 and explicitly accept it, reject it, or request changes. Accepta
   |
   | run-checks: PASS (skill-sync + 14 suites)
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
+- 2026-07-30T00:43:46Z — note: final cold review: rung 2 fresh subagents in separate isolated worktrees. SPEC and STANDARDS both passed with no findings; both independently reran diff-check and the full process gate (289 tests).
+- 2026-07-30T00:43:46Z — moved to done
