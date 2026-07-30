@@ -4,7 +4,10 @@ This is the normative Step 0 contract for entity identity, coordinates, shape
 trees, collision, geometry mutation, sleeping bodies, deterministic
 displacement, and `unstick`.
 
-It implements [ADR-0002](../../docs/adr/0002-world-geometry-and-displacement-semantics.md).
+It implements
+[ADR-0002](../../docs/adr/0002-world-geometry-and-displacement-semantics.md)
+and
+[ADR-0003](../../docs/adr/0003-heightfield-sampling-and-terrain-collision.md).
 The public message definitions live in
 [`aigent.proto`](../../protocol/v1/aigent.proto). The executable semantic
 examples are
@@ -44,7 +47,8 @@ accepted command sequence.
 - One accepted externally visible mutation increments the affected entity
   exactly once. A semantic no-op or rejection does not increment it.
 - A command that mutates several entities increments each changed entity once
-  and returns every affected `(entity_id, revision)` pair in numeric ID order.
+  and returns every affected `(entity_id, revision)` pair in numeric ID order
+  through `CommandAccepted.affected_world_entities`.
 - Exhausting the `uint64` ID or revision space is a typed no-effect capacity
   rejection (`ENTITY_ID_EXHAUSTED` or `REVISION_EXHAUSTED`); arithmetic MUST
   NOT wrap to zero.
@@ -99,6 +103,24 @@ local = axis_metres - chunk * 64
 belongs to chunk `-1` at local `0`, and `-0.001` belongs to chunk `-1` near
 local `64`. Chunk coordinates are signed `i32`.
 
+### 3.4 Heightfield lattice
+
+Each chunk owns a regular horizontal lattice of signed integer-millimetre
+height samples. `heightfield_cell_size_mm` is positive, exactly divides
+`64000`, and is fixed constitutionally for the world. Samples are addressed
+by global integer `(sample_x, sample_z)` coordinates; generation is a pure
+function of `(world_seed, sample_x, sample_z)`. Shared chunk-border samples
+therefore have one value, and persisted border edits update every chunk view
+atomically.
+
+The visible terrain is the bilinear interpolation of the four cell corners,
+but rendering is not collision authority. Physics derives one AABB column per
+cell: horizontal bounds are the cell bounds, the lower `y` bound is the
+negative world limit, and the upper bound is the greatest of the four corner
+samples. Cells are half-open on positive `x` and `z` edges, except at the
+positive world boundary. A footprint selects every cell with strictly
+positive horizontal intersection.
+
 ## 4. Shape tree
 
 One grammar is used for aigent bodies, placed objects, rendering parameters,
@@ -145,8 +167,9 @@ cone axes are local `y`.
 | cone | positive `radius_mm`, positive `height_mm`; conservative half-extents `(r, height/2, r)` |
 | panel | positive `width_mm`, `height_mm`, and `thickness_mm`; local axes are width `x`, height `y`, thickness `z` |
 
-All parameters are unsigned integer millimetres and MUST fit the active
-ruleset's primitive and aggregate bounds.
+All parameters use the signed `sint64` millimetre wire representation from
+section 3.2, MUST satisfy the positive or non-negative constraints above, and
+MUST fit the active ruleset's primitive and aggregate bounds.
 
 ## 5. Canonical collider
 
@@ -176,6 +199,12 @@ The broadphase is a uniform spatial hash rebuilt from a published immutable
 generation; its cell size is ruleset/workload policy and cannot alter
 narrowphase results.
 
+Grounding translates an entity vertically until its aggregate lower face
+equals the greatest terrain-column top beneath cells having positive-area
+intersection with its aggregate horizontal footprint. Horizontal coordinates
+do not change. Terrain columns participate in overlap, wake, restore, and
+continuous movement using the same legal-contact rule as entity AABBs.
+
 ## 6. Movement
 
 Movement is a continuous swept test over the full requested segment, never an
@@ -194,10 +223,20 @@ exists.
 - Initial positive-volume overlap is an invalid world state and MUST be
   repaired through restore displacement before normal movement.
 - Zero-length movement in a legal state is an accepted semantic no-op.
-- Equal contact times report the lowest blocking entity ID.
-- Simultaneous commands are resolved in canonical command order, including
-  numeric entity-ID ordering; the earlier accepted position participates in
-  later sweeps.
+- Equal contact times report the lowest blocking entity ID among entity
+  blockers. Terrain ties use signed global `(cell_x, cell_z)` order. When an
+  entity and terrain blocker otherwise have the same exact contact time and
+  numeric key, the entity sorts first.
+- Commands are resolved by the architecture's exact
+  `(arrival_tick, aigent_id, sequence)` tuple. Entity-ID ordering governs
+  collection iteration and multi-entity restore, not command order. An
+  earlier accepted position participates in later sweeps.
+
+Conformance comparisons represent slab entry and exit times as reduced or
+cross-multiplication-safe rational numerator/denominator pairs. Runtime
+contact positions remain server `f64`; fixture oracles MUST NOT use
+floating-point equality or an unstated decimal-rounding epsilon to choose the
+winner.
 
 The server retains its contact `f64` position. Public snapshots/results
 quantize that position by section 3.2; quantization does not move the
@@ -237,6 +276,17 @@ Overlap rejects as generic `COMMAND_REJECTION_CODE_CONFLICT` with
 Only after all validation succeeds may persistence allocate the next entity
 ID. The accepted object begins at revision `1`.
 
+All typed physics failures map to the outer `CommandRejected.code` below:
+
+| Physics rejection | Outer command rejection |
+| --- | --- |
+| `INVALID_COORDINATE`, `OUT_OF_WORLD_BOUNDS`, `INVALID_SHAPE`, `UNSTICK_NOT_ELIGIBLE` | `INVALID_INTENT` |
+| `OVERLAP`, `ENCLOSES_AIGENT`, `NO_FREE_POSITION` | `CONFLICT` |
+| `ENTITY_ID_EXHAUSTED`, `REVISION_EXHAUSTED` | `BUDGET_EXCEEDED` |
+
+Ruleset-owned limits continue to use `RULESET_VIOLATION`, and an unstick
+rate-limit failure uses `RATE_LIMITED`.
+
 ### 7.2 `set_shape`
 
 `SET_SHAPE` payload bytes MUST encode `SetShapePayload`. The complete
@@ -245,20 +295,25 @@ budget, active-overlap, and active-aigent-enclosure validation at the entity's
 current pose.
 
 Failure preserves the previous tree, position, and revision. The server never
-partially installs, clamps, or auto-displaces a rejected shape. Acceptance
-increments the entity revision exactly once.
+partially installs, clamps, or auto-displaces a rejected shape. A candidate
+whose canonical tree equals the installed canonical tree is an accepted
+semantic no-op and preserves revision; any other acceptance increments the
+entity revision exactly once.
 
 ## 8. Sleep, wake, restore, and displacement
 
 Disconnect first cancels every active lease, then marks the body sleeping and
-removes it from the active broadphase. The sleeping body retains identity,
-revision, shape, and stored position. Because it does not collide, active
-bodies may cross it and objects may be placed through its stored location.
+removes it from the active broadphase. An already-sleeping body is a semantic
+no-op. The sleeping body retains identity, revision, shape, and stored
+position. Because it does not collide, active bodies may cross it and objects
+may be placed through its stored location.
 
 Wake and restore test the stored position against the current frozen ruleset,
-heightfield, world bound, and active colliders. A conflict invokes the shared
-search below. Multiple restored bodies are processed by ascending entity ID,
-so each accepted earlier position is visible to the next.
+heightfield, world bound, and active colliders. The exact stored pose is legal
+only when its aggregate lower face equals the current support height and it
+has no positive-volume overlap with terrain or active entities. A conflict
+invokes the shared search below. Multiple restored bodies are processed by
+ascending entity ID, so each accepted earlier position is visible to the next.
 
 ### 8.1 Candidate search
 

@@ -216,34 +216,34 @@ message ColorRgba {
 }
 
 message BoxPrimitive {
-  uint64 size_x_mm = 1;
-  uint64 size_y_mm = 2;
-  uint64 size_z_mm = 3;
+  sint64 size_x_mm = 1;
+  sint64 size_y_mm = 2;
+  sint64 size_z_mm = 3;
 }
 
 message SpherePrimitive {
-  uint64 radius_mm = 1;
+  sint64 radius_mm = 1;
 }
 
 message CapsulePrimitive {
-  uint64 radius_mm = 1;
-  uint64 segment_length_mm = 2;
+  sint64 radius_mm = 1;
+  sint64 segment_length_mm = 2;
 }
 
 message CylinderPrimitive {
-  uint64 radius_mm = 1;
-  uint64 height_mm = 2;
+  sint64 radius_mm = 1;
+  sint64 height_mm = 2;
 }
 
 message ConePrimitive {
-  uint64 radius_mm = 1;
-  uint64 height_mm = 2;
+  sint64 radius_mm = 1;
+  sint64 height_mm = 2;
 }
 
 message PanelPrimitive {
-  uint64 width_mm = 1;
-  uint64 height_mm = 2;
-  uint64 thickness_mm = 3;
+  sint64 width_mm = 1;
+  sint64 height_mm = 2;
+  sint64 thickness_mm = 3;
 }
 
 message ShapeNode {
@@ -307,6 +307,13 @@ message Command {
 }
 
 message EntityReference {
+  // Opaque legacy identity retained at its original wire type. New world
+  // geometry results use CommandAccepted.affected_world_entities.
+  bytes entity_id = 1;
+  uint64 revision = 2;
+}
+
+message WorldEntityReference {
   // Non-zero monotonic uint64; see ADR-0002 and the world v1 contract.
   uint64 entity_id = 1;
   uint64 revision = 2;
@@ -315,6 +322,7 @@ message EntityReference {
 message CommandAccepted {
   repeated EntityReference affected_entities = 1;
   bytes payload = 2;
+  repeated WorldEntityReference affected_world_entities = 3;
 }
 
 message CommandRejected {

@@ -113,7 +113,11 @@ An exact-next, well-formed command produces and records one authoritative
 accepted or rejected `CommandResult`, then advances the expected sequence.
 Retries replay that recorded result. Accepted results identify every affected
 entity and its resulting non-zero revision; revision zero is invalid at the
-protocol boundary. Durable publication ordering, canonical
+protocol boundary. Existing opaque identities remain in
+`CommandAccepted.affected_entities`. Geometry commands governed by the world
+v1 contract use `affected_world_entities`, whose IDs are numeric `uint64`
+values; a result MUST NOT describe the same mutation in both fields. Durable
+publication ordering, canonical
 content digesting, idempotency retention, and replay-journal retention are
 owned by the replay and persistence contract.
 
