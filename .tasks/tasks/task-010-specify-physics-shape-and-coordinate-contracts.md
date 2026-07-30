@@ -4,9 +4,9 @@ title: "Specify physics, shape, and coordinate contracts"
 status: blocked
 priority: p0
 tags: [area:architecture, milestone:foundations]
-blockedBy: [task-022, task-023]
+blockedBy: [task-022, task-023, task-024]
 createdAt: "2026-07-29T12:55:19Z"
-updatedAt: "2026-07-30T00:20:05Z"
+updatedAt: "2026-07-30T00:41:15Z"
 ---
 
 <!-- task-tracker:description -->
@@ -66,3 +66,5 @@ Write the normative Step 0 contract for collision, sleeping/waking bodies, place
 - 2026-07-30T00:20:05Z — edited (+blockedBy task-023)
 - 2026-07-30T00:20:05Z — note: ADR-0003 was proposed after round-1 review exposed missing persisted heightfield and terrain-collision semantics. The operator explicitly accepted it; task-010 remains dependency-blocked only until task-023 completes its own delivery lifecycle.
 - 2026-07-30T00:20:05Z — moved to blocked
+- 2026-07-30T00:41:15Z — edited (+blockedBy task-024)
+- 2026-07-30T00:41:15Z — note: ADR-0004 was explicitly accepted as proposed; task-010 remains dependency-blocked only until task-024 completes its independent review and delivery.
