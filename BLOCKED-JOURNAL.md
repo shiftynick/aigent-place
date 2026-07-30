@@ -48,3 +48,21 @@ the task, exact blocking condition, evidence already checked, and a concrete
   **Resolved 2026-07-29:** the operator explicitly accepted ADR-0002 as
   written. Task-022 records the decision; task-010 may resume when that
   decision card completes its validation and review.
+
+- 2026-07-29 — `task-010` cannot finish grounding, terrain collision, wake,
+  or restore conformance until the operator decides proposed
+  [ADR-0003](docs/adr/0003-heightfield-sampling-and-terrain-collision.md).
+  The first cold SPEC and STANDARDS reviews confirmed that the accepted
+  architecture names an authoritative heightfield but does not define its
+  sample lattice, chunk-seam ownership, support-height boundaries, or
+  sweepable collision geometry. Those choices affect persisted chunks,
+  replay, server collision, and browser terrain. Task `task-023` is the
+  `needs:operator` decision card.
+  **Resume:** accept ADR-0003, reject it, or request specific changes; then
+  complete task-023, remove `needs:operator` from task-010, return task-010 to
+  `in_progress`, implement the accepted terrain model, fix the remaining
+  adjudicated round-1 findings, and re-run separate cold SPEC and STANDARDS
+  reviews.
+  **Resolved 2026-07-29:** the operator explicitly accepted ADR-0003 as
+  written. Task-023 records the decision; task-010 may resume when that
+  decision card completes its validation and review.
