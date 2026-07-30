@@ -6,7 +6,7 @@ priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-30T01:31:37Z"
-updatedAt: "2026-07-30T11:54:07Z"
+updatedAt: "2026-07-30T11:56:58Z"
 ---
 
 <!-- task-tracker:description -->
@@ -23,3 +23,4 @@ Review proposed ADR-0005 and explicitly accept, revise, or reject its durable ge
 - 2026-07-30T11:54:07Z — edited (-tag needs:operator)
 - 2026-07-30T11:54:07Z — note: operator explicitly accepted ADR-0005 as proposed on 2026-07-30; this task records and delivers that decision.
 - 2026-07-30T11:54:07Z — moved to review
+- 2026-07-30T11:56:58Z — note: round-1 cold review: rung 2 fresh subagents, separate SPEC and STANDARDS calls. Both verified the ADR decision body remained unchanged. Fixed stale task-011 needs:operator state; STANDARDS additionally required the blocker journal resolution and removal of inherited ADR header trailing whitespace.

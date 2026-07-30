@@ -3,10 +3,10 @@ id: task-011
 title: Specify replay and persistence ordering contracts
 status: blocked
 priority: p0
-tags: [area:architecture, milestone:foundations, needs:operator]
+tags: [area:architecture, milestone:foundations]
 blockedBy: [task-025]
 createdAt: "2026-07-29T12:55:19Z"
-updatedAt: "2026-07-30T11:54:07Z"
+updatedAt: "2026-07-30T11:56:39Z"
 ---
 
 <!-- task-tracker:description -->
@@ -61,3 +61,4 @@ Write the normative Step 0 contract for canonical command order, seeded randomne
   | run-checks: PASS (skill-sync + 14 suites)
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
 - 2026-07-30T11:54:07Z — note: operator explicitly accepted ADR-0005 as proposed on 2026-07-30. The decision condition is resolved; task-011 remains dependency-blocked only until task-025 completes protected delivery.
+- 2026-07-30T11:56:39Z — edited (-tag needs:operator)

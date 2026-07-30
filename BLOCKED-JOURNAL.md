@@ -97,3 +97,6 @@ the task, exact blocking condition, evidence already checked, and a concrete
   complete task-025, remove `needs:operator` from task-011, return task-011 to
   `in_progress`, and encode the normative contract, additive protocol fields,
   and executable replay/recovery fixtures.
+  **Resolved 2026-07-30:** the operator explicitly accepted ADR-0005 as
+  written. Task-025 records the decision; task-011 remains blocked only until
+  that decision card completes validation and protected delivery.
