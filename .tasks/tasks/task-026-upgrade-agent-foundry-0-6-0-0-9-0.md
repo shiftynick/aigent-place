@@ -1,5 +1,5 @@
 ---
-id: task-024
+id: task-026
 title: "Upgrade Agent Foundry 0.6.0 -> 0.9.0"
 status: in_progress
 priority: p1
