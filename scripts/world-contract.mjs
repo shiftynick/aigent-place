@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 export const WORLD_LIMIT_MM = 100_000_000;
 export const UINT64_MAX = 18_446_744_073_709_551_615n;
+export const TERMINAL_REVISION_PREDECESSOR = UINT64_MAX - 1n;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixturePath = path.join(
@@ -25,6 +26,56 @@ function cleanNumber(value) {
   if (Object.is(value, -0)) return 0;
   if (Number.isInteger(value)) return value;
   return Number(value.toFixed(12));
+}
+
+function fraction(value) {
+  return decimalFraction(String(value));
+}
+
+function fractionCompare(left, right) {
+  const comparison = left.numerator * right.denominator - right.numerator * left.denominator;
+  return comparison < 0n ? -1 : comparison > 0n ? 1 : 0;
+}
+
+function fractionSubtract(left, right) {
+  return {
+    numerator: left.numerator * right.denominator - right.numerator * left.denominator,
+    denominator: left.denominator * right.denominator,
+  };
+}
+
+function fractionDivide(left, right) {
+  if (right.numerator === 0n) throw new Error("cannot divide a rational by zero");
+  const negative = right.numerator < 0n;
+  return {
+    numerator: negative ? -left.numerator * right.denominator : left.numerator * right.denominator,
+    denominator: (negative ? -right.numerator : right.numerator) * left.denominator,
+  };
+}
+
+function fractionMax(left, right) {
+  return fractionCompare(left, right) >= 0 ? left : right;
+}
+
+function fractionMin(left, right) {
+  return fractionCompare(left, right) <= 0 ? left : right;
+}
+
+function fractionToNumber(value) {
+  return Number(value.numerator) / Number(value.denominator);
+}
+
+function compareBigInts(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function floorFraction(value) {
+  if (value.numerator >= 0n) return value.numerator / value.denominator;
+  return -((-value.numerator + value.denominator - 1n) / value.denominator);
+}
+
+function ceilFraction(value) {
+  return -floorFraction({ numerator: -value.numerator, denominator: value.denominator });
 }
 
 function roundMillimeterTiesToEven(value) {
@@ -280,7 +331,8 @@ export function validateShape(shape) {
     if (
       !node.translation ||
       !["x", "y", "z"].every((key) =>
-        finiteInteger(node.translation[key]),
+        finiteInteger(node.translation[key]) &&
+        Math.abs(node.translation[key]) <= WORLD_LIMIT_MM,
       )
     ) {
       return { ok: false, reason: "invalid_shape" };
@@ -351,6 +403,10 @@ function canonicalShape(shape) {
       }))
       .sort((a, b) => a.id - b.id),
   };
+}
+
+function sameCanonicalShape(left, right) {
+  return JSON.stringify(canonicalize(canonicalShape(left))) === JSON.stringify(canonicalize(canonicalShape(right)));
 }
 
 function composedNodes(shape) {
@@ -507,11 +563,112 @@ function firstEnclosedAigent(state, candidate, excludeId) {
   return undefined;
 }
 
+function terrainDefinition(state) {
+  const nested = state.rules.heightfield;
+  const samples = state.rules.heightfield_samples ?? nested?.samples;
+  const cellSize = state.rules.heightfield_cell_size_mm ?? nested?.cell_size_mm;
+  if (samples === undefined && cellSize === undefined) return undefined;
+  if (
+    !finiteInteger(cellSize, { positive: true }) ||
+    64_000 % cellSize !== 0
+  ) {
+    throw new Error("invalid heightfield cell size");
+  }
+  const byCoordinate = new Map();
+  for (const sample of samples ?? []) {
+    if (
+      !sample ||
+      !finiteInteger(sample.x_mm) ||
+      !finiteInteger(sample.z_mm) ||
+      !finiteInteger(sample.height_mm) ||
+      sample.x_mm % cellSize !== 0 ||
+      sample.z_mm % cellSize !== 0
+    ) {
+      throw new Error("invalid heightfield sample");
+    }
+    byCoordinate.set(`${sample.x_mm},${sample.z_mm}`, sample.height_mm);
+  }
+  return { cellSize, byCoordinate };
+}
+
+function terrainSampleHeight(state, terrain, x, z) {
+  return terrain.byCoordinate.get(`${x},${z}`) ?? state.rules.heightfield_y_mm ?? 0;
+}
+
+function terrainCellsForAggregate(state, aggregate) {
+  const terrain = terrainDefinition(state);
+  if (!terrain) return [];
+  const size = BigInt(terrain.cellSize);
+  const firstX = floorFraction({
+    numerator: fraction(aggregate.min.x).numerator,
+    denominator: fraction(aggregate.min.x).denominator * size,
+  });
+  const lastX = ceilFraction({
+    numerator: fraction(aggregate.max.x).numerator,
+    denominator: fraction(aggregate.max.x).denominator * size,
+  }) - 1n;
+  const firstZ = floorFraction({
+    numerator: fraction(aggregate.min.z).numerator,
+    denominator: fraction(aggregate.min.z).denominator * size,
+  });
+  const lastZ = ceilFraction({
+    numerator: fraction(aggregate.max.z).numerator,
+    denominator: fraction(aggregate.max.z).denominator * size,
+  }) - 1n;
+  const cells = [];
+  for (let x = firstX; x <= lastX; x += 1n) {
+    for (let z = firstZ; z <= lastZ; z += 1n) {
+      const xMm = Number(x * size);
+      const zMm = Number(z * size);
+      const top = Math.max(
+        terrainSampleHeight(state, terrain, xMm, zMm),
+        terrainSampleHeight(state, terrain, xMm + terrain.cellSize, zMm),
+        terrainSampleHeight(state, terrain, xMm, zMm + terrain.cellSize),
+        terrainSampleHeight(state, terrain, xMm + terrain.cellSize, zMm + terrain.cellSize),
+      );
+      cells.push({
+        x: x.toString(),
+        z: z.toString(),
+        aabb: {
+          min: { x: xMm, y: -WORLD_LIMIT_MM, z: zMm },
+          max: {
+            x: xMm + terrain.cellSize,
+            y: top,
+            z: zMm + terrain.cellSize,
+          },
+        },
+      });
+    }
+  }
+  return cells;
+}
+
+function supportHeight(state, entity, x, z) {
+  const atZero = entityAabbs(entity, { x, y: 0, z });
+  const aggregate = aggregateAabb(atZero);
+  const columns = terrainCellsForAggregate(state, aggregate);
+  return columns.length > 0
+    ? Math.max(...columns.map(({ aabb }) => aabb.max.y))
+    : state.rules.heightfield_y_mm ?? 0;
+}
+
 function groundPosition(state, entity, x, z) {
-  const height = state.rules.heightfield_y_mm ?? 0;
   const atZero = entityAabbs(entity, { x, y: 0, z });
   const minY = Math.min(...atZero.map(({ min }) => min.y));
-  return { x, y: cleanNumber(height - minY), z };
+  return { x, y: cleanNumber(supportHeight(state, entity, x, z) - minY), z };
+}
+
+function terrainOverlap(state, entity) {
+  const aggregate = aggregateAabb(entityAabbs(entity));
+  const columns = terrainCellsForAggregate(state, aggregate);
+  return columns.find(({ aabb }) =>
+    entityAabbs(entity).some((box) => aabbsOverlap(box, aabb)),
+  );
+}
+
+function groundedAtSupport(state, entity) {
+  const aggregate = aggregateAabb(entityAabbs(entity));
+  return aggregate.min.y === supportHeight(state, entity, entity.position.x, entity.position.z);
 }
 
 function incrementRevision(entity) {
@@ -522,7 +679,11 @@ function incrementRevision(entity) {
 }
 
 function revisionAvailable(entity) {
-  return BigInt(entity.revision) < UINT64_MAX;
+  return BigInt(entity.revision) < TERMINAL_REVISION_PREDECESSOR;
+}
+
+function isTerminalRevision(entity) {
+  return BigInt(entity.revision) === UINT64_MAX;
 }
 
 function inspectState(state, inspect = {}) {
@@ -602,15 +763,8 @@ function applyPlace(state, step) {
       reason: "out_of_world_bounds",
     };
   }
-  if (BigInt(state.next_entity_id) > UINT64_MAX) {
-    return {
-      type: "place_object",
-      outcome: "rejected",
-      reason: "entity_id_exhausted",
-    };
-  }
   const entity = {
-    id: state.next_entity_id,
+    id: "0",
     kind: "object",
     lifecycle: "active",
     revision: "1",
@@ -643,6 +797,14 @@ function applyPlace(state, step) {
       conflicting_entity_id: enclosed,
     };
   }
+  if (BigInt(state.next_entity_id) > UINT64_MAX) {
+    return {
+      type: "place_object",
+      outcome: "rejected",
+      reason: "entity_id_exhausted",
+    };
+  }
+  entity.id = state.next_entity_id;
   state.entities.push(entity);
   state.next_entity_id = (BigInt(state.next_entity_id) + 1n).toString();
   return {
@@ -662,6 +824,14 @@ function findEntity(state, id) {
 
 function applySetShape(state, step) {
   const entity = findEntity(state, step.entity_id);
+  if (isTerminalRevision(entity)) {
+    return {
+      type: "set_shape",
+      entity_id: entity.id,
+      outcome: "rejected",
+      reason: "revision_exhausted",
+    };
+  }
   const validation = validateShape(step.shape);
   if (!validation.ok) {
     return {
@@ -700,6 +870,15 @@ function applySetShape(state, step) {
       conflicting_entity_id: enclosed,
     };
   }
+  if (sameCanonicalShape(entity.shape, step.shape)) {
+    return {
+      type: "set_shape",
+      outcome: "accepted",
+      no_op: true,
+      entity_id: entity.id,
+      revision: entity.revision,
+    };
+  }
   if (!revisionAvailable(entity)) {
     return {
       type: "set_shape",
@@ -719,38 +898,78 @@ function applySetShape(state, step) {
 }
 
 function sweepPair(moving, delta, obstacle) {
-  let entry = -Infinity;
-  let exit = Infinity;
+  let entry;
+  let exit;
   for (const axis of ["x", "y", "z"]) {
-    const velocity = delta[axis];
-    if (velocity === 0) {
+    const velocity = fraction(delta[axis]);
+    const movingMin = fraction(moving.min[axis]);
+    const movingMax = fraction(moving.max[axis]);
+    const obstacleMin = fraction(obstacle.min[axis]);
+    const obstacleMax = fraction(obstacle.max[axis]);
+    if (velocity.numerator === 0n) {
       if (
-        moving.max[axis] <= obstacle.min[axis] ||
-        moving.min[axis] >= obstacle.max[axis]
+        fractionCompare(movingMax, obstacleMin) <= 0 ||
+        fractionCompare(movingMin, obstacleMax) >= 0
       ) {
         return undefined;
       }
       continue;
     }
-    if (moving.max[axis] <= obstacle.min[axis] && velocity <= 0) {
+    if (
+      fractionCompare(movingMax, obstacleMin) <= 0 &&
+      velocity.numerator < 0n
+    ) {
       return undefined;
     }
-    if (moving.min[axis] >= obstacle.max[axis] && velocity >= 0) {
+    if (
+      fractionCompare(movingMin, obstacleMax) >= 0 &&
+      velocity.numerator > 0n
+    ) {
       return undefined;
     }
-    const first =
-      velocity > 0
-        ? (obstacle.min[axis] - moving.max[axis]) / velocity
-        : (obstacle.max[axis] - moving.min[axis]) / velocity;
-    const last =
-      velocity > 0
-        ? (obstacle.max[axis] - moving.min[axis]) / velocity
-        : (obstacle.min[axis] - moving.max[axis]) / velocity;
-    entry = Math.max(entry, first);
-    exit = Math.min(exit, last);
+    const first = fractionDivide(
+      velocity.numerator > 0n
+        ? fractionSubtract(obstacleMin, movingMax)
+        : fractionSubtract(obstacleMax, movingMin),
+      velocity,
+    );
+    const last = fractionDivide(
+      velocity.numerator > 0n
+        ? fractionSubtract(obstacleMax, movingMin)
+        : fractionSubtract(obstacleMin, movingMax),
+      velocity,
+    );
+    entry = entry === undefined ? first : fractionMax(entry, first);
+    exit = exit === undefined ? last : fractionMin(exit, last);
   }
-  if (entry > exit || exit < 0 || entry > 1) return undefined;
-  return Math.max(0, entry);
+  const zero = { numerator: 0n, denominator: 1n };
+  const one = { numerator: 1n, denominator: 1n };
+  if (
+    entry === undefined ||
+    fractionCompare(entry, exit) > 0 ||
+    fractionCompare(exit, zero) < 0 ||
+    fractionCompare(entry, one) > 0
+  ) {
+    return undefined;
+  }
+  return fractionMax(zero, entry);
+}
+
+function terrainColumnsForSweep(state, entity, target) {
+  const start = aggregateAabb(entityAabbs(entity));
+  const end = aggregateAabb(entityAabbs(entity, target));
+  return terrainCellsForAggregate(state, {
+    min: {
+      x: Math.min(start.min.x, end.min.x),
+      y: Math.min(start.min.y, end.min.y),
+      z: Math.min(start.min.z, end.min.z),
+    },
+    max: {
+      x: Math.max(start.max.x, end.max.x),
+      y: Math.max(start.max.y, end.max.y),
+      z: Math.max(start.max.z, end.max.z),
+    },
+  });
 }
 
 export function sweepFirstContact(state, entity, target) {
@@ -763,20 +982,57 @@ export function sweepFirstContact(state, entity, target) {
     return undefined;
   }
   let best;
+  const consider = (time, blocker) => {
+    if (time === undefined) return;
+    if (best !== undefined) {
+      const timeOrder = fractionCompare(time, best.time);
+      if (timeOrder > 0) return;
+      if (timeOrder === 0) {
+        if (blocker.kind === "terrain" && best.kind === "entity") return;
+        if (blocker.kind === "entity" && best.kind === "terrain") {
+          best = { time, ...blocker };
+          return;
+        }
+        if (
+          blocker.kind === "entity" &&
+          compareEntityIds(blocker.entity_id, best.entity_id) >= 0
+        ) {
+          return;
+        }
+        if (blocker.kind === "terrain") {
+          const xOrder = compareBigInts(
+            BigInt(blocker.terrain_cell.x),
+            BigInt(best.terrain_cell.x),
+          );
+          if (
+            xOrder > 0 ||
+            (xOrder === 0 &&
+              compareBigInts(
+                BigInt(blocker.terrain_cell.z),
+                BigInt(best.terrain_cell.z),
+              ) >= 0)
+          ) {
+            return;
+          }
+        }
+      }
+    }
+    best = { time, ...blocker };
+  };
   for (const obstacle of activeEntities(state, entity.id)) {
     for (const movingBox of entityAabbs(entity)) {
       for (const obstacleBox of entityAabbs(obstacle)) {
         const time = sweepPair(movingBox, delta, obstacleBox);
-        if (
-          time !== undefined &&
-          (best === undefined ||
-            time < best.time ||
-            (time === best.time &&
-              compareEntityIds(obstacle.id, best.entity_id) < 0))
-        ) {
-          best = { time, entity_id: obstacle.id };
-        }
+        consider(time, { kind: "entity", entity_id: obstacle.id });
       }
+    }
+  }
+  for (const column of terrainColumnsForSweep(state, entity, target)) {
+    for (const movingBox of entityAabbs(entity)) {
+      consider(sweepPair(movingBox, delta, column.aabb), {
+        kind: "terrain",
+        terrain_cell: { x: column.x, z: column.z },
+      });
     }
   }
   return best;
@@ -784,11 +1040,30 @@ export function sweepFirstContact(state, entity, target) {
 
 function applyMoves(state, step) {
   const outputs = [];
-  const moves = [...step.moves].sort((a, b) =>
-    compareEntityIds(String(a.entity_id), String(b.entity_id)),
-  );
+  const moves = [...step.moves].sort((a, b) => {
+    const tick = compareBigInts(
+      BigInt(a.arrival_tick ?? 0),
+      BigInt(b.arrival_tick ?? 0),
+    );
+    if (tick !== 0) return tick;
+    const aigent = compareEntityIds(
+      String(a.aigent_id ?? a.entity_id),
+      String(b.aigent_id ?? b.entity_id),
+    );
+    if (aigent !== 0) return aigent;
+    return compareBigInts(BigInt(a.sequence ?? 0), BigInt(b.sequence ?? 0));
+  });
   for (const move of moves) {
     const entity = findEntity(state, move.entity_id);
+    if (isTerminalRevision(entity)) {
+      outputs.push({
+        type: "move",
+        entity_id: entity.id,
+        outcome: "rejected",
+        reason: "revision_exhausted",
+      });
+      continue;
+    }
     if (entity.lifecycle !== "active") {
       outputs.push({
         type: "move",
@@ -798,7 +1073,23 @@ function applyMoves(state, step) {
       });
       continue;
     }
-    const target = { ...move.target };
+    if (
+      !move.target ||
+      !["x", "z"].every(
+        (axis) =>
+          Number.isFinite(move.target[axis]) &&
+          Math.abs(move.target[axis]) <= WORLD_LIMIT_MM,
+      )
+    ) {
+      outputs.push({
+        type: "move",
+        entity_id: entity.id,
+        outcome: "rejected",
+        reason: "out_of_world_bounds",
+      });
+      continue;
+    }
+    const target = groundPosition(state, entity, move.target.x, move.target.z);
     if (
       !["x", "y", "z"].every(
         (axis) =>
@@ -812,6 +1103,20 @@ function applyMoves(state, step) {
         entity_id: entity.id,
         outcome: "rejected",
         reason: "out_of_world_bounds",
+      });
+      continue;
+    }
+    if (
+      target.x === entity.position.x &&
+      target.y === entity.position.y &&
+      target.z === entity.position.z
+    ) {
+      outputs.push({
+        type: "move",
+        entity_id: entity.id,
+        outcome: "reached",
+        no_op: true,
+        position: clone(entity.position),
       });
       continue;
     }
@@ -838,9 +1143,15 @@ function applyMoves(state, step) {
     }
     const start = entity.position;
     entity.position = {
-      x: cleanNumber(start.x + (target.x - start.x) * contact.time),
-      y: cleanNumber(start.y + (target.y - start.y) * contact.time),
-      z: cleanNumber(start.z + (target.z - start.z) * contact.time),
+      x: cleanNumber(
+        start.x + (target.x - start.x) * fractionToNumber(contact.time),
+      ),
+      y: cleanNumber(
+        start.y + (target.y - start.y) * fractionToNumber(contact.time),
+      ),
+      z: cleanNumber(
+        start.z + (target.z - start.z) * fractionToNumber(contact.time),
+      ),
     };
     entity.blocked_ticks = (entity.blocked_ticks ?? 0) + 1;
     incrementRevision(entity);
@@ -848,7 +1159,9 @@ function applyMoves(state, step) {
       type: "move",
       entity_id: entity.id,
       outcome: "blocked",
-      blocker_entity_id: contact.entity_id,
+      ...(contact.kind === "entity"
+        ? { blocker_entity_id: contact.entity_id }
+        : { blocker_terrain_cell: contact.terrain_cell }),
       position: clone(entity.position),
     });
   }
@@ -872,42 +1185,54 @@ function nearestCandidate(state, entity, { excludeOrigin = false } = {}) {
   };
   const candidates = [];
   const reach = Math.floor(radius / step);
+  const radiusSquared = BigInt(radius) * BigInt(radius);
   for (let kx = -reach; kx <= reach; kx += 1) {
     for (let kz = -reach; kz <= reach; kz += 1) {
       if (excludeOrigin && kx === 0 && kz === 0) continue;
-      const dx = kx * step;
-      const dz = kz * step;
-      if (dx ** 2 + dz ** 2 > radius ** 2) continue;
+      const dx = BigInt(kx) * BigInt(step);
+      const dz = BigInt(kz) * BigInt(step);
+      if (dx * dx + dz * dz > radiusSquared) continue;
+      const candidateX = BigInt(anchor.x) + dx;
+      const candidateZ = BigInt(anchor.z) + dz;
+      if (
+        candidateX < -BigInt(WORLD_LIMIT_MM) ||
+        candidateX > BigInt(WORLD_LIMIT_MM) ||
+        candidateZ < -BigInt(WORLD_LIMIT_MM) ||
+        candidateZ > BigInt(WORLD_LIMIT_MM)
+      ) {
+        continue;
+      }
       const candidate = clone(entity);
       candidate.lifecycle = "active";
       candidate.position = groundPosition(
         state,
         candidate,
-        anchor.x + dx,
-        anchor.z + dz,
+        Number(candidateX),
+        Number(candidateZ),
       );
       const boxes = entityAabbs(candidate);
       if (!withinWorld(boxes)) continue;
       if (firstOverlap(state, candidate, entity.id) !== undefined) continue;
+      if (terrainOverlap(state, candidate) !== undefined) continue;
       const projectedY = roundMillimeterTiesToEven(candidate.position.y);
-      const dy = projectedY - anchor.y;
+      const dy = BigInt(projectedY) - BigInt(anchor.y);
       candidates.push({
         position: candidate.position,
-        distance: dx ** 2 + dy ** 2 + dz ** 2,
+        distance: dx * dx + dy * dy + dz * dz,
         tie: {
-          x: candidate.position.x,
-          y: projectedY,
-          z: candidate.position.z,
+          x: candidateX,
+          y: BigInt(projectedY),
+          z: candidateZ,
         },
       });
     }
   }
   candidates.sort(
     (a, b) =>
-      a.distance - b.distance ||
-      a.tie.x - b.tie.x ||
-      a.tie.y - b.tie.y ||
-      a.tie.z - b.tie.z,
+      compareBigInts(a.distance, b.distance) ||
+      compareBigInts(a.tie.x, b.tie.x) ||
+      compareBigInts(a.tie.y, b.tie.y) ||
+      compareBigInts(a.tie.z, b.tie.z),
   );
   return candidates[0]?.position;
 }
@@ -919,7 +1244,16 @@ export function nearestFree(state, entityId, options) {
 function applyLifecycle(state, step) {
   const entity = findEntity(state, step.entity_id);
   if (step.op === "sleep") {
-    if (!revisionAvailable(entity)) {
+    if (entity.lifecycle === "sleeping") {
+      return {
+        type: "sleep",
+        entity_id: entity.id,
+        outcome: "accepted",
+        no_op: true,
+        revision: entity.revision,
+      };
+    }
+    if (BigInt(entity.revision) > TERMINAL_REVISION_PREDECESSOR) {
       return {
         type: "sleep",
         entity_id: entity.id,
@@ -935,6 +1269,14 @@ function applyLifecycle(state, step) {
       entity_id: entity.id,
       outcome: "accepted",
       revision: entity.revision,
+    };
+  }
+  if (!revisionAvailable(entity)) {
+    return {
+      type: step.op,
+      entity_id: entity.id,
+      outcome: "rejected",
+      reason: "revision_exhausted",
     };
   }
   const isUnstick = step.op === "unstick";
@@ -959,7 +1301,9 @@ function applyLifecycle(state, step) {
     const storedBoxes = entityAabbs(storedCandidate);
     if (
       withinWorld(storedBoxes) &&
-      firstOverlap(state, storedCandidate, entity.id) === undefined
+      firstOverlap(state, storedCandidate, entity.id) === undefined &&
+      terrainOverlap(state, storedCandidate) === undefined &&
+      groundedAtSupport(state, storedCandidate)
     ) {
       position = clone(entity.position);
     }
@@ -979,17 +1323,6 @@ function applyLifecycle(state, step) {
     position.x !== entity.position.x ||
     position.y !== entity.position.y ||
     position.z !== entity.position.z;
-  if (
-    (step.op === "wake" || step.op === "unstick" || displaced) &&
-    !revisionAvailable(entity)
-  ) {
-    return {
-      type: step.op,
-      entity_id: entity.id,
-      outcome: "rejected",
-      reason: "revision_exhausted",
-    };
-  }
   entity.position = position;
   if (step.op === "wake") {
     entity.lifecycle = "active";
@@ -1026,6 +1359,9 @@ function assertState(state) {
   const active = activeEntities(state);
   for (let index = 0; index < active.length; index += 1) {
     const left = active[index];
+    if (isTerminalRevision(left)) {
+      throw new Error(`terminal entity ${left.id} is active`);
+    }
     if (!withinWorld(entityAabbs(left))) {
       throw new Error(`active entity ${left.id} is out of bounds`);
     }
@@ -1053,6 +1389,19 @@ export function evaluateScenario(initial, steps, inspect) {
       entity.shape = canonicalShape(entity.shape);
     }
   }
+  const recovery = state.entities
+    .filter((entity) => entity.lifecycle === "active" && isTerminalRevision(entity))
+    .sort((left, right) => compareEntityIds(left.id, right.id))
+    .map((entity) => {
+      entity.lifecycle = "sleeping";
+      entity.blocked_ticks = 0;
+      return {
+        type: "recovery_diagnostic",
+        entity_id: entity.id,
+        outcome: "repaired",
+        reason: "terminal_revision_forced_sleep",
+      };
+    });
   const materializedSteps = steps.map((step) => {
     const next = clone(step);
     if (typeof next.shape === "string") {
@@ -1063,7 +1412,7 @@ export function evaluateScenario(initial, steps, inspect) {
     }
     return next;
   });
-  const trace = [];
+  const trace = [...recovery];
   for (const step of materializedSteps) {
     let output;
     switch (step.op) {

@@ -11,6 +11,7 @@ import {
   evaluateScenario,
   loadFixture,
   quantizeMeters,
+  TERMINAL_REVISION_PREDECESSOR,
   UINT64_MAX,
   validateFixture,
   validateShape,
@@ -242,7 +243,7 @@ test("swept contact is derived from obstacle thickness", () => {
   assert.notEqual(result.trace[0].position.x, scenario.expect.trace[0].position.x);
 });
 
-test("world, entity-ID, and revision bounds reject without mutation", () => {
+test("entity-ID and terminal revision boundaries reject without ordinary mutation", () => {
   const result = evaluateScenario(
     {
       rules: {
@@ -281,6 +282,12 @@ test("world, entity-ID, and revision bounds reject without mutation", () => {
   );
   assert.deepEqual(result.trace, [
     {
+      entity_id: "1",
+      outcome: "repaired",
+      reason: "terminal_revision_forced_sleep",
+      type: "recovery_diagnostic",
+    },
+    {
       outcome: "rejected",
       reason: "entity_id_exhausted",
       type: "place_object",
@@ -288,7 +295,7 @@ test("world, entity-ID, and revision bounds reject without mutation", () => {
     {
       entity_id: "1",
       outcome: "rejected",
-      reason: "out_of_world_bounds",
+      reason: "revision_exhausted",
       type: "move",
     },
     {
@@ -303,6 +310,184 @@ test("world, entity-ID, and revision bounds reject without mutation", () => {
     y: 500,
     z: 0,
   });
+  assert.equal(result.final_state.entities[0].lifecycle, "sleeping");
+});
+
+test("transform bounds, allocation precedence, and canonical semantic no-ops are explicit", () => {
+  const outOfBoundsShape = structuredClone(fixture.shape_catalog.cube);
+  outOfBoundsShape.nodes[0].translation.x = 100_000_001;
+  assert.deepEqual(validateShape(outOfBoundsShape), {
+    ok: false,
+    reason: "invalid_shape",
+  });
+
+  const precedence = evaluateScenario(
+    {
+      rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 1 },
+      shape_catalog: fixture.shape_catalog,
+      entities: [{ id: "1", kind: "aigent", lifecycle: "active", revision: "1", position: { x: 0, y: 500, z: 0 }, shape: "cube" }],
+      next_entity_id: (UINT64_MAX + 1n).toString(),
+    },
+    [
+      { op: "place", x_mm: 0, z_mm: 0, shape: "cube" },
+      { op: "place", x_mm: 0, z_mm: 0, shape: outOfBoundsShape },
+    ],
+    {},
+  );
+  assert.deepEqual(precedence.trace.map(({ reason }) => reason), [
+    "overlap",
+    "invalid_shape",
+  ]);
+
+  const noOps = evaluateScenario(
+    {
+      rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 1 },
+      shape_catalog: fixture.shape_catalog,
+      entities: [{ id: "1", kind: "aigent", lifecycle: "active", revision: "5", position: { x: 0, y: 500, z: 0 }, shape: "cube" }],
+      next_entity_id: "2",
+    },
+    [
+      { op: "resolve_moves", moves: [{ entity_id: "1", target: { x: 0, z: 0 } }] },
+      { op: "sleep", entity_id: "1" },
+      { op: "sleep", entity_id: "1" },
+      { op: "set_shape", entity_id: "1", shape: "cube" },
+    ],
+    { entity_ids: ["1"] },
+  );
+  assert.deepEqual(noOps.trace.map(({ no_op, revision }) => ({ no_op, revision })), [
+    { no_op: true, revision: undefined },
+    { no_op: undefined, revision: "6" },
+    { no_op: true, revision: "6" },
+    { no_op: true, revision: "6" },
+  ]);
+});
+
+test("move commands use the full arrival-tick, aigent-ID, sequence order independent of input order", () => {
+  const initial = {
+    rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 1 },
+    shape_catalog: fixture.shape_catalog,
+    entities: [
+      { id: "2", kind: "aigent", lifecycle: "active", revision: "1", position: { x: 1000, y: 500, z: 0 }, shape: "cube" },
+      { id: "1", kind: "aigent", lifecycle: "active", revision: "1", position: { x: -2000, y: 500, z: 0 }, shape: "cube" },
+    ],
+    next_entity_id: "3",
+  };
+  const moves = [
+    { entity_id: "2", aigent_id: "2", arrival_tick: "1", sequence: "0", target: { x: 0, z: 0 } },
+    { entity_id: "1", aigent_id: "1", arrival_tick: "0", sequence: "2", target: { x: 0, z: 0 } },
+    { entity_id: "1", aigent_id: "1", arrival_tick: "0", sequence: "1", target: { x: -1000, z: 0 } },
+  ];
+  const ordered = evaluateScenario(initial, [{ op: "resolve_moves", moves }], {});
+  const permuted = evaluateScenario(initial, [{ op: "resolve_moves", moves: [...moves].reverse() }], {});
+  assert.deepEqual(ordered, permuted);
+  assert.deepEqual(ordered.trace.map(({ entity_id, outcome }) => [entity_id, outcome]), [
+    ["1", "reached"],
+    ["1", "blocked"],
+    ["2", "blocked"],
+  ]);
+});
+
+test("terminal revision reserves forced sleep and recovery repairs active terminal state", () => {
+  const terminal = evaluateScenario(
+    {
+      rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 1 },
+      shape_catalog: fixture.shape_catalog,
+      entities: [{ id: "1", kind: "aigent", lifecycle: "active", revision: TERMINAL_REVISION_PREDECESSOR.toString(), position: { x: 0, y: 500, z: 0 }, shape: "cube" }],
+      next_entity_id: "2",
+    },
+    [
+      { op: "set_shape", entity_id: "1", shape: "small-sphere" },
+      { op: "resolve_moves", moves: [{ entity_id: "1", target: { x: 0, z: 0 } }] },
+      { op: "sleep", entity_id: "1" },
+      { op: "sleep", entity_id: "1" },
+      { op: "wake", entity_id: "1" },
+      { op: "restore", entity_id: "1" },
+      { op: "unstick", entity_id: "1" },
+    ],
+    { entity_ids: ["1"] },
+  );
+  assert.deepEqual(terminal.trace.map(({ type, outcome, reason, no_op, revision }) => ({ type, outcome, reason, no_op, revision })), [
+    { type: "set_shape", outcome: "rejected", reason: "revision_exhausted", no_op: undefined, revision: undefined },
+    { type: "move", outcome: "reached", reason: undefined, no_op: true, revision: undefined },
+    { type: "sleep", outcome: "accepted", reason: undefined, no_op: undefined, revision: UINT64_MAX.toString() },
+    { type: "sleep", outcome: "accepted", reason: undefined, no_op: true, revision: UINT64_MAX.toString() },
+    { type: "wake", outcome: "rejected", reason: "revision_exhausted", no_op: undefined, revision: undefined },
+    { type: "restore", outcome: "rejected", reason: "revision_exhausted", no_op: undefined, revision: undefined },
+    { type: "unstick", outcome: "rejected", reason: "revision_exhausted", no_op: undefined, revision: undefined },
+  ]);
+
+  const recovered = evaluateScenario(
+    {
+      rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 1 },
+      shape_catalog: fixture.shape_catalog,
+      entities: [{ id: "1", kind: "aigent", lifecycle: "active", revision: UINT64_MAX.toString(), position: { x: 0, y: 500, z: 0 }, shape: "cube" }],
+      next_entity_id: "2",
+    },
+    [{ op: "place", x_mm: 0, z_mm: 0, shape: "cube" }],
+    { entity_ids: ["1", "2"] },
+  );
+  assert.equal(recovered.trace[0].reason, "terminal_revision_forced_sleep");
+  assert.equal(recovered.trace[1].outcome, "accepted");
+  assert.equal(recovered.final_state.entities[0].lifecycle, "sleeping");
+});
+
+test("integer heightfield samples use conservative shared-column maxima, order-invariant grounding, and wake support validation", () => {
+  const terrain = fixture.cases.find(
+    ({ id }) => id === "non-flat-columns-ground-a-spanning-footprint",
+  );
+  assert.ok(terrain);
+  const reordered = structuredClone(terrain);
+  reordered.initial.rules.heightfield_samples.reverse();
+  assert.deepEqual(
+    evaluateFixtureCase(fixture, terrain),
+    evaluateFixtureCase(fixture, reordered),
+  );
+
+  const edgeContact = evaluateScenario(
+    {
+      rules: {
+        heightfield_y_mm: 0,
+        heightfield_cell_size_mm: 1000,
+        heightfield_samples: [{ x_mm: 0, z_mm: 0, height_mm: 1000 }],
+        displacement_step_mm: 1000,
+        max_displacement_radius_mm: 2000,
+        unstick_blocked_ticks: 1,
+      },
+      shape_catalog: fixture.shape_catalog,
+      entities: [],
+      next_entity_id: "1",
+    },
+    [{ op: "place", x_mm: -400, z_mm: 500, shape: "small-sphere" }],
+    { entity_ids: ["1"] },
+  );
+  assert.equal(edgeContact.final_state.entities[0].position.y, 1400);
+
+  const wake = evaluateScenario(
+    {
+      rules: {
+        heightfield_y_mm: 0,
+        heightfield_cell_size_mm: 1000,
+        heightfield_samples: [{ x_mm: 0, z_mm: 0, height_mm: 1000 }],
+        displacement_step_mm: 1000,
+        max_displacement_radius_mm: 2000,
+        unstick_blocked_ticks: 1,
+      },
+      shape_catalog: fixture.shape_catalog,
+      entities: [{ id: "1", kind: "aigent", lifecycle: "sleeping", revision: "1", position: { x: 0, y: 500, z: 500 }, shape: "cube" }],
+      next_entity_id: "2",
+    },
+    [{ op: "wake", entity_id: "1" }],
+    { entity_ids: ["1"] },
+  );
+  assert.deepEqual(wake.trace[0].position, { x: 0, y: 500, z: 1500 });
+  assert.equal(wake.trace[0].displaced, true);
+});
+
+test("displacement and swept-contact oracle comparisons stay exact rather than numeric-sort based", () => {
+  const evaluator = fs.readFileSync(path.join(root, "scripts/world-contract.mjs"), "utf8");
+  assert.match(evaluator, /compareBigInts\(a\.distance, b\.distance\)/);
+  assert.match(evaluator, /fractionCompare\(time, best\.time\)/);
+  assert.doesNotMatch(evaluator, /a\.distance - b\.distance/);
 });
 
 test("fixture validation rejects duplicate IDs and malformed headers", () => {

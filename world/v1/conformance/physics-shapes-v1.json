@@ -848,6 +848,99 @@
           }
         ]
       }
+    },
+    {
+      "id": "non-flat-columns-ground-a-spanning-footprint",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "heightfield_cell_size_mm": 1000,
+          "heightfield_samples": [
+            { "x_mm": 1000, "z_mm": 0, "height_mm": 1000 },
+            { "x_mm": 0, "z_mm": 0, "height_mm": 0 },
+            { "x_mm": 1000, "z_mm": 1000, "height_mm": 0 },
+            { "x_mm": 0, "z_mm": 1000, "height_mm": 0 }
+          ],
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [],
+        "next_entity_id": "1"
+      },
+      "steps": [{ "op": "place", "x_mm": 1000, "z_mm": 500, "shape": "cube" }],
+      "inspect": { "entity_ids": ["1"] },
+      "expect": {
+        "final_state": {
+          "entities": [{
+            "id": "1",
+            "kind": "object",
+            "lifecycle": "active",
+            "position": { "x": 1000, "y": 1500, "z": 500 },
+            "revision": "1",
+            "shape_node_ids": [1]
+          }]
+        },
+        "trace": [{
+          "entity_id": "1",
+          "outcome": "accepted",
+          "position": { "x": 1000, "y": 1500, "z": 500 },
+          "revision": "1",
+          "type": "place_object"
+        }]
+      }
+    },
+    {
+      "id": "raised-terrain-column-blocks-a-swept-body",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "heightfield_cell_size_mm": 1000,
+          "heightfield_samples": [
+            { "x_mm": 0, "z_mm": 0, "height_mm": 1000 },
+            { "x_mm": 1000, "z_mm": 0, "height_mm": 0 },
+            { "x_mm": 0, "z_mm": 1000, "height_mm": 0 },
+            { "x_mm": 1000, "z_mm": 1000, "height_mm": 0 }
+          ],
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [{
+          "id": "1",
+          "kind": "aigent",
+          "lifecycle": "active",
+          "revision": "1",
+          "position": { "x": -2000, "y": 500, "z": 500 },
+          "shape": "cube"
+        }],
+        "next_entity_id": "2"
+      },
+      "steps": [{
+        "op": "resolve_moves",
+        "moves": [{ "entity_id": "1", "target": { "x": 2000, "z": 500 } }]
+      }],
+      "inspect": { "entity_ids": ["1"] },
+      "expect": {
+        "final_state": {
+          "entities": [{
+            "blocked_ticks": 1,
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "position": { "x": -1500, "y": 500, "z": 500 },
+            "revision": "2",
+            "shape_node_ids": [1]
+          }]
+        },
+        "trace": [{
+          "blocker_terrain_cell": { "x": "-1", "z": "0" },
+          "entity_id": "1",
+          "outcome": "blocked",
+          "position": { "x": -1500, "y": 500, "z": 500 },
+          "type": "move"
+        }]
+      }
     }
   ]
 }
