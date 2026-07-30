@@ -27,3 +27,4 @@ per decision.
 | --- | --- | --- |
 | [ADR-0001](0001-protocol-v1-compatibility-and-recovery.md) | Protocol v1 compatibility and recovery semantics | accepted |
 | [ADR-0002](0002-world-geometry-and-displacement-semantics.md) | World geometry and displacement semantics | accepted |
+| [ADR-0003](0003-heightfield-sampling-and-terrain-collision.md) | Heightfield sampling and terrain collision | accepted |
