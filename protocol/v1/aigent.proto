@@ -61,6 +61,7 @@ enum PerceptKind {
   PERCEPT_KIND_MESSAGE = 2;
   PERCEPT_KIND_CHANNEL = 3;
   PERCEPT_KIND_RULESET_CHANGED = 4;
+  PERCEPT_KIND_WORLD_RECOVERY_DIAGNOSTIC = 5;
 }
 
 enum CommandRejectionCode {
@@ -289,9 +290,21 @@ message PhysicsRejection {
 }
 
 message PhysicsCommandResult {
-  optional uint64 entity_id = 1;
+  // Field 1 formerly duplicated the authoritative world entity ID. The only
+  // authoritative ID/revision pairs are CommandAccepted.affected_world_entities.
+  reserved 1;
   optional Vector3Millimeters authoritative_position = 2;
   bool displaced = 3;
+}
+
+enum WorldRecoveryDiagnosticCode {
+  WORLD_RECOVERY_DIAGNOSTIC_CODE_UNSPECIFIED = 0;
+  WORLD_RECOVERY_DIAGNOSTIC_CODE_TERMINAL_REVISION_FORCED_SLEEP = 1;
+}
+
+message WorldRecoveryDiagnostic {
+  WorldRecoveryDiagnosticCode code = 1;
+  uint64 entity_id = 2;
 }
 
 message Command {
@@ -350,6 +363,7 @@ message ProtocolError {
 
 message Percept {
   PerceptKind kind = 1;
+  // WORLD_RECOVERY_DIAGNOSTIC payloads encode WorldRecoveryDiagnostic.
   bytes payload = 2;
 }
 

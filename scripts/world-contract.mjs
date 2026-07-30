@@ -402,9 +402,7 @@ function canonicalShape(shape) {
       .map((node) => ({
         ...clone(node),
         rotation: normalizeQuaternion(node.rotation),
-        ...(node.material_tags === undefined
-          ? {}
-          : { material_tags: [...node.material_tags].sort() }),
+        material_tags: [...(node.material_tags ?? [])].sort(),
       }))
       .sort((a, b) => a.id - b.id),
   };
@@ -876,6 +874,14 @@ function applySetShape(state, step) {
       conflicting_entity_id: overlap,
     };
   }
+  if (terrainOverlap(state, candidate) !== undefined) {
+    return {
+      type: "set_shape",
+      entity_id: entity.id,
+      outcome: "rejected",
+      reason: "overlap",
+    };
+  }
   const enclosed = firstEnclosedAigent(state, candidate, entity.id);
   if (enclosed !== undefined) {
     return {
@@ -1043,16 +1049,25 @@ export function sweepFirstContact(state, entity, target) {
 
 function applyMoves(state, step) {
   const outputs = [];
+  if (
+    !Array.isArray(step.moves) ||
+    step.moves.some(
+      (move) =>
+        typeof move.aigent_id !== "string" ||
+        move.aigent_id.length === 0 ||
+        !/^(0|[1-9]\d*)$/.test(String(move.arrival_tick)) ||
+        !/^[1-9]\d*$/.test(String(move.sequence)),
+    )
+  ) {
+    throw new Error("invalid move command metadata");
+  }
   const moves = [...step.moves].sort((a, b) => {
     const tick = compareBigInts(
       BigInt(a.arrival_tick ?? 0),
       BigInt(b.arrival_tick ?? 0),
     );
     if (tick !== 0) return tick;
-    const aigent =
-      a.aigent_id === undefined && b.aigent_id === undefined
-        ? compareEntityIds(String(a.entity_id), String(b.entity_id))
-        : compareAigentIds(a.aigent_id ?? a.entity_id, b.aigent_id ?? b.entity_id);
+    const aigent = compareAigentIds(a.aigent_id, b.aigent_id);
     if (aigent !== 0) return aigent;
     return compareBigInts(BigInt(a.sequence ?? 0), BigInt(b.sequence ?? 0));
   });
@@ -1274,7 +1289,7 @@ function applyLifecycle(state, step) {
       revision: entity.revision,
     };
   }
-  if (!revisionAvailable(entity)) {
+  if (isTerminalRevision(entity)) {
     return {
       type: step.op,
       entity_id: entity.id,
@@ -1326,6 +1341,15 @@ function applyLifecycle(state, step) {
     position.x !== entity.position.x ||
     position.y !== entity.position.y ||
     position.z !== entity.position.z;
+  const needsRevision = step.op === "wake" || isUnstick || displaced;
+  if (needsRevision && !revisionAvailable(entity)) {
+    return {
+      type: step.op,
+      entity_id: entity.id,
+      outcome: "rejected",
+      reason: "revision_exhausted",
+    };
+  }
   entity.position = position;
   if (step.op === "wake") {
     entity.lifecycle = "active";
@@ -1345,6 +1369,21 @@ function applyLifecycle(state, step) {
     position: clone(entity.position),
     revision: entity.revision,
   };
+}
+
+function applyRestoreBatch(state, step) {
+  if (
+    !Array.isArray(step.entity_ids) ||
+    new Set(step.entity_ids.map(String)).size !== step.entity_ids.length
+  ) {
+    throw new Error("invalid restore batch");
+  }
+  return [...step.entity_ids]
+    .map(String)
+    .sort(compareEntityIds)
+    .map((entityId) =>
+      applyLifecycle(state, { op: "restore", entity_id: entityId }),
+    );
 }
 
 function assertState(state) {
@@ -1367,6 +1406,9 @@ function assertState(state) {
     }
     if (!withinWorld(entityAabbs(left))) {
       throw new Error(`active entity ${left.id} is out of bounds`);
+    }
+    if (terrainOverlap(state, left) !== undefined) {
+      throw new Error(`active entity ${left.id} overlaps terrain`);
     }
     for (const right of active.slice(index + 1)) {
       if (
@@ -1437,6 +1479,9 @@ export function evaluateScenario(initial, steps, inspect) {
       case "restore":
       case "unstick":
         output = applyLifecycle(state, step);
+        break;
+      case "restore_batch":
+        output = applyRestoreBatch(state, step);
         break;
       default:
         throw new Error(`unknown world-contract operation: ${step.op}`);

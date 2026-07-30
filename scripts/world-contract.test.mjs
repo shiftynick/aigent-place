@@ -206,7 +206,7 @@ test("all six primitive kinds have closed-form canonical bounds", () => {
 
 test("entity and move input order cannot change simultaneous resolution", () => {
   const scenario = fixture.cases.find(
-    ({ id }) => id === "simultaneous-moves-resolve-by-numeric-entity-id",
+    ({ id }) => id === "simultaneous-moves-resolve-by-command-order",
   );
   assert.ok(scenario);
   const reversed = structuredClone(scenario);
@@ -228,6 +228,128 @@ test("shape node input order cannot change collider or enclosure outcomes", () =
   assert.deepEqual(
     evaluateFixtureCase(fixture, scenario),
     evaluateFixtureCase(reorderedFixture, scenario),
+  );
+});
+
+test("set_shape rejects terrain penetration and treats omitted and empty material tags as one canonical shape", () => {
+  const terrainPenetration = evaluateScenario(
+    {
+      rules: {
+        heightfield_y_mm: 0,
+        heightfield_cell_size_mm: 1000,
+        heightfield_samples: [{ sample_x: 0, sample_z: 0, height_mm: 1000 }],
+        displacement_step_mm: 1000,
+        max_displacement_radius_mm: 2000,
+        unstick_blocked_ticks: 3,
+      },
+      shape_catalog: fixture.shape_catalog,
+      entities: [{
+        id: "1",
+        kind: "aigent",
+        lifecycle: "active",
+        revision: "1",
+        position: { x: 0, y: 1500, z: 500 },
+        shape: "cube",
+      }],
+      next_entity_id: "2",
+    },
+    [{
+      op: "set_shape",
+      entity_id: "1",
+      shape: {
+        nodes: [{
+          id: 1,
+          parent_id: 0,
+          translation: { x: 0, y: -1000, z: 0 },
+          rotation: { x: 0, y: 0, z: 0, w: 1 },
+          primitive: { kind: "box", size_x_mm: 1000, size_y_mm: 1000, size_z_mm: 1000 },
+        }],
+      },
+    }],
+    { entity_ids: ["1"] },
+  );
+  assert.deepEqual(terrainPenetration.trace, [{
+    type: "set_shape",
+    entity_id: "1",
+    outcome: "rejected",
+    reason: "overlap",
+  }]);
+  assert.equal(terrainPenetration.final_state.entities[0].revision, "1");
+
+  const emptyTags = structuredClone(fixture.shape_catalog.cube);
+  emptyTags.nodes[0].material_tags = [];
+  const noOp = evaluateScenario(
+    {
+      rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 3 },
+      shape_catalog: fixture.shape_catalog,
+      entities: [{ id: "1", kind: "aigent", lifecycle: "active", revision: "7", position: { x: 0, y: 500, z: 0 }, shape: "cube" }],
+      next_entity_id: "2",
+    },
+    [{ op: "set_shape", entity_id: "1", shape: emptyTags }],
+    { entity_ids: ["1"] },
+  );
+  assert.deepEqual(noOp.trace, [{
+    type: "set_shape",
+    entity_id: "1",
+    outcome: "accepted",
+    no_op: true,
+    revision: "7",
+  }]);
+});
+
+test("restore at the reserved predecessor preserves an exact pose but refuses a required displacement", () => {
+  const exact = evaluateScenario(
+    {
+      rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 3 },
+      shape_catalog: fixture.shape_catalog,
+      entities: [{ id: "1", kind: "aigent", lifecycle: "sleeping", revision: TERMINAL_REVISION_PREDECESSOR.toString(), position: { x: 0, y: 500, z: 0 }, shape: "cube" }],
+      next_entity_id: "2",
+    },
+    [{ op: "restore", entity_id: "1" }],
+    { entity_ids: ["1"] },
+  );
+  assert.deepEqual(exact.trace, [{
+    type: "restore",
+    entity_id: "1",
+    outcome: "accepted",
+    displaced: false,
+    position: { x: 0, y: 500, z: 0 },
+    revision: TERMINAL_REVISION_PREDECESSOR.toString(),
+  }]);
+
+  const displaced = evaluateScenario(
+    {
+      rules: { heightfield_y_mm: 0, displacement_step_mm: 1000, max_displacement_radius_mm: 1000, unstick_blocked_ticks: 3 },
+      shape_catalog: fixture.shape_catalog,
+      entities: [
+        { id: "1", kind: "aigent", lifecycle: "sleeping", revision: TERMINAL_REVISION_PREDECESSOR.toString(), position: { x: 0, y: 500, z: 0 }, shape: "cube" },
+        { id: "2", kind: "object", lifecycle: "active", revision: "1", position: { x: 0, y: 500, z: 0 }, shape: "cube" },
+      ],
+      next_entity_id: "3",
+    },
+    [{ op: "restore", entity_id: "1" }],
+    { entity_ids: ["1"] },
+  );
+  assert.deepEqual(displaced.trace, [{
+    type: "restore",
+    entity_id: "1",
+    outcome: "rejected",
+    reason: "revision_exhausted",
+  }]);
+  assert.equal(displaced.final_state.entities[0].lifecycle, "sleeping");
+});
+
+test("restore_batch fixture is independent of its supplied entity order", () => {
+  const scenario = fixture.cases.find(
+    ({ id }) => id === "restore-batch-orders-numeric-entity-ids",
+  );
+  assert.ok(scenario);
+  const reversed = structuredClone(scenario);
+  reversed.steps[0].entity_ids.reverse();
+  reversed.initial.entities.reverse();
+  assert.deepEqual(
+    evaluateFixtureCase(fixture, scenario),
+    evaluateFixtureCase(fixture, reversed),
   );
 });
 
@@ -272,6 +394,9 @@ test("entity-ID and terminal revision boundaries reject without ordinary mutatio
         moves: [
           {
             entity_id: "1",
+            arrival_tick: "0",
+            aigent_id: "aigent-1",
+            sequence: "1",
             target: { x: 100_000_000, y: 500, z: 0 },
           },
         ],
@@ -354,7 +479,16 @@ test("transform bounds, allocation precedence, and canonical semantic no-ops are
       next_entity_id: "2",
     },
     [
-      { op: "resolve_moves", moves: [{ entity_id: "1", target: { x: 0, z: 0 } }] },
+      {
+        op: "resolve_moves",
+        moves: [{
+          entity_id: "1",
+          arrival_tick: "0",
+          aigent_id: "aigent-1",
+          sequence: "1",
+          target: { x: 0, z: 0 },
+        }],
+      },
       { op: "sleep", entity_id: "1" },
       { op: "sleep", entity_id: "1" },
       { op: "set_shape", entity_id: "1", shape: "cube" },
@@ -380,7 +514,7 @@ test("move commands use the full arrival-tick, aigent-ID, sequence order indepen
     next_entity_id: "3",
   };
   const moves = [
-    { entity_id: "2", aigent_id: "aigent-2", arrival_tick: "1", sequence: "0", target: { x: 0, z: 0 } },
+    { entity_id: "2", aigent_id: "aigent-2", arrival_tick: "1", sequence: "1", target: { x: 0, z: 0 } },
     { entity_id: "1", aigent_id: "aigent-1", arrival_tick: "0", sequence: "2", target: { x: 0, z: 0 } },
     { entity_id: "1", aigent_id: "aigent-1", arrival_tick: "0", sequence: "1", target: { x: -1000, z: 0 } },
   ];
@@ -404,7 +538,16 @@ test("terminal revision reserves forced sleep and recovery repairs active termin
     },
     [
       { op: "set_shape", entity_id: "1", shape: "small-sphere" },
-      { op: "resolve_moves", moves: [{ entity_id: "1", target: { x: 0, z: 0 } }] },
+      {
+        op: "resolve_moves",
+        moves: [{
+          entity_id: "1",
+          arrival_tick: "0",
+          aigent_id: "aigent-1",
+          sequence: "1",
+          target: { x: 0, z: 0 },
+        }],
+      },
       { op: "sleep", entity_id: "1" },
       { op: "sleep", entity_id: "1" },
       { op: "wake", entity_id: "1" },
@@ -545,6 +688,7 @@ test("world contract links resolve and protobuf owns typed geometry messages", (
     "message UnstickPayload {}",
     "message PhysicsCommandResult {",
     "message WorldEntityReference {",
+    "PERCEPT_KIND_WORLD_RECOVERY_DIAGNOSTIC = 5;",
     "repeated WorldEntityReference affected_world_entities = 3;",
     "sint64 size_x_mm = 1;",
   ]) {
@@ -553,6 +697,18 @@ test("world contract links resolve and protobuf owns typed geometry messages", (
   assert.match(
     proto,
     /message EntityReference \{[\s\S]*?bytes entity_id = 1;[\s\S]*?uint64 revision = 2;[\s\S]*?\}/,
+  );
+  assert.match(
+    proto,
+    /message PhysicsCommandResult \{[\s\S]*?reserved 1;[\s\S]*?optional Vector3Millimeters authoritative_position = 2;[\s\S]*?bool displaced = 3;[\s\S]*?\}/,
+  );
+  assert.match(
+    proto,
+    /enum WorldRecoveryDiagnosticCode \{[\s\S]*?WORLD_RECOVERY_DIAGNOSTIC_CODE_TERMINAL_REVISION_FORCED_SLEEP = 1;[\s\S]*?\}[\s\S]*?message WorldRecoveryDiagnostic \{[\s\S]*?WorldRecoveryDiagnosticCode code = 1;[\s\S]*?uint64 entity_id = 2;[\s\S]*?\}/,
+  );
+  assert.match(
+    proto,
+    /enum PerceptKind \{[\s\S]*?PERCEPT_KIND_HEARD = 1;[\s\S]*?\}[\s\S]*?message Percept \{[\s\S]*?PerceptKind kind = 1;[\s\S]*?bytes payload = 2;[\s\S]*?\}/,
   );
 
   const evaluator = fs.readFileSync(

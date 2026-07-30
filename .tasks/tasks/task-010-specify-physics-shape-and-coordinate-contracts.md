@@ -6,7 +6,7 @@ priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: [task-022, task-023, task-024]
 createdAt: "2026-07-29T12:55:19Z"
-updatedAt: "2026-07-30T00:58:27Z"
+updatedAt: "2026-07-30T01:13:57Z"
 ---
 
 <!-- task-tracker:description -->
@@ -218,3 +218,4 @@ Write the normative Step 0 contract for collision, sleeping/waking bodies, place
   | run-checks: PASS (skill-sync + 14 suites)
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
 - 2026-07-30T00:58:27Z — moved to review
+- 2026-07-30T01:13:57Z — note: round-2 adjudication: fixed every verified SPEC/STANDARDS finding. set_shape now rejects terrain penetration and canonicalizes absent/empty tags; restore batches sort numeric IDs; exact predecessor restore remains non-mutating while displaced predecessor restore rejects; all move fixtures require the full command-order tuple; versioned terrain fixtures cover signed cell and 64m chunk boundaries plus restore after heightfield change; PhysicsCommandResult reserves the redundant ID field and WorldRecoveryDiagnostic has a typed Percept publication boundary. Focused suite passes 20/20 and the full process gate passes.

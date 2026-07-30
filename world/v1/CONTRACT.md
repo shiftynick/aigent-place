@@ -54,14 +54,20 @@ accepted command sequence.
 - Revision `18446744073709551615` is reserved for terminal forced sleep.
   Externally requested mutations at revision `18446744073709551614` or greater
   reject without effect as `REVISION_EXHAUSTED`, preserving one final
-  increment for disconnect safety.
+  increment for disconnect safety. An exact-pose restore at the predecessor is
+  a non-mutating startup operation and is therefore permitted; a restore that
+  requires displacement rejects before consuming the reserved increment.
 - Disconnecting an active entity at the reserved predecessor cancels leases,
   sleeps it, and increments to the terminal revision. Terminal entities remain
   permanently sleeping and non-colliding; wake, restore-to-active, movement,
   `set_shape`, and `unstick` reject as `REVISION_EXHAUSTED`.
 - An active entity loaded at the terminal revision is invalid persisted state.
-  Recovery makes it terminal sleeping without arithmetic, emits a typed
-  recovery diagnostic, and never admits it to the active broadphase.
+  Recovery makes it terminal sleeping without arithmetic and never admits it
+  to the active broadphase. The server records
+  `WORLD_RECOVERY_DIAGNOSTIC_CODE_TERMINAL_REVISION_FORCED_SLEEP` in its
+  durable recovery log and publishes `WorldRecoveryDiagnostic` to active
+  connections as `Percept.payload` with
+  `PERCEPT_KIND_WORLD_RECOVERY_DIAGNOSTIC`.
 - Exhausting the `uint64` ID space or externally usable revision space is a
   typed no-effect capacity rejection (`ENTITY_ID_EXHAUSTED` or
   `REVISION_EXHAUSTED`); arithmetic MUST NOT wrap to zero.
@@ -244,7 +250,10 @@ exists.
   `(arrival_tick, aigent_id, sequence)` tuple. Entity-ID ordering governs
   collection iteration and multi-entity restore, not command order. An
   `aigent_id` is compared as an unsigned lexicographic byte string. An earlier
-  accepted position participates in later sweeps.
+  accepted position participates in later sweeps. Every conformance move
+  supplies a canonical non-negative decimal `arrival_tick`, a non-empty opaque
+  `aigent_id`, and a positive canonical decimal `sequence`; the oracle rejects
+  missing or malformed ordering metadata rather than inventing a fallback.
 
 Conformance comparisons represent slab entry and exit times as reduced or
 cross-multiplication-safe rational numerator/denominator pairs. Runtime
@@ -306,8 +315,8 @@ rate-limit failure uses `RATE_LIMITED`.
 
 `SET_SHAPE` payload bytes MUST encode `SetShapePayload`. The complete
 candidate tree replaces the prior tree only if it passes shape, world-bound,
-budget, active-overlap, and active-aigent-enclosure validation at the entity's
-current pose.
+budget, terrain and active-entity overlap, and active-aigent-enclosure
+validation at the entity's current pose.
 
 Failure preserves the previous tree, position, and revision. The server never
 partially installs, clamps, or auto-displaces a rejected shape. A candidate
@@ -368,6 +377,8 @@ Obstacle/entity input order has no effect.
   restore increments it once and emits the recovery displacement. If no
   candidate exists, the body is restored sleeping with a typed
   `NO_FREE_POSITION` recovery condition; world startup continues.
+  Exact-pose restore is consequently valid at the reserved predecessor, while
+  displaced restore there rejects as `REVISION_EXHAUSTED` and remains sleeping.
 - `UNSTICK` payload bytes MUST encode empty `UnstickPayload`. It is eligible
   only when the active body has a movement lease blocked for at least the
   ruleset threshold and the owner is within the unstick rate limit. Ineligible
@@ -379,9 +390,10 @@ Obstacle/entity input order has no effect.
   logs it, and emits a visible ordered event.
 
 Successful displacement results use `PhysicsCommandResult` with the
-authoritative position and `displaced = true`. A domain rejection is carried
-in `CommandRejected.payload` as `PhysicsRejection`. Envelope-level behavior
-and idempotent result replay remain unchanged.
+authoritative position and `displaced = true`; the affected ID and revision
+exist only in `CommandAccepted.affected_world_entities`. A domain rejection is
+carried in `CommandRejected.payload` as `PhysicsRejection`. Envelope-level
+behavior and idempotent result replay remain unchanged.
 
 ## 9. Conformance boundary
 

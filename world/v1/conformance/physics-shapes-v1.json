@@ -562,6 +562,9 @@
           "moves": [
             {
               "entity_id": "1",
+              "arrival_tick": "0",
+              "aigent_id": "aigent-1",
+              "sequence": "1",
               "target": { "x": 5000, "y": 500, "z": 0 }
             }
           ]
@@ -602,7 +605,7 @@
       }
     },
     {
-      "id": "simultaneous-moves-resolve-by-numeric-entity-id",
+      "id": "simultaneous-moves-resolve-by-command-order",
       "initial": {
         "rules": {
           "heightfield_y_mm": 0,
@@ -636,10 +639,16 @@
           "moves": [
             {
               "entity_id": "2",
+              "arrival_tick": "0",
+              "aigent_id": "aigent-2",
+              "sequence": "1",
               "target": { "x": 0, "y": 500, "z": 0 }
             },
             {
               "entity_id": "1",
+              "arrival_tick": "0",
+              "aigent_id": "aigent-1",
+              "sequence": "1",
               "target": { "x": 0, "y": 500, "z": 0 }
             }
           ]
@@ -918,7 +927,13 @@
       },
       "steps": [{
         "op": "resolve_moves",
-        "moves": [{ "entity_id": "1", "target": { "x": 2000, "z": 500 } }]
+        "moves": [{
+          "entity_id": "1",
+          "arrival_tick": "0",
+          "aigent_id": "aigent-1",
+          "sequence": "1",
+          "target": { "x": 2000, "z": 500 }
+        }]
       }],
       "inspect": { "entity_ids": ["1"] },
       "expect": {
@@ -939,6 +954,121 @@
           "outcome": "blocked",
           "position": { "x": -1500, "y": 500, "z": 500 },
           "type": "move"
+        }]
+      }
+    },
+    {
+      "id": "restore-batch-orders-numeric-entity-ids",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          { "id": "1", "kind": "object", "lifecycle": "active", "revision": "1", "position": { "x": 0, "y": 500, "z": 0 }, "shape": "cube" },
+          { "id": "10", "kind": "aigent", "lifecycle": "sleeping", "revision": "1", "position": { "x": 0, "y": 500, "z": 0 }, "shape": "cube" },
+          { "id": "2", "kind": "aigent", "lifecycle": "sleeping", "revision": "1", "position": { "x": 0, "y": 500, "z": 0 }, "shape": "cube" }
+        ],
+        "next_entity_id": "11"
+      },
+      "steps": [{ "op": "restore_batch", "entity_ids": ["10", "2"] }],
+      "inspect": { "entity_ids": ["1", "2", "10"] },
+      "expect": {
+        "final_state": {
+          "entities": [
+            { "id": "1", "kind": "object", "lifecycle": "active", "position": { "x": 0, "y": 500, "z": 0 }, "revision": "1", "shape_node_ids": [1] },
+            { "id": "2", "kind": "aigent", "lifecycle": "active", "position": { "x": -1000, "y": 500, "z": 0 }, "revision": "2", "shape_node_ids": [1] },
+            { "id": "10", "kind": "aigent", "lifecycle": "active", "position": { "x": 0, "y": 500, "z": -1000 }, "revision": "2", "shape_node_ids": [1] }
+          ]
+        },
+        "trace": [
+          { "type": "restore", "entity_id": "2", "outcome": "accepted", "displaced": true, "position": { "x": -1000, "y": 500, "z": 0 }, "revision": "2" },
+          { "type": "restore", "entity_id": "10", "outcome": "accepted", "displaced": true, "position": { "x": 0, "y": 500, "z": -1000 }, "revision": "2" }
+        ]
+      }
+    },
+    {
+      "id": "heightfield-boundaries-and-chunk-seams-use-shared-samples",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "heightfield_cell_size_mm": 1000,
+          "heightfield_samples": [
+            { "sample_x": -64, "sample_z": 0, "height_mm": 2000 },
+            { "sample_x": 0, "sample_z": 0, "height_mm": 500 },
+            { "sample_x": 64, "sample_z": 0, "height_mm": 1000 }
+          ],
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [],
+        "next_entity_id": "1"
+      },
+      "steps": [
+        { "op": "place", "x_mm": -64000, "z_mm": 500, "shape": "small-sphere" },
+        { "op": "place", "x_mm": 0, "z_mm": 500, "shape": "small-sphere" },
+        { "op": "place", "x_mm": 64000, "z_mm": 500, "shape": "small-sphere" }
+      ],
+      "inspect": { "entity_ids": ["1", "2", "3"] },
+      "expect": {
+        "final_state": {
+          "entities": [
+            { "id": "1", "kind": "object", "lifecycle": "active", "position": { "x": -64000, "y": 2400, "z": 500 }, "revision": "1", "shape_node_ids": [9] },
+            { "id": "2", "kind": "object", "lifecycle": "active", "position": { "x": 0, "y": 900, "z": 500 }, "revision": "1", "shape_node_ids": [9] },
+            { "id": "3", "kind": "object", "lifecycle": "active", "position": { "x": 64000, "y": 1400, "z": 500 }, "revision": "1", "shape_node_ids": [9] }
+          ]
+        },
+        "trace": [
+          { "type": "place_object", "entity_id": "1", "outcome": "accepted", "position": { "x": -64000, "y": 2400, "z": 500 }, "revision": "1" },
+          { "type": "place_object", "entity_id": "2", "outcome": "accepted", "position": { "x": 0, "y": 900, "z": 500 }, "revision": "1" },
+          { "type": "place_object", "entity_id": "3", "outcome": "accepted", "position": { "x": 64000, "y": 1400, "z": 500 }, "revision": "1" }
+        ]
+      }
+    },
+    {
+      "id": "restore-displaces-after-heightfield-change",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "heightfield_cell_size_mm": 1000,
+          "heightfield_samples": [{ "sample_x": 0, "sample_z": 0, "height_mm": 1000 }],
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [{
+          "id": "1",
+          "kind": "aigent",
+          "lifecycle": "sleeping",
+          "revision": "1",
+          "position": { "x": 0, "y": 500, "z": 500 },
+          "shape": "cube"
+        }],
+        "next_entity_id": "2"
+      },
+      "steps": [{ "op": "restore", "entity_id": "1" }],
+      "inspect": { "entity_ids": ["1"] },
+      "expect": {
+        "final_state": {
+          "entities": [{
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "position": { "x": 0, "y": 500, "z": 1500 },
+            "revision": "2",
+            "shape_node_ids": [1]
+          }]
+        },
+        "trace": [{
+          "type": "restore",
+          "entity_id": "1",
+          "outcome": "accepted",
+          "displaced": true,
+          "position": { "x": 0, "y": 500, "z": 1500 },
+          "revision": "2"
         }]
       }
     }
