@@ -63,6 +63,11 @@ Write the normative Step 0 contract for collision, sleeping/waking bodies, place
 - 2026-07-29T23:44:01Z — edited (-tag needs:operator)
 - 2026-07-29T23:44:01Z — note: operator accepted ADR-0002 as written; the operator-decision condition is resolved. task-010 is queued to resume immediately after task-022 completes its recorded review and validation.
 - 2026-07-29T23:44:01Z — moved to backlog
+- 2026-07-29T23:47:13Z — moved to in_progress (claimed by codex-root)
+- 2026-07-29T23:47:13Z — note: resumed after task-022 completed: ADR-0002 is accepted and now governs the task-010 contract and executable fixtures.
+- 2026-07-30T00:03:09Z — note: implementation choices: the owning world contract adds typed PLACE_OBJECT, SET_SHAPE, and UNSTICK protobuf payloads without changing envelope semantics; the semantic evaluator uses lossless decimal parsing for coordinate rounding, numeric uint64 ordering, derived primitive AABBs, swept slab contact, and generated displacement candidates. Heightfield values and ruleset ranges remain owned by task-012; generated/binary protobuf conformance remains task-004.
+- 2026-07-30T00:03:09Z — note: protoc is still unavailable in the foundation workspace, so task-010 does not claim compilation or generated bindings. The existing structural proto tests plus task-010 message/link assertions validate the authored source until task-003/task-004 install and run the pinned generator.
+- 2026-07-30T00:03:09Z — moved to review
 - 2026-07-30T00:20:05Z — edited (+blockedBy task-023)
 - 2026-07-30T00:20:05Z — note: ADR-0003 was proposed after round-1 review exposed missing persisted heightfield and terrain-collision semantics. The operator explicitly accepted it; task-010 remains dependency-blocked only until task-023 completes its own delivery lifecycle.
 - 2026-07-30T00:20:05Z — moved to blocked

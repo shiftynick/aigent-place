@@ -1,0 +1,298 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+import {
+  canonicalize,
+  entityAabbs,
+  evaluateFixtureCase,
+  evaluateScenario,
+  loadFixture,
+  quantizeMeters,
+  UINT64_MAX,
+  validateFixture,
+  validateShape,
+} from "./world-contract.mjs";
+
+const fixture = loadFixture();
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("all world v1 semantic fixtures match their expected state and trace", () => {
+  validateFixture(fixture);
+  for (const scenario of fixture.cases) {
+    assert.deepEqual(
+      evaluateFixtureCase(fixture, scenario),
+      canonicalize(scenario.expect),
+      scenario.id,
+    );
+  }
+});
+
+test("non-finite coordinates and values just beyond the bound reject", () => {
+  for (const value of [NaN, Infinity, -Infinity, "NaN", "Infinity"]) {
+    assert.deepEqual(quantizeMeters(value), {
+      ok: false,
+      reason: "invalid_coordinate",
+    });
+  }
+  assert.deepEqual(quantizeMeters("100000.0004"), {
+    ok: false,
+    reason: "out_of_world_bounds",
+  });
+  assert.deepEqual(quantizeMeters("-100000.0004"), {
+    ok: false,
+    reason: "out_of_world_bounds",
+  });
+});
+
+test("signed half-way quantization is ties-to-even", () => {
+  const cases = new Map([
+    ["0.0005", 0n],
+    ["0.0015", 2n],
+    ["0.0025", 2n],
+    ["-0.0005", 0n],
+    ["-0.0015", -2n],
+    ["-0.0025", -2n],
+  ]);
+  for (const [value, millimeters] of cases) {
+    assert.deepEqual(quantizeMeters(value), { ok: true, millimeters });
+  }
+});
+
+test("primitive transforms derive rotated conservative AABBs", () => {
+  const halfTurn = Math.sqrt(0.5);
+  const entity = {
+    id: "1",
+    kind: "object",
+    lifecycle: "active",
+    revision: "1",
+    position: { x: 100, y: 200, z: 300 },
+    shape: {
+      nodes: [
+        {
+          id: 1,
+          parent_id: 0,
+          translation: { x: 10, y: 20, z: 30 },
+          rotation: { x: 0, y: 0, z: halfTurn, w: halfTurn },
+          primitive: {
+            kind: "box",
+            size_x_mm: 200,
+            size_y_mm: 400,
+            size_z_mm: 600,
+          },
+        },
+      ],
+    },
+  };
+  const [bounds] = entityAabbs(entity);
+  assert.equal(bounds.node_id, 1);
+  for (const [actual, expected] of [
+    [bounds.min.x, -90],
+    [bounds.min.y, 120],
+    [bounds.min.z, 30],
+    [bounds.max.x, 310],
+    [bounds.max.y, 320],
+    [bounds.max.z, 630],
+  ]) {
+    assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
+  }
+});
+
+test("shape validation rejects cycles, duplicate IDs, and invalid quaternions", () => {
+  const identity = { x: 0, y: 0, z: 0, w: 1 };
+  const primitive = { kind: "sphere", radius_mm: 1 };
+  assert.deepEqual(
+    validateShape({
+      nodes: [
+        {
+          id: 1,
+          parent_id: 2,
+          translation: { x: 0, y: 0, z: 0 },
+          rotation: identity,
+          primitive,
+        },
+        {
+          id: 2,
+          parent_id: 1,
+          translation: { x: 0, y: 0, z: 0 },
+          rotation: identity,
+          primitive,
+        },
+      ],
+    }),
+    { ok: false, reason: "invalid_shape" },
+  );
+  assert.deepEqual(
+    validateShape({
+      nodes: [
+        {
+          id: 1,
+          parent_id: 0,
+          translation: { x: 0, y: 0, z: 0 },
+          rotation: identity,
+          primitive,
+        },
+        {
+          id: 1,
+          parent_id: 0,
+          translation: { x: 0, y: 0, z: 0 },
+          rotation: identity,
+          primitive,
+        },
+      ],
+    }),
+    { ok: false, reason: "invalid_shape" },
+  );
+  assert.deepEqual(
+    validateShape(fixture.shape_catalog["invalid-quaternion"]),
+    { ok: false, reason: "invalid_shape" },
+  );
+});
+
+test("entity and move input order cannot change simultaneous resolution", () => {
+  const scenario = fixture.cases.find(
+    ({ id }) => id === "simultaneous-moves-resolve-by-numeric-entity-id",
+  );
+  assert.ok(scenario);
+  const reversed = structuredClone(scenario);
+  reversed.initial.entities.reverse();
+  reversed.steps[0].moves.reverse();
+  assert.deepEqual(
+    evaluateFixtureCase(fixture, scenario),
+    evaluateFixtureCase(fixture, reversed),
+  );
+});
+
+test("swept contact is derived from obstacle thickness", () => {
+  const scenario = fixture.cases.find(
+    ({ id }) => id === "swept-movement-stops-at-a-thin-obstacle",
+  );
+  assert.ok(scenario);
+  const thickerFixture = structuredClone(fixture);
+  thickerFixture.shape_catalog["thin-wall"].nodes[0].primitive.size_x_mm = 1000;
+  const result = evaluateFixtureCase(thickerFixture, scenario);
+  assert.equal(result.trace[0].position.x, -1000);
+  assert.notEqual(result.trace[0].position.x, scenario.expect.trace[0].position.x);
+});
+
+test("world, entity-ID, and revision bounds reject without mutation", () => {
+  const result = evaluateScenario(
+    {
+      rules: {
+        heightfield_y_mm: 0,
+        displacement_step_mm: 1000,
+        max_displacement_radius_mm: 1000,
+        unstick_blocked_ticks: 3,
+      },
+      shape_catalog: fixture.shape_catalog,
+      entities: [
+        {
+          id: "1",
+          kind: "aigent",
+          lifecycle: "active",
+          revision: UINT64_MAX.toString(),
+          position: { x: 0, y: 500, z: 0 },
+          shape: "cube",
+        },
+      ],
+      next_entity_id: (UINT64_MAX + 1n).toString(),
+    },
+    [
+      { op: "place", x_mm: 2000, z_mm: 0, shape: "cube" },
+      {
+        op: "resolve_moves",
+        moves: [
+          {
+            entity_id: "1",
+            target: { x: 100_000_000, y: 500, z: 0 },
+          },
+        ],
+      },
+      { op: "set_shape", entity_id: "1", shape: "small-sphere" },
+    ],
+    { entity_ids: ["1"], include_next_entity_id: true },
+  );
+  assert.deepEqual(result.trace, [
+    {
+      outcome: "rejected",
+      reason: "entity_id_exhausted",
+      type: "place_object",
+    },
+    {
+      entity_id: "1",
+      outcome: "rejected",
+      reason: "out_of_world_bounds",
+      type: "move",
+    },
+    {
+      entity_id: "1",
+      outcome: "rejected",
+      reason: "revision_exhausted",
+      type: "set_shape",
+    },
+  ]);
+  assert.deepEqual(result.final_state.entities[0].position, {
+    x: 0,
+    y: 500,
+    z: 0,
+  });
+});
+
+test("fixture validation rejects duplicate IDs and malformed headers", () => {
+  const duplicate = structuredClone(fixture);
+  duplicate.cases[1].id = duplicate.cases[0].id;
+  assert.throws(() => validateFixture(duplicate), /duplicate fixture id/);
+
+  const malformed = structuredClone(fixture);
+  malformed.fixture_version = 2;
+  assert.throws(() => validateFixture(malformed), /invalid world fixture header/);
+});
+
+test("world contract links resolve and protobuf owns typed geometry messages", () => {
+  const contractPath = path.join(root, "world/v1/CONTRACT.md");
+  for (const relativeLink of [
+    "../../docs/adr/0002-world-geometry-and-displacement-semantics.md",
+    "../../protocol/v1/aigent.proto",
+    "../../protocol/v1/CONTRACT.md",
+    "conformance/physics-shapes-v1.json",
+  ]) {
+    assert.ok(
+      fs.existsSync(path.resolve(path.dirname(contractPath), relativeLink)),
+      relativeLink,
+    );
+  }
+  const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
+  for (const relativeLink of [
+    "docs/adr/0002-world-geometry-and-displacement-semantics.md",
+    "world/v1/CONTRACT.md",
+    "world/v1/conformance/physics-shapes-v1.json",
+  ]) {
+    assert.ok(readme.includes(relativeLink), relativeLink);
+    assert.ok(fs.existsSync(path.join(root, relativeLink)), relativeLink);
+  }
+
+  const proto = fs.readFileSync(
+    path.join(root, "protocol/v1/aigent.proto"),
+    "utf8",
+  );
+  for (const definition of [
+    "COMMAND_KIND_UNSTICK = 15;",
+    "message Vector3Millimeters {",
+    "message ShapeTree {",
+    "message PlaceObjectPayload {",
+    "message SetShapePayload {",
+    "message UnstickPayload {}",
+    "message PhysicsCommandResult {",
+    "uint64 entity_id = 1;",
+  ]) {
+    assert.match(proto, new RegExp(definition.replace(/[{}]/g, "\\$&")));
+  }
+
+  const evaluator = fs.readFileSync(
+    path.join(root, "scripts/world-contract.mjs"),
+    "utf8",
+  );
+  assert.doesNotMatch(evaluator, /localeCompare/);
+});

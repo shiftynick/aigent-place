@@ -52,6 +52,7 @@ enum CommandKind {
   COMMAND_KIND_PROPOSE = 12;
   COMMAND_KIND_VOTE = 13;
   COMMAND_KIND_STOP = 14;
+  COMMAND_KIND_UNSTICK = 15;
 }
 
 enum PerceptKind {
@@ -94,6 +95,19 @@ enum EventResyncReason {
   EVENT_RESYNC_REASON_EVENT_NOT_ADMITTED = 2;
   EVENT_RESYNC_REASON_SERVER_INITIATED = 3;
   EVENT_RESYNC_REASON_EPOCH_MISMATCH = 4;
+}
+
+enum PhysicsRejectionCode {
+  PHYSICS_REJECTION_CODE_UNSPECIFIED = 0;
+  PHYSICS_REJECTION_CODE_INVALID_COORDINATE = 1;
+  PHYSICS_REJECTION_CODE_OUT_OF_WORLD_BOUNDS = 2;
+  PHYSICS_REJECTION_CODE_INVALID_SHAPE = 3;
+  PHYSICS_REJECTION_CODE_OVERLAP = 4;
+  PHYSICS_REJECTION_CODE_ENCLOSES_AIGENT = 5;
+  PHYSICS_REJECTION_CODE_NO_FREE_POSITION = 6;
+  PHYSICS_REJECTION_CODE_UNSTICK_NOT_ELIGIBLE = 7;
+  PHYSICS_REJECTION_CODE_ENTITY_ID_EXHAUSTED = 8;
+  PHYSICS_REJECTION_CODE_REVISION_EXHAUSTED = 9;
 }
 
 message FeatureOffer {
@@ -176,17 +190,125 @@ message CommandMetadata {
   bytes idempotency_key = 3;
 }
 
+message Vector3Millimeters {
+  sint64 x_mm = 1;
+  sint64 y_mm = 2;
+  sint64 z_mm = 3;
+}
+
+message Quaternion {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double w = 4;
+}
+
+message LocalTransform {
+  Vector3Millimeters translation = 1;
+  Quaternion rotation = 2;
+}
+
+message ColorRgba {
+  uint32 red = 1;
+  uint32 green = 2;
+  uint32 blue = 3;
+  uint32 alpha = 4;
+}
+
+message BoxPrimitive {
+  uint64 size_x_mm = 1;
+  uint64 size_y_mm = 2;
+  uint64 size_z_mm = 3;
+}
+
+message SpherePrimitive {
+  uint64 radius_mm = 1;
+}
+
+message CapsulePrimitive {
+  uint64 radius_mm = 1;
+  uint64 segment_length_mm = 2;
+}
+
+message CylinderPrimitive {
+  uint64 radius_mm = 1;
+  uint64 height_mm = 2;
+}
+
+message ConePrimitive {
+  uint64 radius_mm = 1;
+  uint64 height_mm = 2;
+}
+
+message PanelPrimitive {
+  uint64 width_mm = 1;
+  uint64 height_mm = 2;
+  uint64 thickness_mm = 3;
+}
+
+message ShapeNode {
+  // Non-zero and unique within one ShapeTree. parent_node_id is zero only for
+  // the single root node.
+  uint32 node_id = 1;
+  uint32 parent_node_id = 2;
+  LocalTransform transform = 3;
+  optional string joint_name = 4;
+  ColorRgba color = 5;
+  repeated string material_tags = 6;
+
+  oneof primitive {
+    BoxPrimitive box = 10;
+    SpherePrimitive sphere = 11;
+    CapsulePrimitive capsule = 12;
+    CylinderPrimitive cylinder = 13;
+    ConePrimitive cone = 14;
+    PanelPrimitive panel = 15;
+  }
+}
+
+message ShapeTree {
+  repeated ShapeNode nodes = 1;
+}
+
+message PlaceObjectPayload {
+  // y is derived by grounding the shape on the authoritative heightfield.
+  sint64 x_mm = 1;
+  sint64 z_mm = 2;
+  ShapeTree shape = 3;
+}
+
+message SetShapePayload {
+  ShapeTree shape = 1;
+}
+
+message UnstickPayload {}
+
+message PhysicsRejection {
+  PhysicsRejectionCode code = 1;
+  optional uint64 conflicting_entity_id = 2;
+}
+
+message PhysicsCommandResult {
+  optional uint64 entity_id = 1;
+  optional Vector3Millimeters authoritative_position = 2;
+  bool displaced = 3;
+}
+
 message Command {
   CommandMetadata metadata = 1;
   CommandKind kind = 2;
 
-  // Kind-specific data is unavailable until its owning contract adds a typed
-  // schema. CANCEL_INTENT is the only base command with an empty payload.
+  // Kind-specific protobuf bytes. Task-owned mappings are normative:
+  // PLACE_OBJECT -> PlaceObjectPayload, SET_SHAPE -> SetShapePayload,
+  // UNSTICK -> UnstickPayload. CANCEL_INTENT and STOP have empty payloads.
+  // Payload types for other command kinds remain unavailable until their
+  // owning contracts add a typed schema.
   bytes payload = 3;
 }
 
 message EntityReference {
-  bytes entity_id = 1;
+  // Non-zero monotonic uint64; see ADR-0002 and the world v1 contract.
+  uint64 entity_id = 1;
   uint64 revision = 2;
 }
 

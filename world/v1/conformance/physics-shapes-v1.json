@@ -1,0 +1,853 @@
+{
+  "fixture_format": "aigent.world.semantic-fixtures",
+  "fixture_version": 1,
+  "contract": "world/v1/CONTRACT.md",
+  "shape_catalog": {
+    "cube": {
+      "nodes": [
+        {
+          "id": 1,
+          "parent_id": 0,
+          "translation": { "x": 0, "y": 0, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "primitive": {
+            "kind": "box",
+            "size_x_mm": 1000,
+            "size_y_mm": 1000,
+            "size_z_mm": 1000
+          }
+        }
+      ]
+    },
+    "small-sphere": {
+      "nodes": [
+        {
+          "id": 9,
+          "parent_id": 0,
+          "translation": { "x": 0, "y": 0, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "primitive": { "kind": "sphere", "radius_mm": 400 }
+        }
+      ]
+    },
+    "large-box": {
+      "nodes": [
+        {
+          "id": 7,
+          "parent_id": 0,
+          "translation": { "x": 0, "y": 0, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "primitive": {
+            "kind": "box",
+            "size_x_mm": 4000,
+            "size_y_mm": 1000,
+            "size_z_mm": 1000
+          }
+        }
+      ]
+    },
+    "thin-wall": {
+      "nodes": [
+        {
+          "id": 1,
+          "parent_id": 0,
+          "translation": { "x": 0, "y": 0, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "primitive": {
+            "kind": "box",
+            "size_x_mm": 100,
+            "size_y_mm": 1000,
+            "size_z_mm": 2000
+          }
+        }
+      ]
+    },
+    "cage": {
+      "nodes": [
+        {
+          "id": 1,
+          "parent_id": 0,
+          "translation": { "x": -1000, "y": 750, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "primitive": {
+            "kind": "box",
+            "size_x_mm": 500,
+            "size_y_mm": 1500,
+            "size_z_mm": 2500
+          }
+        },
+        {
+          "id": 2,
+          "parent_id": 1,
+          "translation": { "x": 2000, "y": 0, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "primitive": {
+            "kind": "box",
+            "size_x_mm": 500,
+            "size_y_mm": 1500,
+            "size_z_mm": 2500
+          }
+        },
+        {
+          "id": 3,
+          "parent_id": 1,
+          "translation": { "x": 1000, "y": 0, "z": -1000 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "primitive": {
+            "kind": "box",
+            "size_x_mm": 1500,
+            "size_y_mm": 1500,
+            "size_z_mm": 500
+          }
+        },
+        {
+          "id": 4,
+          "parent_id": 1,
+          "translation": { "x": 1000, "y": 0, "z": 2000 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "primitive": {
+            "kind": "box",
+            "size_x_mm": 1500,
+            "size_y_mm": 1500,
+            "size_z_mm": 500
+          }
+        }
+      ]
+    },
+    "invalid-quaternion": {
+      "nodes": [
+        {
+          "id": 1,
+          "parent_id": 0,
+          "translation": { "x": 0, "y": 0, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 0 },
+          "primitive": { "kind": "sphere", "radius_mm": 500 }
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "quantizes-signed-ties-and-rejects-invalid-boundaries",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [],
+        "next_entity_id": "1"
+      },
+      "steps": [
+        { "op": "quantize", "value": "0.0005" },
+        { "op": "quantize", "value": "0.0015" },
+        { "op": "quantize", "value": "-0.0005" },
+        { "op": "quantize", "value": "-0.0015" },
+        { "op": "quantize", "value": "100000" },
+        { "op": "quantize", "value": "100000.0004" },
+        { "op": "quantize", "value": "NaN" },
+        { "op": "quantize", "value": "-Infinity" }
+      ],
+      "inspect": { "include_next_entity_id": true },
+      "expect": {
+        "final_state": { "entities": [], "next_entity_id": "1" },
+        "trace": [
+          {
+            "millimeters": "0",
+            "outcome": "accepted",
+            "type": "coordinate"
+          },
+          {
+            "millimeters": "2",
+            "outcome": "accepted",
+            "type": "coordinate"
+          },
+          {
+            "millimeters": "0",
+            "outcome": "accepted",
+            "type": "coordinate"
+          },
+          {
+            "millimeters": "-2",
+            "outcome": "accepted",
+            "type": "coordinate"
+          },
+          {
+            "millimeters": "100000000",
+            "outcome": "accepted",
+            "type": "coordinate"
+          },
+          {
+            "outcome": "rejected",
+            "reason": "out_of_world_bounds",
+            "type": "coordinate"
+          },
+          {
+            "outcome": "rejected",
+            "reason": "invalid_coordinate",
+            "type": "coordinate"
+          },
+          {
+            "outcome": "rejected",
+            "reason": "invalid_coordinate",
+            "type": "coordinate"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sleeping-body-allows-placement-then-wakes-by-displacement",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "sleeping",
+            "revision": "1",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "cube"
+          }
+        ],
+        "next_entity_id": "2"
+      },
+      "steps": [
+        { "op": "place", "x_mm": 0, "z_mm": 0, "shape": "cube" },
+        { "op": "wake", "entity_id": "1" }
+      ],
+      "inspect": {
+        "entity_ids": ["1", "2"],
+        "include_next_entity_id": true
+      },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "id": "1",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": -1000, "y": 500, "z": 0 },
+              "revision": "2",
+              "shape_node_ids": [1]
+            },
+            {
+              "id": "2",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            }
+          ],
+          "next_entity_id": "3"
+        },
+        "trace": [
+          {
+            "entity_id": "2",
+            "outcome": "accepted",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "revision": "1",
+            "type": "place_object"
+          },
+          {
+            "displaced": true,
+            "entity_id": "1",
+            "outcome": "accepted",
+            "position": { "x": -1000, "y": 500, "z": 0 },
+            "revision": "2",
+            "type": "wake"
+          }
+        ]
+      }
+    },
+    {
+      "id": "restore-uses-the-same-deterministic-displacement-search",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "1",
+            "kind": "object",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "cube"
+          },
+          {
+            "id": "2",
+            "kind": "aigent",
+            "lifecycle": "sleeping",
+            "revision": "4",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "cube"
+          }
+        ],
+        "next_entity_id": "3"
+      },
+      "steps": [{ "op": "restore", "entity_id": "2" }],
+      "inspect": { "entity_ids": ["1", "2"] },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "id": "1",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            },
+            {
+              "id": "2",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": -1000, "y": 500, "z": 0 },
+              "revision": "5",
+              "shape_node_ids": [1]
+            }
+          ]
+        },
+        "trace": [
+          {
+            "displaced": true,
+            "entity_id": "2",
+            "outcome": "accepted",
+            "position": { "x": -1000, "y": 500, "z": 0 },
+            "revision": "5",
+            "type": "restore"
+          }
+        ]
+      }
+    },
+    {
+      "id": "placement-rejects-overlap-but-allows-contact",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "cube"
+          }
+        ],
+        "next_entity_id": "10"
+      },
+      "steps": [
+        { "op": "place", "x_mm": 0, "z_mm": 0, "shape": "cube" },
+        { "op": "place", "x_mm": 1000, "z_mm": 0, "shape": "cube" }
+      ],
+      "inspect": {
+        "entity_ids": ["1", "10"],
+        "include_next_entity_id": true
+      },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "id": "1",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            },
+            {
+              "id": "10",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": 1000, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            }
+          ],
+          "next_entity_id": "11"
+        },
+        "trace": [
+          {
+            "conflicting_entity_id": "1",
+            "outcome": "rejected",
+            "reason": "overlap",
+            "type": "place_object"
+          },
+          {
+            "entity_id": "10",
+            "outcome": "accepted",
+            "position": { "x": 1000, "y": 500, "z": 0 },
+            "revision": "1",
+            "type": "place_object"
+          }
+        ]
+      }
+    },
+    {
+      "id": "placement-rejects-a-hollow-enclosure",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "cube"
+          }
+        ],
+        "next_entity_id": "2"
+      },
+      "steps": [{ "op": "place", "x_mm": 0, "z_mm": 0, "shape": "cage" }],
+      "inspect": {
+        "entity_ids": ["1"],
+        "include_next_entity_id": true
+      },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "id": "1",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            }
+          ],
+          "next_entity_id": "2"
+        },
+        "trace": [
+          {
+            "conflicting_entity_id": "1",
+            "outcome": "rejected",
+            "reason": "encloses_aigent",
+            "type": "place_object"
+          }
+        ]
+      }
+    },
+    {
+      "id": "set-shape-is-atomic-on-overlap-and-validation-failure",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "cube"
+          },
+          {
+            "id": "2",
+            "kind": "object",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 2200, "y": 500, "z": 0 },
+            "shape": "cube"
+          }
+        ],
+        "next_entity_id": "3"
+      },
+      "steps": [
+        { "op": "set_shape", "entity_id": "1", "shape": "large-box" },
+        { "op": "set_shape", "entity_id": "1", "shape": "invalid-quaternion" },
+        { "op": "set_shape", "entity_id": "1", "shape": "small-sphere" }
+      ],
+      "inspect": { "entity_ids": ["1", "2"] },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "id": "1",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 0 },
+              "revision": "2",
+              "shape_node_ids": [9]
+            },
+            {
+              "id": "2",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": 2200, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            }
+          ]
+        },
+        "trace": [
+          {
+            "conflicting_entity_id": "2",
+            "entity_id": "1",
+            "outcome": "rejected",
+            "reason": "overlap",
+            "type": "set_shape"
+          },
+          {
+            "entity_id": "1",
+            "outcome": "rejected",
+            "reason": "invalid_shape",
+            "type": "set_shape"
+          },
+          {
+            "entity_id": "1",
+            "outcome": "accepted",
+            "revision": "2",
+            "type": "set_shape"
+          }
+        ]
+      }
+    },
+    {
+      "id": "swept-movement-stops-at-a-thin-obstacle",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": -5000, "y": 500, "z": 0 },
+            "shape": "cube"
+          },
+          {
+            "id": "2",
+            "kind": "object",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "thin-wall"
+          }
+        ],
+        "next_entity_id": "3"
+      },
+      "steps": [
+        {
+          "op": "resolve_moves",
+          "moves": [
+            {
+              "entity_id": "1",
+              "target": { "x": 5000, "y": 500, "z": 0 }
+            }
+          ]
+        }
+      ],
+      "inspect": { "entity_ids": ["1", "2"] },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "blocked_ticks": 1,
+              "id": "1",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": -550, "y": 500, "z": 0 },
+              "revision": "2",
+              "shape_node_ids": [1]
+            },
+            {
+              "id": "2",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            }
+          ]
+        },
+        "trace": [
+          {
+            "blocker_entity_id": "2",
+            "entity_id": "1",
+            "outcome": "blocked",
+            "position": { "x": -550, "y": 500, "z": 0 },
+            "type": "move"
+          }
+        ]
+      }
+    },
+    {
+      "id": "simultaneous-moves-resolve-by-numeric-entity-id",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 2000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "2",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 1000, "y": 500, "z": 0 },
+            "shape": "cube"
+          },
+          {
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": -1000, "y": 500, "z": 0 },
+            "shape": "cube"
+          }
+        ],
+        "next_entity_id": "3"
+      },
+      "steps": [
+        {
+          "op": "resolve_moves",
+          "moves": [
+            {
+              "entity_id": "2",
+              "target": { "x": 0, "y": 500, "z": 0 }
+            },
+            {
+              "entity_id": "1",
+              "target": { "x": 0, "y": 500, "z": 0 }
+            }
+          ]
+        }
+      ],
+      "inspect": { "entity_ids": ["1", "2"] },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "blocked_ticks": 1,
+              "id": "1",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 0 },
+              "revision": "2",
+              "shape_node_ids": [1]
+            },
+            {
+              "blocked_ticks": 1,
+              "id": "2",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": 1000, "y": 500, "z": 0 },
+              "revision": "2",
+              "shape_node_ids": [1]
+            }
+          ]
+        },
+        "trace": [
+          {
+            "blocker_entity_id": "2",
+            "entity_id": "1",
+            "outcome": "blocked",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "type": "move"
+          },
+          {
+            "blocker_entity_id": "1",
+            "entity_id": "2",
+            "outcome": "blocked",
+            "position": { "x": 1000, "y": 500, "z": 0 },
+            "type": "move"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unstick-uses-the-lexicographic-nearest-free-tie",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 1000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "revision": "7",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "cube",
+            "blocked_ticks": 3
+          }
+        ],
+        "next_entity_id": "2"
+      },
+      "steps": [{ "op": "unstick", "entity_id": "1" }],
+      "inspect": { "entity_ids": ["1"] },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "blocked_ticks": 0,
+              "id": "1",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": -1000, "y": 500, "z": 0 },
+              "revision": "8",
+              "shape_node_ids": [1]
+            }
+          ]
+        },
+        "trace": [
+          {
+            "displaced": true,
+            "entity_id": "1",
+            "outcome": "accepted",
+            "position": { "x": -1000, "y": 500, "z": 0 },
+            "revision": "8",
+            "type": "unstick"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unstick-fails-when-the-bounded-search-has-no-candidate",
+      "initial": {
+        "rules": {
+          "heightfield_y_mm": 0,
+          "displacement_step_mm": 1000,
+          "max_displacement_radius_mm": 1000,
+          "unstick_blocked_ticks": 3
+        },
+        "entities": [
+          {
+            "id": "1",
+            "kind": "aigent",
+            "lifecycle": "active",
+            "revision": "7",
+            "position": { "x": 0, "y": 500, "z": 0 },
+            "shape": "cube",
+            "blocked_ticks": 3
+          },
+          {
+            "id": "2",
+            "kind": "object",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": -1000, "y": 500, "z": 0 },
+            "shape": "cube"
+          },
+          {
+            "id": "3",
+            "kind": "object",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 1000, "y": 500, "z": 0 },
+            "shape": "cube"
+          },
+          {
+            "id": "4",
+            "kind": "object",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 0, "y": 500, "z": -1000 },
+            "shape": "cube"
+          },
+          {
+            "id": "5",
+            "kind": "object",
+            "lifecycle": "active",
+            "revision": "1",
+            "position": { "x": 0, "y": 500, "z": 1000 },
+            "shape": "cube"
+          }
+        ],
+        "next_entity_id": "6"
+      },
+      "steps": [{ "op": "unstick", "entity_id": "1" }],
+      "inspect": { "entity_ids": ["1", "2", "3", "4", "5"] },
+      "expect": {
+        "final_state": {
+          "entities": [
+            {
+              "blocked_ticks": 3,
+              "id": "1",
+              "kind": "aigent",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 0 },
+              "revision": "7",
+              "shape_node_ids": [1]
+            },
+            {
+              "id": "2",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": -1000, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            },
+            {
+              "id": "3",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": 1000, "y": 500, "z": 0 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            },
+            {
+              "id": "4",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": -1000 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            },
+            {
+              "id": "5",
+              "kind": "object",
+              "lifecycle": "active",
+              "position": { "x": 0, "y": 500, "z": 1000 },
+              "revision": "1",
+              "shape_node_ids": [1]
+            }
+          ]
+        },
+        "trace": [
+          {
+            "entity_id": "1",
+            "outcome": "rejected",
+            "reason": "no_free_position",
+            "type": "unstick"
+          }
+        ]
+      }
+    }
+  ]
+}
