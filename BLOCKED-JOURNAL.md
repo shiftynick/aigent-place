@@ -31,3 +31,20 @@ the task, exact blocking condition, evidence already checked, and a concrete
   `in_progress`, and implement the schema, contract, and executable examples.
   **Resolved 2026-07-29:** the operator explicitly accepted ADR-0001 as
   written. Task-020 records the decision and task-002 may resume.
+
+- 2026-07-29 — `task-010` cannot encode the public and persisted world
+  geometry contract until the operator decides proposed
+  [ADR-0002](docs/adr/0002-world-geometry-and-displacement-semantics.md).
+  Two isolated contract scans confirmed that `ARCHITECTURE.md` fixes the
+  high-level physics, shape, sleep, and coordinate invariants but not entity
+  ID width, fixed-point precision and rounding, primitive transform/collider
+  derivation, contact and enclosure semantics, sleeping-body placement, or
+  bounded deterministic displacement. Task `task-022` is the
+  `needs:operator` decision card.
+  **Resume:** accept ADR-0002, reject it, or request specific changes; then
+  complete task-022, remove `needs:operator` from task-010, return task-010 to
+  `in_progress`, and implement the normative contract plus executable
+  conformance examples.
+  **Resolved 2026-07-29:** the operator explicitly accepted ADR-0002 as
+  written. Task-022 records the decision; task-010 may resume when that
+  decision card completes its validation and review.
