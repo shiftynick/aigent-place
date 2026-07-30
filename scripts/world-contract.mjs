@@ -337,6 +337,22 @@ export function validateShape(shape) {
   return { ok: true };
 }
 
+function canonicalShape(shape) {
+  const validation = validateShape(shape);
+  if (!validation.ok) throw new Error(validation.reason);
+  return {
+    nodes: shape.nodes
+      .map((node) => ({
+        ...clone(node),
+        rotation: normalizeQuaternion(node.rotation),
+        ...(node.material_tags === undefined
+          ? {}
+          : { material_tags: [...node.material_tags].sort() }),
+      }))
+      .sort((a, b) => a.id - b.id),
+  };
+}
+
 function composedNodes(shape) {
   const validation = validateShape(shape);
   if (!validation.ok) throw new Error(validation.reason);
@@ -599,7 +615,7 @@ function applyPlace(state, step) {
     lifecycle: "active",
     revision: "1",
     position: { x: step.x_mm, y: 0, z: step.z_mm },
-    shape: clone(step.shape),
+    shape: canonicalShape(step.shape),
   };
   entity.position = groundPosition(state, entity, step.x_mm, step.z_mm);
   if (!withinWorld(entityAabbs(entity))) {
@@ -655,7 +671,7 @@ function applySetShape(state, step) {
       reason: "invalid_shape",
     };
   }
-  const candidate = { ...entity, shape: clone(step.shape) };
+  const candidate = { ...entity, shape: canonicalShape(step.shape) };
   if (!withinWorld(entityAabbs(candidate))) {
     return {
       type: "set_shape",
@@ -692,7 +708,7 @@ function applySetShape(state, step) {
       reason: "revision_exhausted",
     };
   }
-  entity.shape = clone(step.shape);
+  entity.shape = canonicalShape(step.shape);
   incrementRevision(entity);
   return {
     type: "set_shape",
@@ -1034,6 +1050,7 @@ export function evaluateScenario(initial, steps, inspect) {
         throw new Error(`unknown shape template: ${entity.shape}`);
       }
       entity.shape = clone(catalog[entity.shape]);
+      entity.shape = canonicalShape(entity.shape);
     }
   }
   const materializedSteps = steps.map((step) => {

@@ -68,6 +68,80 @@ Write the normative Step 0 contract for collision, sleeping/waking bodies, place
 - 2026-07-30T00:03:09Z — note: implementation choices: the owning world contract adds typed PLACE_OBJECT, SET_SHAPE, and UNSTICK protobuf payloads without changing envelope semantics; the semantic evaluator uses lossless decimal parsing for coordinate rounding, numeric uint64 ordering, derived primitive AABBs, swept slab contact, and generated displacement candidates. Heightfield values and ruleset ranges remain owned by task-012; generated/binary protobuf conformance remains task-004.
 - 2026-07-30T00:03:09Z — note: protoc is still unavailable in the foundation workspace, so task-010 does not claim compilation or generated bindings. The existing structural proto tests plus task-010 message/link assertions validate the authored source until task-003/task-004 install and run the pinned generator.
 - 2026-07-30T00:03:09Z — moved to review
+- 2026-07-30T00:11:56Z — moved to in_progress (claimed by codex-root)
+- 2026-07-30T00:11:56Z — edited (+tag needs:operator; +blockedBy task-023)
+- 2026-07-30T00:11:56Z — note: round 1 cold review: rung 2 fresh subagents, separate SPEC and STANDARDS calls because the Claude counterpart weekly quota was exhausted. Confirmed fixable defects in signed dimension encoding, transform bounds, zero-length movement, sleep and identical-set_shape no-ops, full command ordering, placement precedence, rejection-code mappings, uint64 lifecycle edges, exact rational sweep ties, and BigInt displacement ordering. The review also found a distinct expensive-to-reverse gap: neither the architecture nor ADR-0002 defines heightfield sampling, chunk seams, grounding boundaries, or authoritative terrain collision volumes. Proposed ADR-0003 recommends integer lattice samples, bilinear rendering, conservative per-cell collision columns, and rational terrain sweeps. Task-010 must pause before implementing that persisted/replay contract.
+- 2026-07-30T00:11:56Z — moved to blocked
+- 2026-07-30T00:12:11Z — run: git diff --check HEAD -- . :(exclude).tasks/**
+  started 2026-07-30T00:12:11Z, exit 0 in 0.1s
+  output:
+  | (no output)
+- 2026-07-30T00:12:11Z — run: node --test scripts/world-contract.test.mjs
+  started 2026-07-30T00:12:11Z, exit 0 in 0.1s
+  output tail (truncated to last 30 lines):
+  |   duration_ms: 0.7855
+  |   type: 'test'
+  |   ...
+  | # Subtest: world, entity-ID, and revision bounds reject without mutation
+  | ok 10 - world, entity-ID, and revision bounds reject without mutation
+  |   ---
+  |   duration_ms: 0.4745
+  |   type: 'test'
+  |   ...
+  | # Subtest: fixture validation rejects duplicate IDs and malformed headers
+  | ok 11 - fixture validation rejects duplicate IDs and malformed headers
+  |   ---
+  |   duration_ms: 0.6196
+  |   type: 'test'
+  |   ...
+  | # Subtest: world contract links resolve and protobuf owns typed geometry messages
+  | ok 12 - world contract links resolve and protobuf owns typed geometry messages
+  |   ---
+  |   duration_ms: 0.7395
+  |   type: 'test'
+  |   ...
+  | 1..12
+  | # tests 12
+  | # suites 0
+  | # pass 12
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 71.4957
+- 2026-07-30T00:12:26Z — run: node scripts/check.mjs
+  started 2026-07-30T00:12:12Z, exit 0 in 14.4s
+  output tail (truncated to last 30 lines):
+  |     # Subtest: soft-deletes by setting status=done and adding deleted:true tag
+  |     ok 1 - soft-deletes by setting status=done and adding deleted:true tag
+  |       ---
+  |       duration_ms: 115.8637
+  |       type: 'test'
+  |       ...
+  |     # Subtest: keeps dependents blocked when their blocker is soft-deleted
+  |     ok 2 - keeps dependents blocked when their blocker is soft-deleted
+  |       ---
+  |       duration_ms: 255.4204
+  |       type: 'test'
+  |       ...
+  |     1..2
+  | ok 121 - task rm
+  |   ---
+  |   duration_ms: 371.4062
+  |   type: 'suite'
+  |   ...
+  | 1..121
+  | # tests 289
+  | # suites 62
+  | # pass 289
+  | # fail 0
+  | # cancelled 0
+  | # skipped 0
+  | # todo 0
+  | # duration_ms 13749.3302
+  |
+  | run-checks: PASS (skill-sync + 14 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
 - 2026-07-30T00:20:05Z — edited (+blockedBy task-023)
 - 2026-07-30T00:20:05Z — note: ADR-0003 was proposed after round-1 review exposed missing persisted heightfield and terrain-collision semantics. The operator explicitly accepted it; task-010 remains dependency-blocked only until task-023 completes its own delivery lifecycle.
 - 2026-07-30T00:20:05Z — moved to blocked

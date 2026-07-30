@@ -151,6 +151,58 @@ test("shape validation rejects cycles, duplicate IDs, and invalid quaternions", 
   );
 });
 
+test("all six primitive kinds have closed-form canonical bounds", () => {
+  const primitiveCases = [
+    [
+      { kind: "box", size_x_mm: 200, size_y_mm: 400, size_z_mm: 600 },
+      { x: 100, y: 200, z: 300 },
+    ],
+    [{ kind: "sphere", radius_mm: 125 }, { x: 125, y: 125, z: 125 }],
+    [
+      { kind: "capsule", radius_mm: 100, segment_length_mm: 200 },
+      { x: 100, y: 200, z: 100 },
+    ],
+    [
+      { kind: "cylinder", radius_mm: 100, height_mm: 400 },
+      { x: 100, y: 200, z: 100 },
+    ],
+    [
+      { kind: "cone", radius_mm: 100, height_mm: 400 },
+      { x: 100, y: 200, z: 100 },
+    ],
+    [
+      { kind: "panel", width_mm: 200, height_mm: 400, thickness_mm: 50 },
+      { x: 100, y: 200, z: 25 },
+    ],
+  ];
+  for (const [primitive, half] of primitiveCases) {
+    const [bounds] = entityAabbs({
+      id: "1",
+      kind: "object",
+      lifecycle: "active",
+      revision: "1",
+      position: { x: 0, y: 0, z: 0 },
+      shape: {
+        nodes: [
+          {
+            id: 1,
+            parent_id: 0,
+            translation: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0, w: 1 },
+            primitive,
+          },
+        ],
+      },
+    });
+    assert.deepEqual(bounds.min, {
+      x: -half.x,
+      y: -half.y,
+      z: -half.z,
+    });
+    assert.deepEqual(bounds.max, half);
+  }
+});
+
 test("entity and move input order cannot change simultaneous resolution", () => {
   const scenario = fixture.cases.find(
     ({ id }) => id === "simultaneous-moves-resolve-by-numeric-entity-id",
@@ -162,6 +214,19 @@ test("entity and move input order cannot change simultaneous resolution", () => 
   assert.deepEqual(
     evaluateFixtureCase(fixture, scenario),
     evaluateFixtureCase(fixture, reversed),
+  );
+});
+
+test("shape node input order cannot change collider or enclosure outcomes", () => {
+  const scenario = fixture.cases.find(
+    ({ id }) => id === "placement-rejects-a-hollow-enclosure",
+  );
+  assert.ok(scenario);
+  const reorderedFixture = structuredClone(fixture);
+  reorderedFixture.shape_catalog.cage.nodes.reverse();
+  assert.deepEqual(
+    evaluateFixtureCase(fixture, scenario),
+    evaluateFixtureCase(reorderedFixture, scenario),
   );
 });
 

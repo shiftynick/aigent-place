@@ -123,7 +123,8 @@ A `ShapeTree` MUST contain exactly one root and at least one node.
   canonical representation.
 - Joint names and material tags are ASCII identifiers matching
   `[a-z][a-z0-9_.-]{0,63}`. Joint names are unique within a tree. Duplicate
-  material tags on one node are invalid.
+  material tags on one node are invalid. Material-tag order is not semantic;
+  accepted state stores tags in ascending ASCII byte order.
 - RGBA components are integers in `0..255`.
 
 Any missing primitive, duplicate identity, broken parent, cycle, invalid
