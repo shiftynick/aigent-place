@@ -1,12 +1,12 @@
 ---
 id: task-023
 title: Accept heightfield sampling and terrain collision ADR
-status: review
+status: done
 priority: p0
 tags: [area:architecture, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-30T00:11:47Z"
-updatedAt: "2026-07-30T00:20:29Z"
+updatedAt: "2026-07-30T00:22:24Z"
 ---
 
 <!-- task-tracker:description -->
@@ -64,3 +64,5 @@ Review ADR-0003 and explicitly accept it, reject it, or request specific changes
   | run-checks: PASS (skill-sync + 14 suites)
   | process-docs: PASS (no unresolved markers in scoped non-binary files)
 - 2026-07-30T00:20:29Z — note: round 1 cold review: rung 2 fresh subagents, separate SPEC and STANDARDS. Confirmed delivery must use its own task branch/PR, task-010 must durably record the task-023 dependency, and validation evidence must be recorded in this card. Fixed all three by splitting task-023 from task-010, updating task-010 to blocked by task-023, and recording diff-check plus full-gate runs. Adjudication: the ADR workflow explicitly permits an initial accepted commit when the operator already decided; the exact proposed text was presented before the operator replied Accept, and the accepted commit changes only its status relative to that presented text.
+- 2026-07-30T00:22:24Z — note: final cold review: round 2 used rung 2 fresh subagents in separate isolated worktrees. SPEC and STANDARDS both passed with no remaining defects; reviewers independently reran diff-check and the full process gate (289 tests).
+- 2026-07-30T00:22:24Z — moved to done
