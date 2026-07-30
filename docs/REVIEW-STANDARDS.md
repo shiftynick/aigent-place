@@ -35,7 +35,7 @@ General engineering conventions live in `docs/ENGINEERING-STANDARDS.md`.
 - Any architecture-significant implementation without an accepted matching
   ADR or a matching operator-approved locked decision in `ARCHITECTURE.md` is
   a finding. (origin: task-001 bootstrap review)
-
-No runtime defect pattern has been observed yet. Add lenses here only after
-implementation or review evidence shows that a pattern is likely to recur;
-replace seed origins as the project earns its own rules.
+- For an atomic batch, verify every later item reads a tentative overlay of
+  earlier items for each durable mapping it can affect; checking only the
+  pre-batch durable state makes outcomes batch-dependent and can make the
+  writer's own commit unrecoverable. (origin: task-011 cold review)

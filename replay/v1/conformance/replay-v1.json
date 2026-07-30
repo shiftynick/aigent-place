@@ -1,0 +1,305 @@
+{
+  "fixture_format": "aigent.replay.semantic-fixtures",
+  "fixture_version": 1,
+  "contract": "replay/v1/CONTRACT.md",
+  "cases": [
+    {
+      "id": "canonical-prefix-commit-and-publication",
+      "initial": {},
+      "steps": [
+        { "op": "admit", "now_hour": 0, "commands": [
+          { "command_id": "later", "arrival_tick": "1", "aigent_id": "b", "session_epoch": "1", "sequence": "1", "idempotency_key": "later", "kind": 1, "payload": { "x": 2 }, "encoded_frame_bytes": 8388608, "mutation_delta": 2 },
+          { "command_id": "first", "arrival_tick": "1", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "first", "kind": 1, "payload": { "x": 1 }, "encoded_frame_bytes": 9437184, "mutation_delta": 1 }
+        ] },
+        { "op": "commit", "outcome": "success" },
+        { "op": "install" },
+        { "op": "deliver" }
+      ],
+      "expect": { "final_state": { "generation": 1, "installed_generation": 1, "published_generation": 1, "streams": {}, "world_value": 1, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "bytes": 9437184, "command_ids": ["first"], "generation": 1, "type": "generation_admitted" },
+        { "code": "PERSISTENCE_BACKPRESSURE", "command_id": "later", "retry_after_ticks": 1, "type": "protocol_error" },
+        { "command_count": 1, "generation": 1, "type": "generation_committed" },
+        { "generation": 1, "type": "generation_installed" },
+        { "command_id": "first", "mutation_delta": 1, "outcome": "accepted", "type": "command_result" }
+      ] }
+    },
+    {
+      "id": "occupied-and-oversize-admission-have-no-effect",
+      "initial": { "writer_occupied": true },
+      "steps": [
+        { "op": "admit", "commands": [{ "command_id": "occupied", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "k", "kind": 1, "payload": {}, "encoded_frame_bytes": 1 }] }
+      ],
+      "expect": { "final_state": { "generation": 0, "installed_generation": 0, "published_generation": 0, "streams": {}, "world_value": 0, "writer_occupied": true, "writer_unavailable": false }, "trace": [
+        { "code": "PERSISTENCE_BACKPRESSURE", "command_id": "occupied", "retry_after_ticks": 1, "type": "protocol_error" }
+      ] }
+    },
+    {
+      "id": "oversize-record-closes-command-connection",
+      "initial": {},
+      "steps": [
+        { "op": "admit", "commands": [{ "command_id": "oversize", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "k", "kind": 1, "payload": {}, "encoded_frame_bytes": 16777217 }] }
+      ],
+      "expect": { "final_state": { "generation": 0, "installed_generation": 0, "published_generation": 0, "streams": {}, "world_value": 0, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "code": "PERSISTENCE_RECORD_TOO_LARGE", "command_id": "oversize", "connection_closed": true, "type": "protocol_error" }
+      ] }
+    },
+    {
+      "id": "writer-failure-discards-tentative-generation",
+      "initial": {},
+      "steps": [
+        { "op": "admit", "commands": [{ "command_id": "write", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "k", "kind": 1, "payload": {}, "encoded_frame_bytes": 1, "mutation_delta": 4 }] },
+        { "op": "commit", "outcome": "writer_error" }
+      ],
+      "expect": { "final_state": { "generation": 0, "installed_generation": 0, "published_generation": 0, "streams": {}, "world_value": 0, "writer_occupied": false, "writer_unavailable": true }, "trace": [
+        { "bytes": 1, "command_ids": ["write"], "generation": 1, "type": "generation_admitted" },
+        { "code": "PERSISTENCE_UNAVAILABLE", "command_id": "write", "type": "protocol_error" },
+        { "code": "PERSISTENCE_UNAVAILABLE", "type": "writer_error" },
+        { "code": "PERSISTENCE_UNAVAILABLE", "type": "command_capability_closed" }
+      ] }
+    },
+    {
+      "id": "success-identical-retry-conflict-and-expiry",
+      "initial": {},
+      "steps": [
+        { "op": "admit", "now_hour": 0, "commands": [{ "command_id": "first", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "k", "kind": 1, "payload": { "v": 1 }, "encoded_frame_bytes": 1, "mutation_delta": 3 }] },
+        { "op": "commit", "outcome": "success" }, { "op": "install" }, { "op": "deliver" },
+        { "op": "admit", "now_hour": 1, "commands": [{ "command_id": "retry", "arrival_tick": "1", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "k", "kind": 1, "payload": { "v": 1 }, "encoded_frame_bytes": 1 }] },
+        { "op": "admit", "now_hour": 1, "commands": [{ "command_id": "conflict", "arrival_tick": "1", "aigent_id": "a", "session_epoch": "1", "sequence": "2", "idempotency_key": "k", "kind": 1, "payload": { "v": 2 }, "encoded_frame_bytes": 1 }] },
+        { "op": "commit", "outcome": "success" }, { "op": "install" }, { "op": "deliver" },
+        { "op": "release_session", "now_hour": 24, "aigent_id": "a", "session_epoch": "1" },
+        { "op": "admit", "now_hour": 24, "commands": [{ "command_id": "expired", "arrival_tick": "24", "aigent_id": "a", "session_epoch": "1", "sequence": "3", "idempotency_key": "k", "kind": 1, "payload": { "v": 2 }, "encoded_frame_bytes": 1, "mutation_delta": 5 }] },
+        { "op": "commit", "outcome": "success" }, { "op": "install" }, { "op": "deliver" }
+      ],
+      "expect": { "final_state": { "generation": 3, "installed_generation": 3, "published_generation": 3, "streams": {}, "world_value": 8, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "bytes": 1, "command_ids": ["first"], "generation": 1, "type": "generation_admitted" }, { "command_count": 1, "generation": 1, "type": "generation_committed" }, { "generation": 1, "type": "generation_installed" }, { "command_id": "first", "mutation_delta": 3, "outcome": "accepted", "type": "command_result" },
+        { "command_id": "retry", "result": { "mutation_delta": 3, "outcome": "accepted" }, "type": "command_result_replayed" },
+        { "bytes": 1, "command_ids": ["conflict"], "generation": 2, "type": "generation_admitted" }, { "command_count": 1, "generation": 2, "type": "generation_committed" }, { "generation": 2, "type": "generation_installed" }, { "command_id": "conflict", "outcome": "rejected", "reason": "IDEMPOTENCY_CONFLICT", "type": "command_result" },
+        { "aigent_id": "a", "session_epoch": "1", "type": "session_released" },
+        { "bytes": 1, "command_ids": ["expired"], "generation": 3, "type": "generation_admitted" }, { "command_count": 1, "generation": 3, "type": "generation_committed" }, { "generation": 3, "type": "generation_installed" }, { "command_id": "expired", "mutation_delta": 5, "outcome": "accepted", "type": "command_result" }
+      ] }
+    },
+    {
+      "id": "same-generation-idempotency-alias-conflict-and-recovery",
+      "initial": {},
+      "steps": [
+        { "op": "admit", "now_hour": 0, "commands": [
+          { "command_id": "first", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "k", "kind": 1, "payload": { "v": 1 }, "encoded_frame_bytes": 1, "mutation_delta": 3 },
+          { "command_id": "alias", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "2", "idempotency_key": "k", "kind": 1, "payload": { "v": 1 }, "encoded_frame_bytes": 1, "mutation_delta": 99 },
+          { "command_id": "conflict", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "3", "idempotency_key": "k", "kind": 1, "payload": { "v": 2 }, "encoded_frame_bytes": 1, "mutation_delta": 99 },
+          { "command_id": "retry", "arrival_tick": "1", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "k", "kind": 1, "payload": { "v": 1 }, "encoded_frame_bytes": 1 }
+        ] },
+        { "op": "commit", "outcome": "success" },
+        { "op": "install" },
+        { "op": "deliver" },
+        { "op": "cold_restart", "running_build_id": "same-build", "checkpoint": {
+          "generation": 0,
+          "build_id": "same-build",
+          "replay_version": 1,
+          "digest_contract_version": 1,
+          "rng_contract_version": 1,
+          "world_seed": "0000000000000000000000000000000000000000000000000000000000000000",
+          "next_stream_epoch": "1",
+          "next_ordinal": "1",
+          "last_commit_hour": 0,
+          "component_generations": { "world": 0, "allocator": 0, "ruleset": 0, "sessions": 0, "idempotency": 0, "events": 0, "rng": 0 }
+        } }
+      ],
+      "expect": { "final_state": { "generation": 1, "installed_generation": 1, "published_generation": 1, "streams": {}, "world_value": 3, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "bytes": 3, "command_ids": ["first", "alias", "conflict"], "generation": 1, "type": "generation_admitted" },
+        { "command_count": 3, "generation": 1, "type": "generation_committed" },
+        { "generation": 1, "type": "generation_installed" },
+        { "command_id": "first", "mutation_delta": 3, "outcome": "accepted", "type": "command_result" },
+        { "command_id": "alias", "mutation_delta": 3, "outcome": "accepted", "type": "command_result" },
+        { "command_id": "conflict", "outcome": "rejected", "reason": "IDEMPOTENCY_CONFLICT", "type": "command_result" },
+        { "command_id": "retry", "result": { "mutation_delta": 3, "outcome": "accepted" }, "type": "command_result_replayed" },
+        { "durable_result_count": 3, "event_count": 0, "generation": 1, "idempotency_count": 1, "rng_audit_count": 0, "session_cursors": { "[\"1:61\",\"1:31\"]": "4" }, "type": "recovery_reconstructed", "world_value": 3 }
+      ] }
+    },
+    {
+      "id": "crash-boundaries-and-uncommitted-tail",
+      "initial": {},
+      "steps": [
+        { "op": "admit", "commands": [{ "command_id": "pre", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "pre", "kind": 1, "payload": {}, "encoded_frame_bytes": 1, "mutation_delta": 1 }] },
+        { "op": "crash", "phase": "pre_commit" },
+        { "op": "admit", "commands": [{ "command_id": "post", "arrival_tick": "1", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "post", "kind": 1, "payload": {}, "encoded_frame_bytes": 1, "mutation_delta": 2 }] },
+        { "op": "commit", "outcome": "success" }, { "op": "crash", "phase": "post_commit" }, { "op": "crash", "phase": "post_install" }, { "op": "deliver" }, { "op": "crash", "phase": "post_delivery" },
+        { "op": "admit", "commands": [{ "command_id": "tail", "arrival_tick": "2", "aigent_id": "b", "session_epoch": "1", "sequence": "1", "idempotency_key": "tail", "kind": 1, "payload": {}, "encoded_frame_bytes": 1 }] },
+        { "op": "crash", "phase": "uncommitted_tail" }
+      ],
+      "expect": { "final_state": { "generation": 1, "installed_generation": 1, "published_generation": 1, "streams": {}, "world_value": 2, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "bytes": 1, "command_ids": ["pre"], "generation": 1, "type": "generation_admitted" }, { "generation": 0, "outcome": "pre_commit_no_effect", "type": "recovered" },
+        { "bytes": 1, "command_ids": ["post"], "generation": 1, "type": "generation_admitted" }, { "command_count": 1, "generation": 1, "type": "generation_committed" }, { "generation": 1, "outcome": "installed_committed_generation", "type": "recovered" }, { "generation": 1, "outcome": "durable_output_replayable", "type": "recovered" }, { "command_id": "post", "mutation_delta": 2, "outcome": "accepted", "type": "command_result" }, { "generation": 1, "outcome": "durable_output_replayable", "type": "recovered" },
+        { "bytes": 1, "command_ids": ["tail"], "generation": 2, "type": "generation_admitted" }, { "generation": 1, "outcome": "pre_commit_no_effect", "type": "recovered" }
+      ] }
+    },
+    {
+      "id": "committed-corruption-and-generation-mismatch-fail-closed",
+      "initial": {},
+      "steps": [
+        { "op": "recover", "records": [{ "ordinal": 2, "payload": { "bad": true }, "checksum": "00000000" }] },
+        { "op": "recover", "checkpoint_generation": 5, "component_generations": { "world": 5, "allocator": 4, "ruleset": 5, "idempotency": 5, "events": 5, "rng": 5 } }
+      ],
+      "expect": { "final_state": { "generation": 0, "installed_generation": 0, "published_generation": 0, "streams": {}, "world_value": 0, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "ordinal": 2, "reason": "committed_record_corruption", "type": "recovery_failed" }, { "reason": "generation_mismatch", "type": "recovery_failed" }
+      ] }
+    },
+    {
+      "id": "event-age-stream-global-and-ack-retention-reset",
+      "initial": {
+        "streams": {
+          "1": { "events": [
+            { "sequence": "1", "bytes": 1, "committed_at": 0, "ordinal": "1" },
+            { "sequence": "2", "bytes": 3145728, "committed_at": 23, "ordinal": "2" },
+            { "sequence": "3", "bytes": 3145728, "committed_at": 23, "ordinal": "3" }
+          ], "next_sequence": "4" },
+          "2": { "events": [{ "sequence": "1", "bytes": 536870912, "committed_at": 23, "ordinal": "4" }], "next_sequence": "2" }
+        }
+      },
+      "steps": [
+        { "op": "evict_events", "now_hour": 24 },
+        { "op": "resume", "stream_id": "1", "stream_epoch": "1", "last_acknowledged": "0" }
+      ],
+      "expect": { "final_state": { "generation": 0, "installed_generation": 0, "published_generation": 0, "streams": {
+        "1": { "acknowledged": "0", "epoch": "3", "evicted_sequences": [], "retained_sequences": [] },
+        "2": { "acknowledged": "0", "epoch": "2", "evicted_sequences": ["1"], "retained_sequences": [] }
+      }, "world_value": 0, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "reason": "age", "sequence": "1", "stream_id": "1", "type": "event_evicted" }, { "reason": "stream_cap", "sequence": "2", "stream_id": "1", "type": "event_evicted" }, { "reason": "stream_cap", "sequence": "1", "stream_id": "2", "type": "event_evicted" },
+        { "epoch": "3", "stream_id": "1", "type": "event_stream_reset", "unavailable_from": "1", "unavailable_through": "3" }
+      ] }
+    },
+    {
+      "id": "counter-based-rng-isolated-from-unrelated-input",
+      "initial": {},
+      "steps": [
+        { "op": "rng", "world_seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "bound": 1000, "input": { "rng_contract_version": 1, "subsystem": "world", "purpose": "spawn", "generation": 7, "canonical_command_index": 2, "entity_id": "9", "draw_index": 0 } },
+        { "op": "rng", "world_seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "bound": "1000", "input": { "rng_contract_version": 1, "subsystem": "world", "purpose": "spawn", "generation": 7, "canonical_command_index": 2, "entity_id": "9", "draw_index": 0 }, "stored": { "hmac": "d34084a720ae11aec785c5051b63d2ff7583e4810ec6fec433081e20f1040f26", "raw": "15222312593854960046", "value": "46", "candidate_index": 0, "rejection_block": 0, "blocks": [{ "rejection_block": 0, "hmac": "d34084a720ae11aec785c5051b63d2ff7583e4810ec6fec433081e20f1040f26", "candidates": ["15222312593854960046", "14377114011175211775", "8467862967336500932", "3677222222579371814"] }] } }
+      ],
+      "expect": { "final_state": { "generation": 0, "installed_generation": 0, "published_generation": 0, "streams": {}, "world_value": 0, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "blocks": [{ "rejection_block": 0, "hmac": "d34084a720ae11aec785c5051b63d2ff7583e4810ec6fec433081e20f1040f26", "candidates": ["15222312593854960046", "14377114011175211775", "8467862967336500932", "3677222222579371814"] }], "candidate_index": 0, "hmac": "d34084a720ae11aec785c5051b63d2ff7583e4810ec6fec433081e20f1040f26", "raw": "15222312593854960046", "rejection_block": 0, "type": "rng_draw", "value": "46" }, { "blocks": [{ "rejection_block": 0, "hmac": "d34084a720ae11aec785c5051b63d2ff7583e4810ec6fec433081e20f1040f26", "candidates": ["15222312593854960046", "14377114011175211775", "8467862967336500932", "3677222222579371814"] }], "candidate_index": 0, "hmac": "d34084a720ae11aec785c5051b63d2ff7583e4810ec6fec433081e20f1040f26", "raw": "15222312593854960046", "rejection_block": 0, "type": "rng_draw_verified", "value": "46", "verified": true }
+      ] }
+    },
+    {
+      "id": "checkpoint-suffix-cold-reconstruction",
+      "initial": {},
+      "steps": [{
+        "op": "recover",
+        "running_build_id": "build-a",
+        "tail": { "transaction_committed": false, "bytes_hex": "41494752" },
+        "checkpoint": {
+          "generation": 0,
+          "build_id": "build-a",
+          "replay_version": 1,
+          "digest_contract_version": 1,
+          "rng_contract_version": 1,
+          "world_seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "next_stream_epoch": "1",
+          "next_ordinal": "1",
+          "last_commit_hour": 0,
+          "component_generations": { "world": 0, "allocator": 0, "ruleset": 0, "sessions": 0, "idempotency": 0, "events": 0, "rng": 0 }
+        },
+        "records": [{
+          "magic": "AIGR",
+          "version": 1,
+          "type": 1,
+          "generation": 1,
+          "prior_generation": 0,
+          "ordinal": 0,
+          "encoded_frame_bytes": 1,
+          "payload": {
+            "build_id": "build-a",
+            "replay_version": 1,
+            "prior_generation": 0,
+            "command": { "command_id": "restored", "arrival_tick": "1", "aigent_id": "a", "session_epoch": "9", "sequence": "1", "idempotency_key": "restore-key", "protocol_major": 1, "kind": 1, "required_features": [], "payload_mode": 0, "canonical_payload_hex": "7b2276616c7565223a347d" },
+            "digest": "22e4bcda0cc31c4e93636633f291fa68135e4ed41ed48794f9a03bd4be27f87c",
+            "result": { "outcome": "accepted", "mutation_delta": 4 },
+            "encoded_frame_bytes": 1,
+            "generation_record_count": 1,
+            "alias": false,
+            "preserve_idempotency": false,
+            "committed_at": 3,
+            "events": [{ "stream_id": "7", "stream_epoch": "1", "sequence": "1", "ordinal": "1", "bytes": 5, "committed_at": 3, "payload": "event" }],
+            "rng_audit": [{ "input": { "rng_contract_version": 1, "subsystem": "world", "purpose": "spawn", "generation": 1, "canonical_command_index": 0, "entity_id": "9", "draw_index": 0 }, "bound": "1000", "output": { "hmac": "1747bf75114b2685734010db1b19476c1acf94a843002996e00b63b78188bc8d", "raw": "1677519895741015685", "value": "685", "candidate_index": 0, "rejection_block": 0, "blocks": [{ "rejection_block": 0, "hmac": "1747bf75114b2685734010db1b19476c1acf94a843002996e00b63b78188bc8d", "candidates": ["1677519895741015685", "8304656246109718380", "1931926215564732822", "16144106929043061901"] }] } }]
+          },
+          "payload_hex": "7b22616c696173223a66616c73652c226275696c645f6964223a226275696c642d61222c22636f6d6d616e64223a7b22616967656e745f6964223a2261222c226172726976616c5f7469636b223a2231222c2263616e6f6e6963616c5f7061796c6f61645f686578223a2237623232373636313663373536353232336133343764222c22636f6d6d616e645f6964223a22726573746f726564222c226964656d706f74656e63795f6b6579223a22726573746f72652d6b6579222c226b696e64223a312c227061796c6f61645f6d6f6465223a302c2270726f746f636f6c5f6d616a6f72223a312c2272657175697265645f6665617475726573223a5b5d2c2273657175656e6365223a2231222c2273657373696f6e5f65706f6368223a2239227d2c22636f6d6d69747465645f6174223a332c22646967657374223a2232326534626364613063633331633465393336333636333366323931666136383133356534656434316564343837393466396130336264346265323766383763222c22656e636f6465645f6672616d655f6279746573223a312c226576656e7473223a5b7b226279746573223a352c22636f6d6d69747465645f6174223a332c226f7264696e616c223a2231222c227061796c6f6164223a226576656e74222c2273657175656e6365223a2231222c2273747265616d5f65706f6368223a2231222c2273747265616d5f6964223a2237227d5d2c2267656e65726174696f6e5f7265636f72645f636f756e74223a312c2270726573657276655f6964656d706f74656e6379223a66616c73652c227072696f725f67656e65726174696f6e223a302c227265706c61795f76657273696f6e223a312c22726573756c74223a7b226d75746174696f6e5f64656c7461223a342c226f7574636f6d65223a226163636570746564227d2c22726e675f6175646974223a5b7b22626f756e64223a2231303030222c22696e707574223a7b2263616e6f6e6963616c5f636f6d6d616e645f696e646578223a302c22647261775f696e646578223a302c22656e746974795f6964223a2239222c2267656e65726174696f6e223a312c22707572706f7365223a22737061776e222c22726e675f636f6e74726163745f76657273696f6e223a312c2273756273797374656d223a22776f726c64227d2c226f7574707574223a7b22626c6f636b73223a5b7b2263616e64696461746573223a5b2231363737353139383935373431303135363835222c2238333034363536323436313039373138333830222c2231393331393236323135353634373332383232222c223136313434313036393239303433303631393031225d2c22686d6163223a2231373437626637353131346232363835373334303130646231623139343736633161636639346138343330303239393665303062363362373831383862633864222c2272656a656374696f6e5f626c6f636b223a307d5d2c2263616e6469646174655f696e646578223a302c22686d6163223a2231373437626637353131346232363835373334303130646231623139343736633161636639346138343330303239393665303062363362373831383862633864222c22726177223a2231363737353139383935373431303135363835222c2272656a656374696f6e5f626c6f636b223a302c2276616c7565223a22363835227d7d5d7d",
+          "declared_length": 1234,
+          "payload_sha256": "fb96ad649c9f9d0d8418b8c9a7eaea7b2898c8e7e877351404d1aad61f1aeaac",
+          "projection_sha256": "fb96ad649c9f9d0d8418b8c9a7eaea7b2898c8e7e877351404d1aad61f1aeaac",
+          "checksum": "8723013c"
+        }]
+      }],
+      "expect": {
+        "final_state": { "generation": 1, "installed_generation": 1, "published_generation": 1, "streams": { "7": { "acknowledged": "0", "epoch": "1", "evicted_sequences": [], "retained_sequences": ["1"] } }, "world_value": 4, "writer_occupied": false, "writer_unavailable": false },
+        "trace": [{ "durable_result_count": 1, "event_count": 1, "generation": 1, "idempotency_count": 1, "rng_audit_count": 1, "session_cursors": { "[\"1:61\",\"1:39\"]": "2" }, "tail_outcome": "uncommitted_tail_rolled_back", "type": "recovery_reconstructed", "world_value": 4 }]
+      }
+    },
+    {
+      "id": "post-result-crash-preserves-event-suffix",
+      "initial": {},
+      "steps": [
+        { "op": "admit", "commands": [{ "command_id": "eventful", "arrival_tick": "0", "aigent_id": "a", "session_epoch": "1", "sequence": "1", "idempotency_key": "eventful", "kind": 1, "payload": {}, "encoded_frame_bytes": 1, "events": [{ "stream_id": "7", "bytes": 1, "payload": "hello" }] }] },
+        { "op": "commit" },
+        { "op": "install" },
+        { "op": "deliver_results" },
+        { "op": "crash", "phase": "post_result" },
+        { "op": "cold_restart", "running_build_id": "same-build", "checkpoint": {
+          "generation": 0,
+          "build_id": "same-build",
+          "replay_version": 1,
+          "digest_contract_version": 1,
+          "rng_contract_version": 1,
+          "world_seed": "0000000000000000000000000000000000000000000000000000000000000000",
+          "next_stream_epoch": "1",
+          "next_ordinal": "1",
+          "last_commit_hour": 0,
+          "component_generations": { "world": 0, "allocator": 0, "ruleset": 0, "sessions": 0, "idempotency": 0, "events": 0, "rng": 0 }
+        } },
+        { "op": "resume", "stream_id": "7", "stream_epoch": "1", "last_acknowledged": "0" }
+      ],
+      "expect": {
+        "final_state": { "generation": 1, "installed_generation": 1, "published_generation": 1, "streams": { "7": { "acknowledged": "0", "epoch": "1", "evicted_sequences": [], "retained_sequences": ["1"] } }, "world_value": 0, "writer_occupied": false, "writer_unavailable": false },
+        "trace": [
+          { "bytes": 1, "command_ids": ["eventful"], "generation": 1, "type": "generation_admitted" },
+          { "command_count": 1, "generation": 1, "type": "generation_committed" },
+          { "generation": 1, "type": "generation_installed" },
+          { "command_id": "eventful", "mutation_delta": 0, "outcome": "accepted", "type": "command_result" },
+          { "generation": 1, "phase": "post_result", "type": "crashed" },
+          { "durable_result_count": 1, "event_count": 1, "generation": 1, "idempotency_count": 1, "rng_audit_count": 0, "session_cursors": { "[\"1:61\",\"1:31\"]": "2" }, "type": "recovery_reconstructed", "world_value": 0 },
+          { "sequences": ["1"], "stream_id": "7", "type": "events_replayed" }
+        ]
+      }
+    },
+    {
+      "id": "rng-rejection-block-and-spatial-known-vectors",
+      "initial": {},
+      "steps": [
+        { "op": "rng", "world_seed": "000000000000000000000000000000000000000000000000000000000000001e", "bound": "9223372036854775809", "input": { "rng_contract_version": 1, "subsystem": "world", "purpose": "reject", "generation": 1, "canonical_command_index": 0, "entity_id": "0", "draw_index": 0 } },
+        { "op": "rng", "world_seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "bound": "18446744073709551616", "input": { "rng_contract_version": 1, "subsystem": "world", "purpose": "spawn", "stable_spatial_coordinates": { "x": "-2", "z": "3" }, "canonical_command_index": 2, "entity_id": "9", "draw_index": 0 } }
+      ],
+      "expect": {
+        "final_state": { "generation": 0, "installed_generation": 0, "published_generation": 0, "streams": {}, "world_value": 0, "writer_occupied": false, "writer_unavailable": false },
+        "trace": [
+          { "blocks": [
+            { "candidates": ["12213154746540530309", "16854558020430310319", "14413012655341000428", "15190424677141482782"], "hmac": "a97dd788ae6c9a85e9e76b3865f5abafc8054ea588cf56ecd2cf3ac2f4588d1e", "rejection_block": 0 },
+            { "candidates": ["607372293312672307", "11429151150508755719", "12002429380850655547", "11530227961882933409"], "hmac": "086dd1e1fd50f2339e9c806aca524b07a69131ee2750a13ba003993dd74ef8a1", "rejection_block": 1 }
+          ], "candidate_index": 0, "hmac": "086dd1e1fd50f2339e9c806aca524b07a69131ee2750a13ba003993dd74ef8a1", "raw": "607372293312672307", "rejection_block": 1, "type": "rng_draw", "value": "607372293312672307" },
+          { "blocks": [{ "candidates": ["16519587275258652029", "4963975418630893090", "15120157523944531002", "8849463830259352984"], "hmac": "e5415d1a31dae57d44e39557cd43ee22d1d5972872a9e43a7acf9c779746c598", "rejection_block": 0 }], "candidate_index": 0, "hmac": "e5415d1a31dae57d44e39557cd43ee22d1d5972872a9e43a7acf9c779746c598", "raw": "16519587275258652029", "rejection_block": 0, "type": "rng_draw", "value": "16519587275258652029" }
+        ]
+      }
+    },
+    {
+      "id": "global-event-cap-uses-ordinal-then-stream-order",
+      "initial": {
+        "stream_series": { "count": 129, "stream_id_start": 1, "event_bytes": 4194304, "committed_at": 23, "ordinal_start": 1 },
+        "inspect_stream_ids": ["1", "2", "129"]
+      },
+      "steps": [{ "op": "evict_events", "now_hour": 23 }],
+      "expect": { "final_state": { "generation": 0, "installed_generation": 0, "published_generation": 0, "streams": {
+        "1": { "acknowledged": "0", "epoch": "1", "evicted_sequences": ["1"], "retained_sequences": [] },
+        "2": { "acknowledged": "0", "epoch": "2", "evicted_sequences": [], "retained_sequences": ["1"] },
+        "129": { "acknowledged": "0", "epoch": "129", "evicted_sequences": [], "retained_sequences": ["1"] }
+      }, "world_value": 0, "writer_occupied": false, "writer_unavailable": false }, "trace": [
+        { "reason": "global_cap", "sequence": "1", "stream_id": "1", "type": "event_evicted" }
+      ] }
+    }
+  ]
+}

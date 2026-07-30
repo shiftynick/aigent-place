@@ -109,6 +109,24 @@ The server checks active epoch and sequence before domain execution:
   `UNSUPPORTED_MESSAGE` and advances the sequence like any other recorded
   rejection.
 
+The
+[replay and persistence contract](../../replay/v1/CONTRACT.md)
+inserts one durable admission boundary after the no-effect
+connection/epoch/sequence classification and before kind availability,
+cross-epoch idempotency conflict, domain execution, or any authoritative
+exact-next result. A below-sequence identical retry reads its durable result
+without new admission. If admission is unavailable, the server returns
+correlated `PERSISTENCE_BACKPRESSURE` with positive `retry_after_ticks`; this
+is a transient `ProtocolError`, consumes no sequence or idempotency key, and
+is retried with the same pair. An individually unpersistable command returns
+`PERSISTENCE_RECORD_TOO_LARGE` and closes with the matching close reason. A
+writer failure sends best-effort correlated `PERSISTENCE_UNAVAILABLE` errors
+for commands in the failed generation and closes every command-capable
+connection with the matching close reason; spectators remain open. These
+outcomes are not `CommandResult` rejections because no undurable result may
+advance sequence. V1 backpressure uses `retry_after_ticks = 1`; the field is
+absent for the two fatal persistence errors and every other protocol error.
+
 An exact-next, well-formed command produces and records one authoritative
 accepted or rejected `CommandResult`, then advances the expected sequence.
 Retries replay that recorded result. Accepted results identify every affected
@@ -119,7 +137,7 @@ v1 contract use `affected_world_entities`, whose IDs are numeric `uint64`
 values; a result MUST NOT describe the same mutation in both fields. Durable
 publication ordering, canonical
 content digesting, idempotency retention, and replay-journal retention are
-owned by the replay and persistence contract.
+owned by the replay and persistence contract linked above.
 
 `CANCEL_INTENT` and bare `STOP` are base v1 commands with empty payloads.
 ADR-0002 and the world geometry contract additionally make `PLACE_OBJECT`,
@@ -157,6 +175,9 @@ system-wide degradation thresholds.
 ### Ordered event recovery
 
 Ordered events have a connection event-stream epoch and contiguous sequence.
+The nonzero `EventCursor.stream_epoch` is the server-issued stream identifier,
+globally unique within one world/replay history and never reused. A reset
+allocates a new value.
 They are retained until acknowledged and never coalesced. A sequence gap, or
 an event that cannot be admitted after replaceable-state coalescing, changes
 only the event stream to `event_resync_required`.
