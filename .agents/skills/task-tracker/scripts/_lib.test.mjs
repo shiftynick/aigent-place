@@ -18,6 +18,7 @@ import {
   loadTaskContext,
   ConflictError,
   LockHeldError,
+  branchTaskNamespace,
   nextTaskId,
   slugify,
   assertNoCycle,
@@ -629,6 +630,22 @@ describe("nextTaskId", () => {
   it("expands to 4 digits past 999", () => {
     const tasks = [{ task: { frontmatter: { id: "task-999" } } }];
     assert.equal(nextTaskId(tasks), "task-1000");
+  });
+  it("allocates distinct stable namespaces for concurrent branches", () => {
+    const alpha = branchTaskNamespace("feature/alpha");
+    const beta = branchTaskNamespace("feature/beta");
+    assert.notEqual(alpha, beta);
+    assert.equal(nextTaskId([], alpha), `task-${alpha}000001`);
+    assert.equal(nextTaskId([], beta), `task-${beta}000001`);
+  });
+  it("increments within a stale branch without consuming the default sequence", () => {
+    const namespace = branchTaskNamespace("upgrade/stale");
+    const tasks = [
+      { task: { frontmatter: { id: "task-008" } } },
+      { task: { frontmatter: { id: `task-${namespace}000001` } } },
+    ];
+    assert.equal(nextTaskId(tasks, namespace), `task-${namespace}000002`);
+    assert.equal(nextTaskId(tasks), "task-009");
   });
 });
 

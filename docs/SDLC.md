@@ -210,12 +210,18 @@ why it must be declared rather than silently substituted.
 
 ## Commit authority
 
-One rule, referenced by every skill; a project may tighten it in `AGENTS.md`
-under "Commit authority", which then overrides this default.
+One rule, referenced by every skill; a project may override it in `AGENTS.md`
+under "Commit authority". That project policy may permit direct local commits
+to an unprotected default branch or impose stricter boundaries.
 
 - **Local, task-scoped commits are part of the lifecycle.** An agent that
   finished a task, satisfied the review checklist, and validated the change
   commits it without asking. Stage named paths; never `git add -A`.
+- **The repository default branch is integration-only unless `AGENTS.md`
+  explicitly permits direct local commits.** Before the first task commit,
+  move the work to a task branch using the project's or harness's naming
+  convention. Repository protection and project policy always win. This
+  document deliberately does not prescribe a branch-name pattern.
 - **Anything that leaves the machine or rewrites shared history requires
   explicit authorization**: push, publish, deploy, tag a release, force-push,
   rebase or amend already-pushed commits.
@@ -231,19 +237,6 @@ under "Commit authority", which then overrides this default.
 
 If a project sets a stricter policy, the agent stops at the boundary that
 policy defines and reports the change packet instead of committing it.
-
-### Protected default branch
-
-`AGENTS.md` may establish standing authorization for a branch-per-task pull
-request flow. In that case, the local commit rule applies on the task branch,
-and the protected default branch changes only through a pull request.
-`AGENTS.md` is authoritative for branch naming, push and merge authority,
-required checks, and ask-first exclusions.
-
-Server-side rules are the enforcement boundary. A client-side hook is an early
-warning and must not be described as equivalent protection because it is
-configured per clone. Any use of a repository-administrator ruleset bypass is
-an incident to record, not a normal escape hatch.
 
 ## Validation
 

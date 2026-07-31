@@ -27,21 +27,49 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Upstream:** yes (generic — propose to Agent Foundry) | no (project-specific).
 ```
 
-## docs/SDLC.md
+## .agents/skills/task-tracker/scripts/task.test.mjs
 
-- **Changed:** adds a `### Protected default branch` subsection under "Commit
-  authority", stating that a branch-per-task PR flow authorized in `AGENTS.md`
-  leaves the default branch changeable only through a pull request, that
-  `AGENTS.md` owns branch naming and push/merge authority, and that
-  server-side rules — not the client-side hook — are the enforcement boundary.
-- **Why:** task-019 made `main` a protected branch with a required-checks
-  ruleset and a local `.githooks` push guard. Without this, stock commit
-  authority reads as permission to commit straight to `main`, and the
-  client-side hook gets mistaken for the real protection.
-- **On upgrade:** re-apply on top of the new "Commit authority" section unless
-  upstream Foundry grows an equivalent protected-branch rule; drop then.
-- **Upstream:** yes (generic — protected default branches are common; proposed
-  for Agent Foundry).
+- **Changed:** covers unborn repositories, detached HEAD allocation, and the
+  remote-HEAD fallback when default-branch metadata is malformed.
+- **Why:** these 0.10.0 branches change durable task IDs and shipped without
+  direct CLI coverage.
+- **On upgrade:** drop once equivalent stock tests exist.
+- **Upstream:** yes (generic — task allocation coverage).
 
-_Recorded during the 0.6.0 → 0.9.0 upgrade (task-024); the change itself
-predates the entry and was re-applied by hand._
+## .claude/skills/task-tracker/scripts/task.test.mjs
+
+- **Changed:** mirrors the additional task-allocation CLI coverage in the
+  Claude harness tree.
+- **Why:** shared workflow behavior and tests must remain synchronized.
+- **On upgrade:** drop together with the `.agents` copy once stock covers it.
+- **Upstream:** yes (generic — task allocation coverage).
+
+## .agent-foundry/reconcile-seeds.mjs
+
+- **Changed:** validates every seed and rejects link-traversing destinations
+  before issuing one batched Git restore for all tracked seeds.
+- **Why:** the 0.10.0 single-pass loop could restore earlier seeds before a
+  later changed seed aborted reconciliation, and it did not enforce the
+  project's link-aware write boundary.
+- **On upgrade:** drop once stock Foundry performs preflight validation before
+  mutation and rejects symbolic-link traversal for seed destinations.
+- **Upstream:** yes (generic — safe reconciliation behavior).
+
+## .agent-foundry/reconcile-seeds.test.mjs
+
+- **Changed:** proves a later invalid seed leaves earlier seeds untouched and
+  a symbolic-link destination is rejected without changing the outside file.
+- **Why:** these are the regression checks for the local reconciler hardening.
+- **On upgrade:** drop with the implementation divergence once equivalent
+  stock tests exist.
+- **Upstream:** yes (generic — safe reconciliation coverage).
+
+## Retired divergences
+
+- `docs/SDLC.md`: retired during the 0.9.0 → 0.10.0 upgrade (task-029).
+  Foundry 0.10.0 now makes the default branch integration-only unless
+  `AGENTS.md` explicitly permits direct commits, and delegates branch naming
+  and stricter enforcement to project policy. Aigent Place's `AGENTS.md`
+  retains the project-specific PR, ruleset, required-check, hook, push, and
+  merge details. The installed drift report confirms that `docs/SDLC.md` is
+  now stock mold content.

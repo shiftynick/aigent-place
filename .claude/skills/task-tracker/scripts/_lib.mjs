@@ -22,7 +22,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { cwd } from "node:process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 
 const FRONTMATTER_KEYS = [
@@ -612,11 +612,36 @@ export function nowIso() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-export function nextTaskId(allTasks) {
+export function branchTaskNamespace(branchName) {
+  const name = String(branchName ?? "").trim();
+  if (name === "") throw new Error("branch name must be non-empty");
+  const digest = createHash("sha256").update(name, "utf8").digest("hex");
+  const value = 1_000_000_000n + (BigInt(`0x${digest.slice(0, 16)}`) % 9_000_000_000n);
+  return value.toString();
+}
+
+export function nextTaskId(allTasks, namespace = null) {
+  if (namespace !== null) {
+    if (!/^\d{10}$/u.test(namespace)) {
+      throw new Error("task id namespace must be exactly 10 digits");
+    }
+    const pattern = new RegExp(`^task-${namespace}(\\d{6})$`, "u");
+    let maxCounter = 0;
+    for (const { task } of allTasks) {
+      const match = String(task.frontmatter.id).match(pattern);
+      if (match) maxCounter = Math.max(maxCounter, Number(match[1]));
+    }
+    const nextCounter = maxCounter + 1;
+    if (nextCounter > 999_999) throw new Error(`task id namespace exhausted: ${namespace}`);
+    return `task-${namespace}${String(nextCounter).padStart(6, "0")}`;
+  }
   let max = 0;
   for (const { task } of allTasks) {
     const m = String(task.frontmatter.id).match(/^task-(\d+)$/);
     if (!m) continue;
+    // Sixteen-digit IDs are namespaced branch allocations, not part of the
+    // readable sequence maintained on the default branch.
+    if (m[1].length === 16) continue;
     const n = Number(m[1]);
     if (n > max) max = n;
   }
@@ -736,9 +761,19 @@ export function unmetBlockers(allTasks, task) {
 export const PRIORITY_RANK = { p0: 0, p1: 1, p2: 2, p3: 3 };
 
 export function compareTaskIds(a, b) {
-  const na = Number(String(a).match(/^task-(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
-  const nb = Number(String(b).match(/^task-(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
-  return na - nb || String(a).localeCompare(String(b));
+  const ma = String(a).match(/^task-(\d+)$/)?.[1];
+  const mb = String(b).match(/^task-(\d+)$/)?.[1];
+  if (ma && mb) {
+    const na = BigInt(ma);
+    const nb = BigInt(mb);
+    if (na < nb) return -1;
+    if (na > nb) return 1;
+  } else if (ma) {
+    return -1;
+  } else if (mb) {
+    return 1;
+  }
+  return String(a).localeCompare(String(b));
 }
 
 // Statuses an agent can legitimately pick up. `backlog` is filed-but-

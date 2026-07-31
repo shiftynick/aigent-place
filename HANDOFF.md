@@ -1,4 +1,4 @@
-# HANDOFF — Aigent Place, 2026-07-30
+# HANDOFF — Aigent Place, 2026-07-31
 
 Cold-start checkpoint after a workflow-maintenance session. Foundation
 contracts are unchanged; the repository's operational state was cleaned up and
@@ -11,10 +11,11 @@ the installed workflow kit was upgraded.
 Aigent Place is still in foundation-contract work; there is no Rust/browser
 product workspace or runtime yet. Protocol v1, deterministic world geometry,
 and replay/persistence contracts are merged into public `main` with their ADRs
-accepted. This session shipped no product code: it upgraded Agent Foundry
-0.6.0 → 0.9.0, deleted 17 stale worktrees and 11 merged branches, and archived
-the completed cards. Resume with `task-012` (ruleset schema and constitution
-boundary) from the single remaining checkout at `N:\aigent-place`.
+accepted. The workflow-maintenance work shipped no product code: Agent Foundry
+is now upgraded from 0.6.0 through 0.10.0, stale worktrees and branches were
+removed, and completed cards were archived. Resume product work with
+`task-012` (ruleset schema and constitution boundary) from the single checkout
+at `N:\aigent-place`.
 
 ---
 
@@ -82,10 +83,22 @@ commit to it directly; deliver through a PR that passes `process-gate`.
   and its own upgrade procedure. Files are tiered `seed` (this project owns
   them) or `mold` (upstream owns them; divergence must be recorded).
 
-## What was finished this session
+## Workflow state at this checkpoint
 
-No product contract changed. All four PRs were process/workflow work.
+No product contract changed. The prior cleanup PRs and current upgrade are
+process/workflow work.
 
+- **Agent Foundry 0.9.0 → 0.10.0 delivery** (task-029). The reconciler restored
+  eight non-preserved committed seeds; the installer retained and re-baselined
+  the three append-only preserved seeds. The upgrade installed branch-namespaced
+  task allocation and fail-closed aggregate checks, and recorded `main` as the
+  default branch. Stock Foundry now carries the
+  integration-only default-branch rule, so the former `docs/SDLC.md` mold
+  divergence was retired; Aigent Place's stricter PR/ruleset policy remains in
+  `AGENTS.md`. Cold review also hardened the installed seed reconciler against
+  partial preflight failure and link traversal, and added missing allocation
+  coverage; those local mold changes are recorded for upstreaming. The rollback
+  backup is retained pending operator acceptance.
 - **Upgraded Agent Foundry 0.6.0 → 0.9.0** (PR #9, `9171ebe`), applying the
   upgrade actions of every intervening release:
   - 0.7.0 agent-boundary convention in `docs/SDLC.md`
@@ -113,8 +126,8 @@ No product contract changed. All four PRs were process/workflow work.
 
 ## What's in progress / half-done
 
-No board task is `in_progress`, `review`, or `blocked` beyond task-028, which
-is this handoff refresh.
+Task-029 is the workflow-upgrade delivery task. After it merges, no board task
+is `in_progress`, `review`, or `blocked`; `task-012` remains next.
 
 - The repository still has no product workspace, build, runtime service,
   credentials, deployment, or running server. That is expected at this phase.
@@ -132,21 +145,19 @@ node .claude/skills/task-tracker/scripts/task.mjs list --tag needs:operator
 
 ## Validation state
 
-Verified on `main` at `b0f18d9` this session:
+For the 0.10.0 upgrade, use task-029's recorded command evidence and the
+delivery PR checks; do not reuse the historical pre-review test totals. The
+authoritative commands are:
 
 ```text
 node scripts/check.mjs
-PASS — repository contract tests
-PASS — run-checks: skill-sync + 16 installed Foundry suites
-PASS — process-docs: no unresolved markers
-
 node .agent-foundry/run-checks.mjs
-PASS (skill-sync + 16 suites)
+node .agent-foundry/check-foundry-drift.mjs
 ```
 
-The Foundry suite count rose 14 → 16 with the two `cursor-agent` wrapper
-suites. Two of their tests are POSIX-only and **skip** on Windows; that is
-expected, not a failure.
+The two POSIX-only Cursor tests **skip** on Windows; that is expected, not a
+failure. Task-029 also added Windows-executed link-traversal coverage for the
+seed reconciler.
 
 `process-gate` passed on GitHub Actions for PRs #9, #10, and #11 before each
 merge.
@@ -156,12 +167,14 @@ merge.
 - Public remote: `git@github.com:shiftynick/aigent-place.git`
 - Protected branch: `main`, ruleset `19976689`, strict `process-gate` required,
   squash merges only, no bypass actors
-- Current `main` commit: `b0f18d9`
-- **Checkouts: exactly one, `N:\aigent-place`, clean, on `main`**
+- Task-029 base commit on `main`: `dcd616b`
+- **Checkouts: exactly one, `N:\aigent-place`; task-029 uses its own branch**
 - Open GitHub PRs: none
 - Services/deployments: none
 - Git hooks: clones should set `core.hooksPath=.githooks`
-- Installed workflow kit: Agent Foundry 0.9.0, upstream at `N:\agent-foundry`
+- Installed workflow kit: Agent Foundry 0.10.0, upstream at `N:\agent-foundry`
+- The 0.9.0→0.10.0 rollback backup is retained at
+  `.agent-foundry-backups/20260731T124533613Z` pending operator acceptance
 - The 0.6.0→0.9.0 upgrade backup under `.agent-foundry-backups/` was deleted
   after operator acceptance
 
