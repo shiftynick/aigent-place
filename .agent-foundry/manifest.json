@@ -1,19 +1,20 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.9.0",
-  "installedAt": "2026-07-30T18:22:36.331Z",
+  "foundryVersion": "0.10.0",
+  "installedAt": "2026-07-31T12:45:33.613Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "0d8046f469074d5ec4c8677625b51f4d86b0ea148025d8f3058cc6ae964a9a92"
+      "sha256": "da2000d2c442c1bd9ff804dbe0c7f38b87436cc780df31938ce34a3543191f4f"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
-      "sha256": "7f269a4c0ed2ab7a5b4abc0fa775a43946600addf9cf2c48c4f0aa9fc798cc5e"
+      "sha256": "14135d95cf430440ed4f38738a67680de9afd4d35662619815a19c5a78db5dce",
+      "preserveIfExists": true
     },
     ".agent-foundry/README.md": {
       "tier": "mold",
-      "sha256": "d453fcc1837e74dc703007eac1102904bc3d39ff7f7063fc48396afe35d5a2f6"
+      "sha256": "9df86a04a8b4ff4da7898cd3f1004fe79a8a57a45dac8a17a2d584fbce327268"
     },
     ".agent-foundry/check-foundry-drift.mjs": {
       "tier": "mold",
@@ -31,13 +32,21 @@
       "tier": "mold",
       "sha256": "9fed1497e11ef594e1f6ad71c53d3590626f0504acbd252ca7a3f4a288ceb678"
     },
+    ".agent-foundry/reconcile-seeds.mjs": {
+      "tier": "mold",
+      "sha256": "0b762492bb517020fe7040a414f3c147c11562ea932f7b8c89d0aced261207f8"
+    },
+    ".agent-foundry/reconcile-seeds.test.mjs": {
+      "tier": "mold",
+      "sha256": "30fae601342a25b5e89450f3ecec9c686d8bfdabda8db5108322d438e504ad46"
+    },
     ".agent-foundry/run-checks.mjs": {
       "tier": "mold",
-      "sha256": "68cf594ccd708393c3ac1e98c3c31dab075e894d52c4552e53e97942a534c28b"
+      "sha256": "b1cfe5ef16a44494dacf7e9d3509ea2e8e426e8be44f0256805cf6916cef7369"
     },
     ".agent-foundry/run-checks.test.mjs": {
       "tier": "mold",
-      "sha256": "0b5b104be259c35db6f35cd262803d7a9305daba99dcb4cc4565347f16e05491"
+      "sha256": "ef07db4fc98ee2f9a5e11f8e7f34fa30b68b608d10298f99eb4bf6fe9c9c93bb"
     },
     ".agents/skills/README.md": {
       "tier": "mold",
@@ -73,7 +82,7 @@
     },
     ".agents/skills/cursor-cli/SKILL.md": {
       "tier": "mold",
-      "sha256": "94949d7565533f9aa62a90e656c91c0c298e2bd275db08dfe933dcd2969f2d83"
+      "sha256": "e4dd40587295ceb08ecc2a4991739fcb2eda958e5d77e71d9d75f14e36296b71"
     },
     ".agents/skills/cursor-cli/scripts/cursor-agent.mjs": {
       "tier": "mold",
@@ -145,7 +154,7 @@
     },
     ".agents/skills/task-tracker/references/concurrency.md": {
       "tier": "mold",
-      "sha256": "930fc7747f8c37e0ac6e7ed70f3a4a62a8fd7790f8830dcbc7838cc6a114e9b7"
+      "sha256": "a33708b151e3d9c4450957652a1ae6d27550d258e555e0a75efe5188b5286271"
     },
     ".agents/skills/task-tracker/references/task-authoring.md": {
       "tier": "mold",
@@ -153,11 +162,11 @@
     },
     ".agents/skills/task-tracker/scripts/_lib.mjs": {
       "tier": "mold",
-      "sha256": "c849382cb428cdfed9944ebe5ece6016d35f26eac8d30567d04156ec9c227c47"
+      "sha256": "113c0d94f890fce43b12b7f67320e801a16c442daf5f17ecf5ee2575ca233890"
     },
     ".agents/skills/task-tracker/scripts/_lib.test.mjs": {
       "tier": "mold",
-      "sha256": "c56883efb5623b773dd011aa9a676254acb6cb6345122547e4822c60e323d96e"
+      "sha256": "03899453158ed09c4b521edeb3d6bcf221f42d0d45f413889965a519c352a0a1"
     },
     ".agents/skills/task-tracker/scripts/board-html.mjs": {
       "tier": "mold",
@@ -169,11 +178,11 @@
     },
     ".agents/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "100a16b67a7accacca28517acb63c8073173ab9c7310c9362a0b978d94d94b3a"
+      "sha256": "bd800fbfe60960868be5e4e2568b80366363ce83dfa9eb384bab35beadc84b9b"
     },
     ".agents/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "f69a01ece58fb0a90bcba8f7b4cd31bb3931d1bd57c392e7633cd87560e3ea3b"
+      "sha256": "834cc7528d7d84bb0eb6078e06cce73bdf5c901816e6445766839ee8ed5bac46"
     },
     ".agents/skills/the-fool/SKILL.md": {
       "tier": "mold",
@@ -205,7 +214,7 @@
     },
     ".claude/skills/cursor-cli/SKILL.md": {
       "tier": "mold",
-      "sha256": "7da8bc1b828e6b4322c1056bc4d973d36afaa2633139c616dd187e6598bab2ac"
+      "sha256": "d5bd17bdd2a7dff558bb79fb3287d556f85edb302570eede42945188d580bfa9"
     },
     ".claude/skills/cursor-cli/scripts/cursor-agent.mjs": {
       "tier": "mold",
@@ -277,7 +286,7 @@
     },
     ".claude/skills/task-tracker/references/concurrency.md": {
       "tier": "mold",
-      "sha256": "930fc7747f8c37e0ac6e7ed70f3a4a62a8fd7790f8830dcbc7838cc6a114e9b7"
+      "sha256": "a33708b151e3d9c4450957652a1ae6d27550d258e555e0a75efe5188b5286271"
     },
     ".claude/skills/task-tracker/references/task-authoring.md": {
       "tier": "mold",
@@ -285,11 +294,11 @@
     },
     ".claude/skills/task-tracker/scripts/_lib.mjs": {
       "tier": "mold",
-      "sha256": "c849382cb428cdfed9944ebe5ece6016d35f26eac8d30567d04156ec9c227c47"
+      "sha256": "113c0d94f890fce43b12b7f67320e801a16c442daf5f17ecf5ee2575ca233890"
     },
     ".claude/skills/task-tracker/scripts/_lib.test.mjs": {
       "tier": "mold",
-      "sha256": "c56883efb5623b773dd011aa9a676254acb6cb6345122547e4822c60e323d96e"
+      "sha256": "03899453158ed09c4b521edeb3d6bcf221f42d0d45f413889965a519c352a0a1"
     },
     ".claude/skills/task-tracker/scripts/board-html.mjs": {
       "tier": "mold",
@@ -301,11 +310,11 @@
     },
     ".claude/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "100a16b67a7accacca28517acb63c8073173ab9c7310c9362a0b978d94d94b3a"
+      "sha256": "bd800fbfe60960868be5e4e2568b80366363ce83dfa9eb384bab35beadc84b9b"
     },
     ".claude/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "f69a01ece58fb0a90bcba8f7b4cd31bb3931d1bd57c392e7633cd87560e3ea3b"
+      "sha256": "834cc7528d7d84bb0eb6078e06cce73bdf5c901816e6445766839ee8ed5bac46"
     },
     ".claude/skills/the-fool/SKILL.md": {
       "tier": "mold",
@@ -321,11 +330,12 @@
     },
     "AGENTS.md": {
       "tier": "seed",
-      "sha256": "6e4c51e9a8a7ae1ea6e5858b970325c9b1911a4ebbc7c8766206a46627b37fde"
+      "sha256": "b09f1d0cd0ed42b88e94780053023ee20c7d48c5c67200f22f3951ab732725c0"
     },
     "BLOCKED-JOURNAL.md": {
       "tier": "seed",
-      "sha256": "365f6f7a716fa8bb01fd3985c4441024c70b0e8b307f7da594ff414db590d2a5"
+      "sha256": "c5faed325c36c714821b54c776d64664ac18404d787d771ca7432bcd40ff9873",
+      "preserveIfExists": true
     },
     "CLAUDE.md": {
       "tier": "seed",
@@ -341,7 +351,8 @@
     },
     "PLANNING-JOURNAL.md": {
       "tier": "seed",
-      "sha256": "c7a8c37b06201604ba2c9ae83b08682cdae04eaf356bea41a3a1a15fc531bd6e"
+      "sha256": "c7a8c37b06201604ba2c9ae83b08682cdae04eaf356bea41a3a1a15fc531bd6e",
+      "preserveIfExists": true
     },
     "docs/ENGINEERING-STANDARDS.md": {
       "tier": "seed",
@@ -353,7 +364,7 @@
     },
     "docs/SDLC.md": {
       "tier": "mold",
-      "sha256": "525a8a7c9099c60d104f87813f610c24ec2dd33bca1ef8190e1ea18f112e69b6"
+      "sha256": "b973913be31df0f59304b560a0e73cd606092ab3a8213f0256abede616b0eabe"
     },
     "docs/adr/README.md": {
       "tier": "seed",

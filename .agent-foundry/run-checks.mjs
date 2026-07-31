@@ -40,6 +40,7 @@ export function discoverTestFiles(repoRoot) {
   const found = [];
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name === "node_modules") continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
       else if (entry.isFile() && entry.name.endsWith(".test.mjs")) found.push(full);
@@ -85,10 +86,12 @@ function main() {
 
   const failures = [];
   const syncCheck = join(repoRoot, ".agent-foundry", "check-skill-sync.mjs");
-  if (existsSync(syncCheck)) {
-    if (!runStep("skill-sync", execPath, [syncCheck], repoRoot)) {
-      failures.push("skill-sync");
-    }
+  if (!existsSync(syncCheck)) {
+    stdout.write("\n=== skill-sync ===\n");
+    stdout.write("skill-sync: required checker is missing\n");
+    failures.push("skill-sync");
+  } else if (!runStep("skill-sync", execPath, [syncCheck], repoRoot)) {
+    failures.push("skill-sync");
   }
   if (!runStep(
     `installed tests (${tests.length} suites)`,

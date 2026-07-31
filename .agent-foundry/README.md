@@ -7,6 +7,7 @@ product code and it is not the task board.
 | --- | --- |
 | `manifest.json` | What was installed, at which version, with a hash and tier per managed file. Generated — do not hand-edit. |
 | `run-checks.mjs` | Runs the skill-sync gate plus every test suite the kit owns. |
+| `reconcile-seeds.mjs` | Lists or restores every non-preserved project seed after a forced upgrade. |
 | `check-skill-sync.mjs` | Verifies the two harness skill trees still agree. |
 | `check-foundry-drift.mjs` | Reports how installed files differ from what was installed. |
 | `LOCAL-CHANGES.md` | Your record of deliberate divergence from the stock workflow. |

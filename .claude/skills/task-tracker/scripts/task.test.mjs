@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -34,6 +34,27 @@ function runAsync(repo, args) {
     child.stderr.on("data", (chunk) => { stderr += chunk; });
     child.on("close", (code) => resolveRun({ code, stdout, stderr }));
   });
+}
+
+function git(repo, args) {
+  return execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+}
+
+function gitFixtureRepo() {
+  const root = mkdtempSync(join(tmpdir(), "tt-git-cli-"));
+  git(root, ["init", "-b", "integration"]);
+  git(root, ["config", "user.email", "task-tracker@example.invalid"]);
+  git(root, ["config", "user.name", "Task Tracker Test"]);
+  git(root, ["config", "commit.gpgsign", "false"]);
+  git(root, ["config", "core.autocrlf", "false"]);
+  git(root, ["config", "core.hooksPath", ".no-hooks"]);
+  writeFileSync(
+    join(root, ".agent-foundry.json"),
+    `${JSON.stringify({ defaultBranch: "integration" }, null, 2)}\n`,
+  );
+  git(root, ["add", ".agent-foundry.json"]);
+  git(root, ["commit", "-m", "baseline"]);
+  return root;
 }
 
 function completeTask(repo, id) {
@@ -262,6 +283,81 @@ describe("option values that begin with dashes", () => {
 });
 
 describe("task add", () => {
+  it("keeps default IDs compact and merges stale branch allocations without collision", () => {
+    const repo = gitFixtureRepo();
+    try {
+      assert.equal(run(repo, ["add", "Default card"]).trim(), "task-001");
+      git(repo, ["add", ".tasks"]);
+      git(repo, ["commit", "-m", "default card"]);
+
+      git(repo, ["switch", "-c", "work/alpha"]);
+      const alpha = run(repo, ["add", "Alpha branch card"]).trim();
+      git(repo, ["add", ".tasks"]);
+      git(repo, ["commit", "-m", "alpha card"]);
+
+      git(repo, ["switch", "integration"]);
+      git(repo, ["switch", "-c", "work/beta"]);
+      const beta = run(repo, ["add", "Beta branch card"]).trim();
+      git(repo, ["add", ".tasks"]);
+      git(repo, ["commit", "-m", "beta card"]);
+      git(repo, ["cherry-pick", "work/alpha"]);
+
+      assert.match(alpha, /^task-\d{16}$/u);
+      assert.match(beta, /^task-\d{16}$/u);
+      assert.notEqual(alpha, beta);
+      const list = run(repo, ["list"]);
+      assert.match(list, new RegExp(alpha, "u"));
+      assert.match(list, new RegExp(beta, "u"));
+      for (const id of [alpha, beta]) {
+        const file = readdirSync(join(repo, ".tasks", "tasks"))
+          .find((name) => name.startsWith(`${id}-`));
+        assert(file);
+        assert.match(
+          readFileSync(join(repo, ".tasks", "tasks", file), "utf8"),
+          new RegExp(`^id: ${id}$`, "mu"),
+        );
+      }
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps compact IDs on an unborn default branch", () => {
+    const repo = fixtureRepo();
+    try {
+      git(repo, ["init", "-b", "integration"]);
+      assert.equal(run(repo, ["add", "First card"]).trim(), "task-001");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("uses a stable namespace in detached HEAD state", () => {
+    const repo = gitFixtureRepo();
+    try {
+      git(repo, ["switch", "--detach"]);
+      assert.match(run(repo, ["add", "Detached card"]).trim(), /^task-\d{16}$/u);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("uses remote HEAD when installed default-branch metadata is malformed", () => {
+    const repo = gitFixtureRepo();
+    try {
+      writeFileSync(join(repo, ".agent-foundry.json"), "{ malformed\n");
+      git(repo, ["update-ref", "refs/remotes/origin/integration", "HEAD"]);
+      git(repo, [
+        "symbolic-ref",
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/integration",
+      ]);
+      assert.equal(run(repo, ["add", "Remote default card"]).trim(), "task-001");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it("creates a new task file with defaults", () => {
     const repo = fixtureRepo();
     try {
@@ -752,6 +848,32 @@ describe("task next", () => {
 });
 
 describe("task archive", () => {
+  it("explains that a positional task ID is not accepted", () => {
+    const repo = fixtureRepo();
+    try {
+      assert.throws(
+        () => run(repo, ["archive", "task-001"]),
+        (error) => error.status === 2
+          && /archive sweeps all done tasks and takes no task ID/u.test(String(error.stderr))
+          && /archive \[--dry-run\]/u.test(String(error.stderr)),
+      );
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("retains an actionable unknown-flag error", () => {
+    const repo = fixtureRepo();
+    try {
+      assert.throws(
+        () => run(repo, ["archive", "-n"]),
+        (error) => error.status === 2 && /unknown flag: -n/u.test(String(error.stderr)),
+      );
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it("moves done tasks into .tasks/archive and leaves active tasks visible", () => {
     const repo = fixtureRepo();
     try {

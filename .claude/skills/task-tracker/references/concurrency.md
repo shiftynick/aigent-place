@@ -19,11 +19,12 @@ and files. Give each task a worktree from an explicit current start point:
 
 ```bash
 git fetch origin
-git worktree add ../<project>-task-NNN -b task-NNN-short-slug origin/main
+git worktree add ../<project>-task-NNN -b <project-task-branch> <remote-default-ref>
 ```
 
-The explicit `origin/main` prevents branching accidentally from another
-task's branch.
+Resolve `<remote-default-ref>` from remote HEAD or project policy rather than
+assuming its name. The explicit start ref prevents branching accidentally
+from another task's branch.
 
 Preflight:
 
@@ -31,6 +32,12 @@ Preflight:
 2. Pull before claiming so board state is current.
 3. Each agent edits only its task card.
 4. Coordinate shared-document edits through the operator or sequence them.
+
+Prefer filing tasks on the current default branch before creating worktrees.
+If a task must be added independently on another branch, the CLI uses a stable
+numeric namespace derived from that branch, so stale and concurrent branches
+do not mint the same sequential ID. The filename, frontmatter, and dependency
+syntax remain `task-<digits>`.
 
 The board CLI works in linked worktrees, and shared `core.hooksPath` applies
 without per-worktree setup.

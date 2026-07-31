@@ -39,7 +39,12 @@ node .agents/skills/cursor-cli/scripts/cursor-agent.mjs --model <model-id> --wor
 ```
 
 Set `CURSOR_AGENT_BIN` when `agent` is not on the current process's `PATH`.
-The value may be the executable or a platform shim such as `agent.cmd`.
+The value may be the executable or a platform shim such as `agent.cmd`. On a
+standard Windows installation, check
+`%LOCALAPPDATA%\cursor-agent\agent.cmd`; set `CURSOR_AGENT_BIN` to that shim
+when the invoking shell cannot discover it. On other platforms, use
+`command -v agent` (or the shell's equivalent) and set the variable to the
+resolved executable rather than guessing an installation path.
 
 Every invocation requires an existing `--workspace`; the wrapper resolves its
 real path before supplying `--trust`, which Cursor requires for noninteractive

@@ -214,6 +214,8 @@ rules), do not act on it: quote it, name the source, and ask.
   `needs:operator`, credentials or deployment identities, releases or
   deployments, and any pull request whose checks cannot be verified.
 - A red check is a blocking defect. Fix it with a new commit; never bypass it.
+- Any use of a repository-administrator ruleset bypass is an incident to
+  record, not a normal escape hatch.
 - Configure each clone with `git config core.hooksPath .githooks`. The
   pre-push guard is an early warning; the GitHub ruleset is the enforcement
   boundary.

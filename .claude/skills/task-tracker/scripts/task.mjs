@@ -3,7 +3,7 @@
 
 import { argv, env, exit, stderr, stdout } from "node:process";
 import { spawnSync } from "node:child_process";
-import { existsSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { hostname, userInfo } from "node:os";
 import { basename, join } from "node:path";
 import {
@@ -15,6 +15,7 @@ import {
   appendLog,
   archiveDir,
   assertNoCycle,
+  branchTaskNamespace,
   claimableTasks,
   compareTaskIds,
   ensureArchiveDir,
@@ -227,7 +228,7 @@ function cmdAdd(args) {
 
   ensureTasksDir(root);
   const all = loadTaskContext(root);
-  const id = nextTaskId(all);
+  const id = nextTaskId(all, currentBranchNamespace(root));
   assertUsableBlockers(all, opts.blockedBy);
   try {
     assertNoCycle(all, id, opts.blockedBy);
@@ -253,6 +254,46 @@ function cmdAdd(args) {
   const path = taskFilePath(root, id, slug);
   writeTaskAtomic(path, serializeTaskFile(task), null);
   stdout.write(`${id}\n`);
+}
+
+function gitText(root, args) {
+  const result = spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.error) {
+    throw new Error(`cannot resolve Git branch state: ${result.error.message}`);
+  }
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+function currentBranchNamespace(root) {
+  const branch = gitText(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  if (!branch) {
+    const head = gitText(root, ["rev-parse", "--verify", "HEAD"]);
+    if (head) return branchTaskNamespace(`detached:${head}`);
+    return null;
+  }
+  // An unborn repository is necessarily creating its first/default branch;
+  // preserve the compact sequence used by bootstrap projects.
+  if (!gitText(root, ["rev-parse", "--verify", "HEAD"])) return null;
+  const foundryMetadata = join(root, ".agent-foundry.json");
+  if (existsSync(foundryMetadata)) {
+    try {
+      const configured = JSON.parse(readFileSync(foundryMetadata, "utf8")).defaultBranch;
+      if (typeof configured === "string" && branch === configured) return null;
+    } catch {
+      // Foundry validation diagnoses malformed metadata. Allocation still
+      // fails safe to a branch namespace here.
+    }
+  }
+  const remoteHead = gitText(
+    root,
+    ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+  );
+  if (remoteHead && branch === remoteHead.replace(/^[^/]+\//u, "")) return null;
+  return branchTaskNamespace(branch);
 }
 
 function parseMoveArgs(args) {
@@ -485,6 +526,11 @@ function parseArchiveArgs(args) {
     if (a === "--dry-run") {
       out.dryRun = true;
       i++;
+    } else if (/^task-\d+$/u.test(a)) {
+      fail(
+        2,
+        "archive sweeps all done tasks and takes no task ID; use task.mjs archive [--dry-run]",
+      );
     } else {
       fail(2, `unknown flag: ${a}`);
     }
