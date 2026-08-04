@@ -541,6 +541,46 @@ describe("task add", () => {
     }
   });
 
+  it("warns when default-branch metadata is unusable and remote HEAD is missing", async () => {
+    const repo = gitFixtureRepo();
+    try {
+      writeFileSync(join(repo, ".agent-foundry.json"), "{ malformed\n");
+      const { code, stdout, stderr } = await runAsync(repo, ["add", "Ambiguous default card"]);
+      assert.equal(code, 0);
+      assert.match(stdout.trim(), /^task-\d{16}$/u);
+      assert.match(
+        stderr,
+        /task-tracker: warning: cannot identify default branch \(malformed \.agent-foundry\.json; refs\/remotes\/origin\/HEAD missing\)/,
+      );
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("mints distinct IDs for concurrent detached worktrees at the same commit", () => {
+    const repo = gitFixtureRepo();
+    const worktree = mkdtempSync(join(tmpdir(), "tt-detached-wt-"));
+    try {
+      const head = git(repo, ["rev-parse", "HEAD"]).trim();
+      git(repo, ["switch", "--detach", head]);
+      // mkdtemp created the dir; worktree add wants a missing path.
+      rmSync(worktree, { recursive: true, force: true });
+      git(repo, ["worktree", "add", "--detach", worktree, head]);
+      const idA = run(repo, ["add", "Detached main worktree card"]).trim();
+      const idB = run(worktree, ["add", "Detached linked worktree card"]).trim();
+      assert.match(idA, /^task-\d{16}$/u);
+      assert.match(idB, /^task-\d{16}$/u);
+      assert.notEqual(idA, idB);
+    } finally {
+      try {
+        git(repo, ["worktree", "remove", "--force", worktree]);
+      } catch {
+        rmSync(worktree, { recursive: true, force: true });
+      }
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it("creates a new task file with defaults", () => {
     const repo = fixtureRepo();
     try {

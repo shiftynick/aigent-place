@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // task-tracker dispatcher. See SKILL.md for verbs and exit codes.
 
-import { argv, env, exit, stderr, stdout } from "node:process";
+import { argv, env, exit, platform, stderr, stdout } from "node:process";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { hostname, userInfo } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
   ConflictError,
   NotFoundError,
@@ -272,27 +272,54 @@ function currentBranchNamespace(root) {
   const branch = gitText(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
   if (!branch) {
     const head = gitText(root, ["rev-parse", "--verify", "HEAD"]);
-    if (head) return branchTaskNamespace(`detached:${head}`);
+    if (head) {
+      // Include the absolute worktree root so concurrent detached worktrees at
+      // the same commit cannot mint colliding durable IDs. Lowercase only on
+      // Windows, where paths are case-insensitive.
+      let worktreeKey = resolve(root).replace(/\\/gu, "/");
+      if (platform === "win32") worktreeKey = worktreeKey.toLowerCase();
+      return branchTaskNamespace(`detached:${head}:${worktreeKey}`);
+    }
     return null;
   }
   // An unborn repository is necessarily creating its first/default branch;
   // preserve the compact sequence used by bootstrap projects.
   if (!gitText(root, ["rev-parse", "--verify", "HEAD"])) return null;
+
+  let defaultBranchIssue = null;
   const foundryMetadata = join(root, ".agent-foundry.json");
-  if (existsSync(foundryMetadata)) {
+  if (!existsSync(foundryMetadata)) {
+    defaultBranchIssue = "absent .agent-foundry.json";
+  } else {
     try {
-      const configured = JSON.parse(readFileSync(foundryMetadata, "utf8")).defaultBranch;
-      if (typeof configured === "string" && branch === configured) return null;
+      const raw = JSON.parse(readFileSync(foundryMetadata, "utf8")).defaultBranch;
+      if (typeof raw !== "string") {
+        defaultBranchIssue = "missing or invalid defaultBranch in .agent-foundry.json";
+      } else {
+        const configured = raw.trim();
+        if (configured === "") {
+          defaultBranchIssue = "missing or invalid defaultBranch in .agent-foundry.json";
+        } else if (/\s/u.test(configured) || configured.includes("..")) {
+          defaultBranchIssue = "invalid defaultBranch in .agent-foundry.json";
+        } else if (branch === configured) {
+          return null;
+        }
+      }
     } catch {
-      // Foundry validation diagnoses malformed metadata. Allocation still
-      // fails safe to a branch namespace here.
+      defaultBranchIssue = "malformed .agent-foundry.json";
     }
   }
+
   const remoteHead = gitText(
     root,
     ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
   );
   if (remoteHead && branch === remoteHead.replace(/^[^/]+\//u, "")) return null;
+  if (!remoteHead && defaultBranchIssue) {
+    stderr.write(
+      `task-tracker: warning: cannot identify default branch (${defaultBranchIssue}; refs/remotes/origin/HEAD missing); using namespaced task IDs on branch '${branch}'\n`,
+    );
+  }
   return branchTaskNamespace(branch);
 }
 
