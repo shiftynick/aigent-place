@@ -7,10 +7,12 @@ product code and it is not the task board.
 | --- | --- |
 | `manifest.json` | What was installed, at which version, with a hash and tier per managed file. Generated — do not hand-edit. |
 | `run-checks.mjs` | Runs the skill-sync gate plus every test suite the kit owns. |
+| `agent-headless/` | Unified provider runner, library test seam, compatibility matrix, license, provenance, and reconstructable source patches. |
 | `reconcile-seeds.mjs` | Lists or restores every non-preserved project seed after a forced upgrade. |
 | `check-skill-sync.mjs` | Verifies the two harness skill trees still agree. |
 | `check-foundry-drift.mjs` | Reports how installed files differ from what was installed. |
 | `LOCAL-CHANGES.md` | Your record of deliberate divergence from the stock workflow. |
+| `feedback/` | Transient feedback packets bound for the Foundry, written by `agent-foundry-feedback`. Git-ignored and unmanaged; deleted once delivered. |
 
 ## The installed workflow is yours to evolve
 
@@ -49,8 +51,13 @@ argument. So:
   template, these checks. Upgrades replace them, so divergence here is what
   `LOCAL-CHANGES.md` exists to protect.
 
-Everything else — `.tasks/`, real ADRs, journal entries, out-of-scope records —
-is project state the installer never reads or writes.
+Everything else — `.tasks/`, real ADRs, journal entries, out-of-scope records,
+and any `feedback/` packets — is project state the installer does not manage:
+it is absent from the
+manifest, never replaced, and never reconciled on upgrade. The one contact
+point is `.tasks/tasks/.gitkeep` and `.tasks/archive/.gitkeep`, which the
+payload ships so the empty directories survive Git; board cards, archives,
+and their content are untouched.
 
 ## Routine checks
 
@@ -61,6 +68,10 @@ node .agent-foundry/check-foundry-drift.mjs   # what we have changed
 
 `run-checks` discovers suites rather than listing them, so a skill that ships
 new tests in a future release is covered without touching the project's gate.
+
+`agent-headless/` is Foundry-owned mold shared by both harnesses. Read its
+`PROVENANCE.md` before refreshing artifacts; updates require upstream tests,
+license/dependency/security review, hash refresh, and a Foundry release.
 
 The checks have deliberately different force:
 

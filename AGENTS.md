@@ -58,6 +58,11 @@ Execute claimed work with the `execute-task` skill:
 7. Validate real behavior and record exact evidence.
 8. Complete and commit per "Commit authority" below.
 
+When cold review requires another model family, use the harness-local
+`agent-headless` skill: Codex normally selects provider `claude`, while Claude
+Code normally selects provider `codex`. The SDLC cold-review ladder remains
+authoritative when the preferred provider is unavailable.
+
 Architecture-significant decisions use the `adr` skill. Agent-authored ADRs
 start as `proposed`. A proposed ADR discovered mid-task does not automatically
 halt the task — apply the reversibility test in `docs/SDLC.md`.
@@ -143,6 +148,7 @@ Never report a planned or unavailable command as passing.
 | `task-tracker` | Persistent board, dependencies, status, and archival. |
 | `plan-milestone` | Operator-approved decomposition of goals into task fronts. |
 | `execute-task` | End-to-end task execution and review lifecycle. |
+| `attack-the-board` | Front-loaded question harvest, then an autonomous multi-task run. |
 | `adr` | Architecture decision creation and supersession. |
 | `diagnosing-bugs` | Reproduction-first debugging discipline. |
 | `codebase-audit` | Periodic sweep for accumulated quality drift. |
@@ -151,22 +157,31 @@ Never report a planned or unavailable command as passing.
 | `handoff-writer` | Restart-from-cold `HANDOFF.md`. |
 | `the-fool` | Pre-implementation adversarial review. |
 | `grill-me` | One-question-at-a-time decision clarification. |
-| `cursor-cli` | Operator-selected Cursor model for read-only review or isolated work. |
-| `claude-in-codex` | Codex-only Foundry bridge for cold Claude review. |
-| `codex-in-claude` | Claude-only Foundry bridge for cold Codex review. |
-| `codex-in-cc` | Legacy local Claude bridge retained from before Foundry; prefer `codex-in-claude` for the shared task lifecycle. |
+| `agent-headless` | Unified safe Claude, Codex, and operator-selected Cursor invocation. |
+| `cursor-cli` | Compatibility alias for operator-selected Cursor calls. |
+| `upgrade-agent-foundry` | Guided in-place upgrade of the installed workflow kit. |
+| `agent-foundry-feedback` | Package kit defects and upstream-worthy fixes into feedback packets. |
+| `claude-in-codex` | Compatibility alias for Claude calls from Codex. |
+| `codex-in-claude` | Compatibility alias for Codex calls from Claude Code. |
+| `codex-in-cc` | Legacy local Claude bridge retained from before Foundry; prefer `agent-headless` for the shared task lifecycle. |
 
-The twelve shared workflows are mirrored between `.agents/skills/` and
-`.claude/skills/`; the two Foundry bridges are harness-specific, and the
-unmanaged `codex-in-cc` bridge is a preserved local extension. Preserve shared
-workflow behavior while retaining harness-specific paths and counterpart
-bridges. Edit both managed copies in the same commit and verify with
+The sixteen shared workflows are mirrored between `.agents/skills/` and
+`.claude/skills/`; provider compatibility aliases remain harness-specific, and
+the unmanaged `codex-in-cc` bridge is a preserved local extension. Preserve
+shared workflow behavior while retaining harness-specific paths and temporary
+compatibility aliases. Edit both managed copies in the same commit and verify with
 `node .agent-foundry/check-skill-sync.mjs`.
+
+The dependency-free `agent-headless` runtime is vendored so both harnesses use
+one offline, least-privilege provider boundary instead of duplicated wrappers.
+Its license, source reconstruction patches, artifact hashes, and refresh policy
+are recorded in `.agent-foundry/agent-headless/PROVENANCE.md`; update it only
+through a deliberate Agent Foundry upgrade.
 
 ### Cursor Agent binary
 
 Cursor installs a shim that is not always on a non-interactive shell's `PATH`,
-so `cursor-cli` fails with "agent was not found" until the binary is named.
+so `agent-headless` reports Cursor as missing until the binary is named.
 Point `CURSOR_AGENT_BIN` at the shim rather than adding Cursor to `PATH` for
 every process:
 
@@ -176,13 +191,19 @@ CURSOR_AGENT_BIN="$HOME/.local/bin/cursor-agent"          # POSIX default
 ```
 
 Verify the current machine's path before relying on it; the installer's
-location is not a project guarantee. `--list-models` is the cheapest check that
-the variable resolves and Cursor is authenticated.
+location is not a project guarantee. These are the cheapest checks that the
+variable resolves, Cursor is authenticated, and an exact model can be chosen:
+
+```text
+node .agent-foundry/agent-headless/cli.js capabilities cursor
+node .agent-foundry/agent-headless/cli.js models cursor
+```
 
 Cursor stays operator-selected. Making the binary reachable does not make it a
 default reviewer, and `auto` remains rejected because Cursor routes across
-model families — see `.claude/skills/cursor-cli/SKILL.md` and the cold-review
-ladder in `docs/SDLC.md`.
+model families — see the harness-local `agent-headless` skill,
+`.agent-foundry/agent-headless/COMPATIBILITY.md`, and the cold-review ladder in
+`docs/SDLC.md`.
 
 ## Handling untrusted content
 

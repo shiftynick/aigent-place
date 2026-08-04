@@ -1,20 +1,52 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.10.0",
-  "installedAt": "2026-07-31T12:45:33.613Z",
+  "foundryVersion": "0.15.0",
+  "installedAt": "2026-08-04T14:56:35.517Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "da2000d2c442c1bd9ff804dbe0c7f38b87436cc780df31938ce34a3543191f4f"
+      "sha256": "ec1820a00c1e56221ba4ab156e662fe5af137d8e6190a5ccf15fb5a5d61148e9"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
-      "sha256": "14135d95cf430440ed4f38738a67680de9afd4d35662619815a19c5a78db5dce",
+      "sha256": "eeebe3ee4dd0c93a66e0a4b57583fe9d2904415df62db7bda131f1659206caa3",
       "preserveIfExists": true
     },
     ".agent-foundry/README.md": {
       "tier": "mold",
-      "sha256": "9df86a04a8b4ff4da7898cd3f1004fe79a8a57a45dac8a17a2d584fbce327268"
+      "sha256": "a54ed86ce50c088456e94ee49939df1c3496e5cd633dc4fd13dfbe704b31f993"
+    },
+    ".agent-foundry/agent-headless/COMPATIBILITY.md": {
+      "tier": "mold",
+      "sha256": "2df6dcb52a1600ad5a45acc34cde1aebfc98cbae4e40fbe600df4596e80f1c1d"
+    },
+    ".agent-foundry/agent-headless/LICENSE": {
+      "tier": "mold",
+      "sha256": "7b2aa7abc1f5800239ec66e7c2fccd5eb25b8b4b2af9b1312c54971ecccab7c5"
+    },
+    ".agent-foundry/agent-headless/PROVENANCE.md": {
+      "tier": "mold",
+      "sha256": "5c4068d75f2f8d3d4f87be854a340cfc4d85c910b2196d14ccb3961c7e55d222"
+    },
+    ".agent-foundry/agent-headless/cli.js": {
+      "tier": "mold",
+      "sha256": "859096bd6c8fd85440c1bae2c7a0892423ed614dd3dacdd00f7c648c152dc6bd"
+    },
+    ".agent-foundry/agent-headless/cli.test.mjs": {
+      "tier": "mold",
+      "sha256": "71ec39bdf6ce41e3692f73294092f95c5274ae07966e742f677b5068d7b87e6c"
+    },
+    ".agent-foundry/agent-headless/index.js": {
+      "tier": "mold",
+      "sha256": "95680e5ffc6182dfe9e2de98edf8a03b72c97f701f148c8bb1ada454038735cc"
+    },
+    ".agent-foundry/agent-headless/source/0001-feat-harden-unified-runner-for-Node-20-consumers.patch.b64": {
+      "tier": "mold",
+      "sha256": "a23f3f15a13024043761ffe54adc4360d2c5fb4f1a7eff806de07ca7f63bb07b"
+    },
+    ".agent-foundry/agent-headless/source/0002-fix-tighten-least-privilege-and-cancellation-contrac.patch.b64": {
+      "tier": "mold",
+      "sha256": "bd04083e8f3ea06f09edfd844b5fd8828160822a0b1cc31682330a2a4193f01e"
     },
     ".agent-foundry/check-foundry-drift.mjs": {
       "tier": "mold",
@@ -42,7 +74,7 @@
     },
     ".agent-foundry/run-checks.mjs": {
       "tier": "mold",
-      "sha256": "b1cfe5ef16a44494dacf7e9d3509ea2e8e426e8be44f0256805cf6916cef7369"
+      "sha256": "d7c1f9db8a14d97773cd8262f0f9670ae167b2474c06c8d92ac83ee50e5799cc"
     },
     ".agent-foundry/run-checks.test.mjs": {
       "tier": "mold",
@@ -50,15 +82,27 @@
     },
     ".agents/skills/README.md": {
       "tier": "mold",
-      "sha256": "5a83a45057572ff591bd75afa0adb40b8c28b59eb8925244ce5f06a92b1beb53"
+      "sha256": "f5501ee09221e22b23c3251db625cb9b64e1f8769820c6149a51745721244e49"
     },
     ".agents/skills/adr/SKILL.md": {
       "tier": "mold",
       "sha256": "38ad9630e444ed57536fc765d7b8e813ee8473961702eb5d0a9fe45655689647"
     },
+    ".agents/skills/agent-foundry-feedback/SKILL.md": {
+      "tier": "mold",
+      "sha256": "b8980ebdd467087bc05712e7a134782c998cbda1377d0a5f5d5ce221736ca6b4"
+    },
+    ".agents/skills/agent-headless/SKILL.md": {
+      "tier": "mold",
+      "sha256": "2df06572b651d1580a556e72b1a3d5d9729f377fab1c7ff68a1f872f62f55f5c"
+    },
+    ".agents/skills/attack-the-board/SKILL.md": {
+      "tier": "mold",
+      "sha256": "5c38d65fa4c00a285f9e101673d8b67e0c72494e34ecd6e87d82527f8d1271a6"
+    },
     ".agents/skills/claude-in-codex/SKILL.md": {
       "tier": "mold",
-      "sha256": "ed032a2cb38d2461ee97ebe14a4d8c7795fa2782dddb269923b3677c5a64c22c"
+      "sha256": "31d5fd36a8d6e66eeb2a4a58c03746f0bc1037a498f4d2c21906c4170aee58e7"
     },
     ".agents/skills/claude-in-codex/scripts/claude-ask.mjs": {
       "tier": "mold",
@@ -82,7 +126,7 @@
     },
     ".agents/skills/cursor-cli/SKILL.md": {
       "tier": "mold",
-      "sha256": "e4dd40587295ceb08ecc2a4991739fcb2eda958e5d77e71d9d75f14e36296b71"
+      "sha256": "17e7a189443ac773b2feba105a0b05882799a892b97b6a178d6fba7af8afce41"
     },
     ".agents/skills/cursor-cli/scripts/cursor-agent.mjs": {
       "tier": "mold",
@@ -102,7 +146,7 @@
     },
     ".agents/skills/efficient-orchestration/SKILL.md": {
       "tier": "mold",
-      "sha256": "4d659378ecc59d6fdb111185c5148082ae43ddf9d843cd97108ca7ca80fcb1ff"
+      "sha256": "762d6807b67a390c4da30f16c89c526b85e62cb437f5ab77d3b35f4f850f6bcd"
     },
     ".agents/skills/execute-task/SKILL.md": {
       "tier": "mold",
@@ -110,7 +154,7 @@
     },
     ".agents/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "6e76e049f41b799954f7e0c12f9eaeee78cd10fe35c0b2fb426213b4174f9cce"
+      "sha256": "ba43f0f2a720114ca1b7dc5a03dbf17d218c9d25bd21a94e3320df35f09b7d7d"
     },
     ".agents/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -178,23 +222,39 @@
     },
     ".agents/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "bd800fbfe60960868be5e4e2568b80366363ce83dfa9eb384bab35beadc84b9b"
+      "sha256": "4e79bd80e66e4befcabeca3cd9aa981e354095e4e4834d595067dad7022d5991"
     },
     ".agents/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "834cc7528d7d84bb0eb6078e06cce73bdf5c901816e6445766839ee8ed5bac46"
+      "sha256": "d715497cca20365081c45f14a49909c62f42ff1fa3dfb5aa2784c4524ae8dd34"
     },
     ".agents/skills/the-fool/SKILL.md": {
       "tier": "mold",
       "sha256": "5b009030981813e94fcf18822b261bc41520adf0c7417646588b885797bc6dcb"
     },
+    ".agents/skills/upgrade-agent-foundry/SKILL.md": {
+      "tier": "mold",
+      "sha256": "acb30a67c33d49bd9ead3b5363a5c85202bcb234e2b839bd6eaab0bbcfc65cb5"
+    },
     ".claude/skills/README.md": {
       "tier": "mold",
-      "sha256": "74898a63cc2dbfa74466da8f6f895231e5e6e959b0224917a093f486293b47c0"
+      "sha256": "e551fd85f4ad14ae28adc0cbb9325f570e247eb54c32022cba1a7edd666fd45e"
     },
     ".claude/skills/adr/SKILL.md": {
       "tier": "mold",
       "sha256": "38ad9630e444ed57536fc765d7b8e813ee8473961702eb5d0a9fe45655689647"
+    },
+    ".claude/skills/agent-foundry-feedback/SKILL.md": {
+      "tier": "mold",
+      "sha256": "b8980ebdd467087bc05712e7a134782c998cbda1377d0a5f5d5ce221736ca6b4"
+    },
+    ".claude/skills/agent-headless/SKILL.md": {
+      "tier": "mold",
+      "sha256": "2df06572b651d1580a556e72b1a3d5d9729f377fab1c7ff68a1f872f62f55f5c"
+    },
+    ".claude/skills/attack-the-board/SKILL.md": {
+      "tier": "mold",
+      "sha256": "ca027973c0f8c54ae27f1c053b099ab45b27860a558feea2eb4e1df3567329a7"
     },
     ".claude/skills/codebase-audit/SKILL.md": {
       "tier": "mold",
@@ -210,11 +270,11 @@
     },
     ".claude/skills/codex-in-claude/SKILL.md": {
       "tier": "mold",
-      "sha256": "2f856fb475f3f03adb646f6570525948be84ba1159bb0cd661f19f780c98f758"
+      "sha256": "69918dccd44e61109f3282d831d305061d640309623865a000cde94b147319cb"
     },
     ".claude/skills/cursor-cli/SKILL.md": {
       "tier": "mold",
-      "sha256": "d5bd17bdd2a7dff558bb79fb3287d556f85edb302570eede42945188d580bfa9"
+      "sha256": "17e7a189443ac773b2feba105a0b05882799a892b97b6a178d6fba7af8afce41"
     },
     ".claude/skills/cursor-cli/scripts/cursor-agent.mjs": {
       "tier": "mold",
@@ -234,7 +294,7 @@
     },
     ".claude/skills/efficient-orchestration/SKILL.md": {
       "tier": "mold",
-      "sha256": "4d659378ecc59d6fdb111185c5148082ae43ddf9d843cd97108ca7ca80fcb1ff"
+      "sha256": "762d6807b67a390c4da30f16c89c526b85e62cb437f5ab77d3b35f4f850f6bcd"
     },
     ".claude/skills/execute-task/SKILL.md": {
       "tier": "mold",
@@ -242,7 +302,7 @@
     },
     ".claude/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "6e76e049f41b799954f7e0c12f9eaeee78cd10fe35c0b2fb426213b4174f9cce"
+      "sha256": "ba43f0f2a720114ca1b7dc5a03dbf17d218c9d25bd21a94e3320df35f09b7d7d"
     },
     ".claude/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -310,15 +370,19 @@
     },
     ".claude/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "bd800fbfe60960868be5e4e2568b80366363ce83dfa9eb384bab35beadc84b9b"
+      "sha256": "4e79bd80e66e4befcabeca3cd9aa981e354095e4e4834d595067dad7022d5991"
     },
     ".claude/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "834cc7528d7d84bb0eb6078e06cce73bdf5c901816e6445766839ee8ed5bac46"
+      "sha256": "d715497cca20365081c45f14a49909c62f42ff1fa3dfb5aa2784c4524ae8dd34"
     },
     ".claude/skills/the-fool/SKILL.md": {
       "tier": "mold",
       "sha256": "5b009030981813e94fcf18822b261bc41520adf0c7417646588b885797bc6dcb"
+    },
+    ".claude/skills/upgrade-agent-foundry/SKILL.md": {
+      "tier": "mold",
+      "sha256": "acb30a67c33d49bd9ead3b5363a5c85202bcb234e2b839bd6eaab0bbcfc65cb5"
     },
     ".tasks/archive/.gitkeep": {
       "tier": "mold",
@@ -330,7 +394,7 @@
     },
     "AGENTS.md": {
       "tier": "seed",
-      "sha256": "b09f1d0cd0ed42b88e94780053023ee20c7d48c5c67200f22f3951ab732725c0"
+      "sha256": "c5969d0b0e09198b17a2ed9575afa3a58a099a0b5dc6fb592e4529715282dea3"
     },
     "BLOCKED-JOURNAL.md": {
       "tier": "seed",
@@ -339,7 +403,7 @@
     },
     "CLAUDE.md": {
       "tier": "seed",
-      "sha256": "ab8932eb639d44e8908a1a34426e3e34d2fed89723fa463b9700a639898bc448"
+      "sha256": "4a0416365ea0c0c5a0e33da4a9164f70b60b9208d3d3bb4f57e7a7ad7ae6c9c8"
     },
     "CONTRIBUTING.md": {
       "tier": "seed",
@@ -364,7 +428,7 @@
     },
     "docs/SDLC.md": {
       "tier": "mold",
-      "sha256": "b973913be31df0f59304b560a0e73cd606092ab3a8213f0256abede616b0eabe"
+      "sha256": "c07fb857aaff9ecc73c58a2879c5f5435870f096d314cba8dc1e8cb6ebc324ed"
     },
     "docs/adr/README.md": {
       "tier": "seed",
@@ -372,7 +436,7 @@
     },
     "docs/adr/template.md": {
       "tier": "mold",
-      "sha256": "dffc54048e3650790665726a73166f18e77be70f129cb0422d73554a85c3b82a"
+      "sha256": "239d8601594e98e1d3c1aa438a7214354e817956b6026d83e24cc176e15f8ffb"
     },
     "docs/out-of-scope/README.md": {
       "tier": "seed",

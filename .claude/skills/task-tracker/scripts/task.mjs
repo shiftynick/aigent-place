@@ -710,17 +710,38 @@ const RUN_TAIL_LINES = 30;
 const RUN_TAIL_CHARS = 3000;
 const RUN_TIMEOUT_MS = 15 * 60 * 1000;
 
-function evidenceTail(output) {
-  const clean = output
-    .replace(/\r\n/gu, "\n")
-    // The serializer rejects reserved markers anywhere in the log; command
-    // output quoting one (docs, test fixtures) must not make evidence
+// Anything recorded in a task log is committed, so terminal control sequences
+// have to be removed rather than scrubbed: the control-character pass turns a
+// surviving ESC into "?", leaving artifacts like "?[0m". Escapes first, then
+// the remaining control bytes.
+function stripTerminalEscapes(text) {
+  // Ordered widest-first: a string sequence's payload can contain bytes
+  // the later patterns would otherwise match.
+  return text
+    // OSC alone may end at BEL (xterm convention); every control string
+    // also ends at ST or is cancelled by CAN/SUB.
+    .replace(/(?:\u001b\]|\u009d)[^\u0018\u001a]*?(?:\u0007|(?:\u001b\\|\u009c)|[\u0018\u001a])/gu, "")
+    .replace(/(?:\u001b[PX^_]|[\u0090\u0098\u009e\u009f])[^\u0018\u001a]*?(?:(?:\u001b\\|\u009c)|[\u0018\u001a])/gu, "")
+    .replace(/(?:\u001b\[|\u009b)[\u0030-\u003f]*[\u0020-\u002f]*[\u0040-\u007e]/gu, "")
+    .replace(/\u001b[\u0020-\u002f]*[\u0030-\u007e]/gu, "")
+    .replace(/[\u001b\u0080-\u009f]/gu, "");
+}
+
+function sanitizeForLog(text) {
+  return stripTerminalEscapes(text)
+    // The serializer rejects reserved markers anywhere in the log; a command
+    // or its output quoting one (docs, test fixtures) must not make evidence
     // unrecordable.
     .replaceAll("<!-- task-tracker:", "<!- - task-tracker:")
-    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/gu, "?")
-    .trimEnd();
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/gu, "?");
+}
+
+function evidenceTail(output) {
+  const clean = sanitizeForLog(output.replace(/\r\n/gu, "\n")).trimEnd();
   if (clean === "") return { tail: "(no output)", truncated: false };
-  let lines = clean.split("\n");
+  // No recorded line may end in whitespace: the log is committed and read by
+  // trailing-whitespace gates.
+  let lines = clean.split("\n").map((line) => line.replace(/[ \t]+$/u, ""));
   let truncated = false;
   if (lines.length > RUN_TAIL_LINES) {
     lines = lines.slice(-RUN_TAIL_LINES);
@@ -780,16 +801,19 @@ function cmdRun(args) {
   if (combined) stdout.write(combined.endsWith("\n") ? combined : `${combined}\n`);
 
   const { tail, truncated } = evidenceTail(combined);
+  // The command line lands on a committed line like everything else, so it
+  // gets the same treatment as captured output. It must also stay one line:
+  // an embedded newline would put the rest outside the trimming above.
+  const loggedCommand = sanitizeForLog(commandLine)
+    .replace(/\s*[\r\n]+\s*/gu, " ")
+    .replace(/[ \t]+$/u, "");
   const evidence = [
-    `run: ${commandLine}`,
+    // Sanitizing can empty the command, and "run: " would then end in space.
+    loggedCommand ? `run: ${loggedCommand}` : "run: (empty after sanitizing)",
     `  started ${startedAt}, ${outcome}`,
     truncated ? `  output tail (truncated to last ${RUN_TAIL_LINES} lines):` : "  output:",
-    // The prefix must not manufacture whitespace: an interior blank output
-    // line would otherwise become "  | " and fail `git diff --check` and any
-    // trailing-whitespace hook — on the one feature whose whole purpose is
-    // producing committable evidence. Trailing space *within* a command's own
-    // output line is preserved deliberately; evidence is a record, not a
-    // reformat.
+    // The prefix must not manufacture whitespace either: an interior blank
+    // output line would otherwise become "  | " and fail the same gates.
     ...tail.split("\n").map((line) => (line ? `  | ${line}` : "  |")),
   ].join("\n");
 
