@@ -502,6 +502,7 @@ dependencies = [
 name = "world-server"
 version = "0.1.0"
 dependencies = [
+ "aigent-protocol",
  "hex",
  "hmac",
  "sha2",

@@ -1,13 +1,17 @@
-//! Authoritative fixed-tick world core skeleton.
+//! Authoritative fixed-tick world core and connection session skeleton.
 //!
 //! Wire `MOVE` remains unavailable (`UNSUPPORTED_MESSAGE`) until a typed
 //! payload exists. Movement TTL/expiry is exercised through an internal lease
 //! harness only (operator Q1=B / task-005).
+//!
+//! Connection sessions use test-only trusted `aigent_id` inject (operator Q2=A /
+//! task-018); production authentication is deferred.
 
 mod generation;
 mod lease;
 mod order;
 mod rng;
+mod session;
 mod tick;
 mod world;
 
@@ -16,6 +20,11 @@ pub use lease::{LeaseSnapshot, LeaseTable};
 pub use order::{canonical_command_order, CommandKey};
 pub use rng::{
     deterministic_draw, deterministic_draw_u128, DrawInput, DrawResult, DrawScope, RngError,
+};
+pub use session::{
+    AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, CompatibilityRecord,
+    ConnectionDisplaced, ConnectionMode, ConnectionRole, FeatureOffer, HandshakeOutcome,
+    IdentityBinding, SessionHub,
 };
 pub use tick::{ms_to_ticks, ticks_to_ms, TickClock, DEFAULT_LEASE_TTL_MS, TICK_HZ, TICK_MS};
 pub use world::{replay_log, CommandEffect, QueuedCommand, World, WorldConfig, WorldError};
