@@ -30,3 +30,4 @@ per decision.
 | [ADR-0003](0003-heightfield-sampling-and-terrain-collision.md) | Heightfield sampling and terrain collision | accepted |
 | [ADR-0004](0004-terminal-revision-and-forced-sleep.md) | Terminal revision and forced sleep | accepted |
 | [ADR-0005](0005-durable-command-replay-and-backpressure.md) | Durable command replay and persistence backpressure | accepted |
+| [ADR-0006](0006-workload-targets-and-degradation-ladder.md) | Workload targets and degradation ladder | accepted |

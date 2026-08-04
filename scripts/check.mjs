@@ -111,6 +111,7 @@ function main() {
       "scripts/protocol-contract.test.mjs",
       "scripts/replay-contract.test.mjs",
       "scripts/world-contract.test.mjs",
+      "scripts/workload-contract.test.mjs",
       ".githooks/pre-push.test.mjs",
     ],
     root,
