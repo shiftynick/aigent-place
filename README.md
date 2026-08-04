@@ -45,3 +45,9 @@ The accepted workload decision is
 [workload and degradation v1 contract](workload/v1/CONTRACT.md) defines the §1
 targets, measurement windows, AOI truncation, and ordered degradation ladder
 consumed by the future load harness.
+
+The accepted ruleset decision is
+[ADR-0007](docs/adr/0007-ruleset-schema-and-constitution-boundary.md). The
+[ruleset and constitution v1 contract](ruleset/v1/CONTRACT.md) defines the
+mutable parameter catalog, non-votable constitution envelope, and Track A/B
+governance boundary.
