@@ -88,10 +88,10 @@ fn evaluation_order_ignores_enqueue_order() {
 
 #[test]
 fn movement_lease_expires_via_internal_harness() {
-    // 100 ms TTL => 2 ticks at 50 ms.
+    // Explicit per-command TTL (100 ms => 2 ticks); live ruleset owns the default.
     let config = WorldConfig {
         world_seed: [7; 32],
-        lease_ttl_ms: 100,
+        lease_ttl_ms: DEFAULT_LEASE_TTL_MS,
     };
     let mut world = World::new(config);
     world
@@ -101,7 +101,7 @@ fn movement_lease_expires_via_internal_harness() {
             1,
             CommandEffect::UpsertLease {
                 body_id: 42,
-                ttl_ms: None,
+                ttl_ms: Some(100),
             },
         ))
         .unwrap();
