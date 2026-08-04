@@ -1,0 +1,17 @@
+{
+  "name": "aigent-place",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Aigent Place product workspace scripts",
+  "workspaces": [
+    "apps/viewer"
+  ],
+  "scripts": {
+    "viewer:build": "npm run build -w @aigent-place/viewer",
+    "viewer:smoke": "npm run smoke -w @aigent-place/viewer",
+    "product:check": "node scripts/product-check.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -57,25 +57,43 @@ the same commit and run `node .agent-foundry/check-skill-sync.mjs`.
 
 ## Validation
 
-The product workspace has not been scaffolded, so there is not yet a product
-build, lint, or test command. Run the installed process-tooling gate for every
-change:
+For every change, run the process/contract gate:
 
 ```text
 node scripts/check.mjs
 ```
 
-Use the exact Node.js version in `.nvmrc`; Node 20 is only the minimum runtime
-supported by the process tooling. The gate runs the Foundry suites, the
+For product workspace changes (Rust server, viewer, or their tooling), also run:
+
+```text
+node scripts/product-check.mjs
+```
+
+Use the exact Node.js version in `.nvmrc` and the Rust toolchain pinned by
+`rust-toolchain.toml`. Node 20 is only the minimum runtime supported by the
+process tooling. The process gate runs the Foundry suites, contract oracles,
 direct-main push-guard tests, and the process-document scan whose exact scope
 is defined in `AGENTS.md`. Those hook tests require `sh`, supplied by Git for
-Windows and standard on supported POSIX development environments. GitHub
-Actions uses `.nvmrc` and runs the same command as `process-gate` on every
-pull request and push to `main`. The active `main` ruleset requires the check
-on an up-to-date branch.
+Windows and standard on supported POSIX development environments. The product
+gate runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, the
+`world-server` smoke binary, and the viewer production build plus smoke script.
 
-When the workspace task introduces product commands, update this section and
-`AGENTS.md` in the same change.
+GitHub Actions currently runs `node scripts/check.mjs` as `process-gate` on
+every pull request and push to `main`. Task-014 wires the product gate into CI
+and pre-commit. The active `main` ruleset requires the process check on an
+up-to-date branch.
 
+Verified product helper commands (also exercised by `product-check`):
+
+```text
+cargo run -p world-server
+npm ci
+npm run viewer:build
+npm run viewer:smoke
+```
+
+`product-check` always runs `npm ci` so the install matches `package-lock.json`.
+It also refuses to continue when `process.versions.node` does not equal the
+exact version in `.nvmrc`.
 Do not claim a check passed unless it was executed successfully in the current
 change packet.
