@@ -26,11 +26,11 @@ product workspace checks) on every pull request and push to `main`. Set
 runs locally.
 
 The product workspace is a Cargo workspace (`crates/world-server`,
-`crates/aigent-protocol`, `crates/protocol-conformance`) plus npm workspaces
-for the Three.js Vite viewer (`apps/viewer`), generated protocol package
-(`packages/protocol`), and owner SDK façade (`packages/aigent-sdk`). Regenerate
-TypeScript bindings with `npm run protocol:generate` after editing
-`protocol/v1/aigent.proto`
+`crates/aigent-protocol`, `crates/protocol-conformance`,
+`crates/workload-harness`) plus npm workspaces for the Three.js Vite viewer
+(`apps/viewer`), generated protocol package (`packages/protocol`), and owner
+SDK façade (`packages/aigent-sdk`). Regenerate TypeScript bindings with
+`npm run protocol:generate` after editing `protocol/v1/aigent.proto`
 ([ADR-0008](docs/adr/0008-protocol-codegen-toolchain.md)). The accepted v1
 compatibility decision is
 [ADR-0001](docs/adr/0001-protocol-v1-compatibility-and-recovery.md). The
@@ -39,7 +39,9 @@ compatibility decision is
 are the foundation for those generated server, browser, and owner-SDK bindings.
 The `protocol-conformance` binary exercises handshake, command, and snapshot
 resync scenarios against the in-memory server contract and is part of the
-product gate.
+product gate. The `workload-harness` binary measures tick-overrun and cadence
+distributions, exercises the degradation ladder, and fails on contractual
+threshold breaches.
 
 The accepted world-geometry decision is
 [ADR-0002](docs/adr/0002-world-geometry-and-displacement-semantics.md). Its
@@ -58,7 +60,7 @@ The accepted workload decision is
 [ADR-0006](docs/adr/0006-workload-targets-and-degradation-ladder.md). The
 [workload and degradation v1 contract](workload/v1/CONTRACT.md) defines the §1
 targets, measurement windows, AOI truncation, and ordered degradation ladder
-consumed by the future load harness.
+consumed by the `workload-harness` binary in the product gate.
 
 The accepted ruleset decision is
 [ADR-0007](docs/adr/0007-ruleset-schema-and-constitution-boundary.md). The

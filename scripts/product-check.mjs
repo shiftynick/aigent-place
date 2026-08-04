@@ -51,10 +51,11 @@ export function main(argv = process.argv) {
     console.log(`Usage: node scripts/product-check.mjs [--fast]
 
   (default)  full product gate: fmt, clippy, test, server smoke,
-             protocol-conformance, npm ci, protocol generate --check,
-             protocol TS conformance, viewer build + smoke
+             protocol-conformance, workload-harness, npm ci,
+             protocol generate --check, protocol TS conformance,
+             viewer build + smoke
   --fast     pre-commit subset: fmt, clippy, test, server smoke,
-             protocol-conformance
+             protocol-conformance, workload-harness
 `);
     return;
   }
@@ -89,6 +90,9 @@ export function main(argv = process.argv) {
 
   console.log("product-check: protocol-conformance");
   run(cargo, ["run", "-q", "-p", "protocol-conformance"]);
+
+  console.log("product-check: workload-harness");
+  run(cargo, ["run", "-q", "-p", "workload-harness"]);
 
   if (fast) {
     console.log("product-check: PASS (fast subset)");

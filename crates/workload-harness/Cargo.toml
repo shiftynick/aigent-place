@@ -1,0 +1,18 @@
+[package]
+name = "workload-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "In-process load harness for ARCHITECTURE §1 / workload v1 targets"
+publish = false
+
+[[bin]]
+name = "workload-harness"
+path = "src/main.rs"
+
+[dependencies]
+world-server = { path = "../world-server" }
+
+[lints]
+workspace = true
