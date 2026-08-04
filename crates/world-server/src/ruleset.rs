@@ -48,6 +48,11 @@ impl RulesetParameters {
     }
 
     #[must_use]
+    pub fn values_for_digest(&self) -> &BTreeMap<String, i64> {
+        &self.values
+    }
+
+    #[must_use]
     pub fn lease_ttl_ms(&self) -> u32 {
         self.get("movement.lease_ttl_ms")
             .unwrap_or(i64::from(DEFAULT_LEASE_TTL_MS))
