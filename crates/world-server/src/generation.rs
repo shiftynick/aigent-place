@@ -21,6 +21,7 @@ pub struct ImmutableGeneration {
     pub generation: u64,
     pub tick: u64,
     pub world_value: i64,
+    pub ruleset_generation_id: u64,
     pub active_leases: BTreeMap<u64, LeaseSnapshot>,
     pub applied_commands: Vec<AppliedCommand>,
     pub expired_leases: Vec<u64>,
@@ -36,6 +37,7 @@ impl ImmutableGeneration {
         hasher.update(self.generation.to_be_bytes());
         hasher.update(self.tick.to_be_bytes());
         hasher.update(self.world_value.to_be_bytes());
+        hasher.update(self.ruleset_generation_id.to_be_bytes());
         hasher.update((self.active_leases.len() as u64).to_be_bytes());
         for (body_id, lease) in &self.active_leases {
             hasher.update(body_id.to_be_bytes());

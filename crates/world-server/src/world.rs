@@ -3,7 +3,9 @@
 use crate::generation::{AppliedCommand, ImmutableGeneration};
 use crate::lease::LeaseTable;
 use crate::order::{canonical_command_order, CommandKey};
+use crate::persist::{CommittedGeneration, InMemoryJournal};
 use crate::rng::{deterministic_draw_u128, DrawInput, DrawScope, RngError};
+use crate::ruleset::{RulesetParameters, RulesetStore, RulesetValidationError};
 use crate::tick::{TickClock, DEFAULT_LEASE_TTL_MS};
 use std::fmt;
 
@@ -63,6 +65,8 @@ impl QueuedCommand {
 pub enum WorldError {
     DuplicateCommandTuple,
     StaleArrivalTick { arrival_tick: u64, next_tick: u64 },
+    Ruleset(RulesetValidationError),
+    Persistence(&'static str),
     Rng(RngError),
 }
 
@@ -77,6 +81,8 @@ impl fmt::Display for WorldError {
                 f,
                 "stale arrival_tick {arrival_tick}; next tick is {next_tick}"
             ),
+            Self::Ruleset(error) => write!(f, "ruleset validation failed: {error:?}"),
+            Self::Persistence(error) => write!(f, "persistence error: {error}"),
             Self::Rng(error) => write!(f, "{error}"),
         }
     }
@@ -99,19 +105,72 @@ pub struct World {
     pending: Vec<QueuedCommand>,
     world_value: i64,
     published: Option<ImmutableGeneration>,
+    rulesets: RulesetStore,
+    journal: InMemoryJournal,
+    /// When false, pending ruleset is rolled back at activate_at_tick.
+    soak_ok: bool,
 }
 
 impl World {
     #[must_use]
     pub fn new(config: WorldConfig) -> Self {
+        let rulesets = RulesetStore::new();
+        let lease_ttl = rulesets.live().parameters.lease_ttl_ms();
+        let _ = config.lease_ttl_ms; // reserved; live ruleset owns TTL
         Self {
             seed: config.world_seed,
             clock: TickClock::new(),
-            leases: LeaseTable::new(config.lease_ttl_ms),
+            leases: LeaseTable::new(lease_ttl),
             pending: Vec::new(),
             world_value: 0,
             published: None,
+            rulesets,
+            journal: InMemoryJournal::new(),
+            soak_ok: true,
         }
+    }
+
+    #[must_use]
+    pub fn rulesets(&self) -> &RulesetStore {
+        &self.rulesets
+    }
+
+    #[must_use]
+    pub fn journal(&self) -> &InMemoryJournal {
+        &self.journal
+    }
+
+    pub fn set_soak_ok(&mut self, soak_ok: bool) {
+        self.soak_ok = soak_ok;
+    }
+
+    /// Schedule a validated ruleset candidate. Invalid candidates leave live unchanged.
+    pub fn schedule_ruleset(&mut self, parameters: RulesetParameters) -> Result<u64, WorldError> {
+        self.rulesets
+            .schedule(parameters, self.clock.last_completed())
+            .map_err(WorldError::Ruleset)
+    }
+
+    /// Reconstruct world from the journal's last committed generation.
+    pub fn recover_from_journal(config: WorldConfig, mut journal: InMemoryJournal) -> Self {
+        journal.discard_pending();
+        let recovered = journal.recover();
+        let mut world = Self::new(config);
+        world.journal = journal;
+        if let Some(last) = recovered.last_committed {
+            world.world_value = last.world_value;
+            world.rulesets = RulesetStore::from_recovered(last.ruleset, last.pending_ruleset);
+            world
+                .leases
+                .set_default_ttl_ms(world.rulesets.live().parameters.lease_ttl_ms());
+            for (body_id, lease) in last.active_leases {
+                world.leases.restore(body_id, lease);
+            }
+            while world.clock.last_completed() < last.generation {
+                let _ = world.clock.advance();
+            }
+        }
+        world
     }
 
     #[must_use]
@@ -182,10 +241,34 @@ impl World {
         }
 
         let expired_leases = self.leases.expire_due(tick);
+        // Tick-boundary activation after commands observed the prior live ruleset.
+        if self.rulesets.try_activate_at_boundary(tick, self.soak_ok) {
+            self.leases
+                .set_default_ttl_ms(self.rulesets.live().parameters.lease_ttl_ms());
+        }
+
+        let command_summaries: Vec<String> = applied
+            .iter()
+            .map(|command| command.summary.clone())
+            .collect();
+        let packet = CommittedGeneration {
+            generation: tick,
+            world_value: self.world_value,
+            ruleset: self.rulesets.live().clone(),
+            pending_ruleset: self.rulesets.pending().cloned(),
+            command_summaries,
+            active_leases: self.leases.snapshots(),
+        };
+        self.journal
+            .begin(packet)
+            .map_err(WorldError::Persistence)?;
+        self.journal.commit().map_err(WorldError::Persistence)?;
+
         let generation = ImmutableGeneration {
             generation: tick,
             tick,
             world_value: self.world_value,
+            ruleset_generation_id: self.rulesets.live().generation_id,
             active_leases: self.leases.snapshots(),
             applied_commands: applied,
             expired_leases,

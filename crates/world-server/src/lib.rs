@@ -12,7 +12,9 @@ mod generation;
 mod lease;
 mod order;
 mod outbound;
+mod persist;
 mod rng;
+mod ruleset;
 mod session;
 mod snapshot;
 mod tick;
@@ -28,8 +30,13 @@ pub use outbound::{
     EnqueueStateOutcome, ObserveOutcome, OutboundQueue, StateKind, OVERFLOW_TICK_OBSERVATIONS,
     QUEUE_LIMIT_BYTES,
 };
+pub use persist::{CommittedGeneration, InMemoryJournal, RecoveredState};
 pub use rng::{
     deterministic_draw, deterministic_draw_u128, DrawInput, DrawResult, DrawScope, RngError,
+};
+pub use ruleset::{
+    validate_candidate, PendingRuleset, RulesetGeneration, RulesetParameters, RulesetStore,
+    RulesetValidationError, DEFAULT_LEASE_TTL_MS as RULESET_DEFAULT_LEASE_TTL_MS,
 };
 pub use session::{
     AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, CompatibilityRecord,

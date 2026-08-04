@@ -42,9 +42,12 @@ impl LeaseTable {
         }
     }
 
-    #[must_use]
-    pub fn default_ttl_ms(&self) -> u32 {
-        self.default_ttl_ms
+    pub fn set_default_ttl_ms(&mut self, ttl_ms: u32) {
+        self.default_ttl_ms = if ttl_ms == 0 {
+            DEFAULT_LEASE_TTL_MS
+        } else {
+            ttl_ms
+        };
     }
 
     /// Grant or replace a lease. A lower sequence from the same aigent is ignored.
@@ -79,6 +82,19 @@ impl LeaseTable {
 
     pub fn cancel(&mut self, body_id: u64) -> bool {
         self.leases.remove(&body_id).is_some()
+    }
+
+    pub fn restore(&mut self, body_id: u64, lease: LeaseSnapshot) {
+        self.leases.insert(
+            body_id,
+            Lease {
+                body_id: lease.body_id,
+                aigent_id: lease.aigent_id,
+                sequence: lease.sequence,
+                granted_tick: lease.granted_tick,
+                expire_tick: lease.expire_tick,
+            },
+        );
     }
 
     /// Drop leases whose `expire_tick` is less than or equal to `now_tick`.
