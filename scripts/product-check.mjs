@@ -50,10 +50,11 @@ export function main(argv = process.argv) {
   if (help) {
     console.log(`Usage: node scripts/product-check.mjs [--fast]
 
-  (default)  full product gate: fmt, clippy, test, server smoke, npm ci,
-             protocol generate --check, protocol TS conformance, viewer
-             build + smoke
-  --fast     pre-commit subset: fmt, clippy, test, server smoke
+  (default)  full product gate: fmt, clippy, test, server smoke,
+             protocol-conformance, npm ci, protocol generate --check,
+             protocol TS conformance, viewer build + smoke
+  --fast     pre-commit subset: fmt, clippy, test, server smoke,
+             protocol-conformance
 `);
     return;
   }
@@ -85,6 +86,9 @@ export function main(argv = process.argv) {
 
   console.log("product-check: world-server smoke");
   run(cargo, ["run", "-q", "-p", "world-server"]);
+
+  console.log("product-check: protocol-conformance");
+  run(cargo, ["run", "-q", "-p", "protocol-conformance"]);
 
   if (fast) {
     console.log("product-check: PASS (fast subset)");
