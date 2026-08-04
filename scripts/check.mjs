@@ -110,6 +110,7 @@ function main() {
       "scripts/check.test.mjs",
       "scripts/protocol-contract.test.mjs",
       "scripts/replay-contract.test.mjs",
+      "scripts/ruleset-contract.test.mjs",
       "scripts/world-contract.test.mjs",
       "scripts/workload-contract.test.mjs",
       ".githooks/pre-push.test.mjs",
