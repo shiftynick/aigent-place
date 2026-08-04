@@ -130,10 +130,11 @@ The tick path only publishes immutable generations into the mailbox; fan-out
 never blocks `advance_tick`.
 
 Validated ruleset candidates activate only at the tick boundary after soak
-(`RulesetStore`); invalid candidates never mutate live state. An in-memory
-single-writer journal commits each generation in canonical command order and
-supports restart reconstruction of the last committed generation (task-007;
-SQLite remains the eventual v1 store).
+(`RulesetStore`); invalid candidates never mutate live state. A single-writer
+journal commits each generation in canonical command order and supports restart
+reconstruction of the last committed generation (task-007 / task-032). Fast
+tests use an in-memory journal; the durable v1 store is SQLite WAL behind the
+same journal contract (async writer isolation remains follow-up work).
 
 **The tick thread never awaits storage, never awaits a socket, and never holds a lock a
 network task can contend.** Persistence and serialization both consume published

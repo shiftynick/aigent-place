@@ -63,8 +63,8 @@ fn pending_survives_in_committed_journal_until_activation() {
     world.schedule_ruleset(next).unwrap();
     world.advance_tick().unwrap(); // tick 2 < activate_at (1+3=4)
     assert!(world.rulesets().pending().is_some());
-    let journal = world.journal().clone();
-    let recovered = World::recover_from_journal(WorldConfig::default(), journal).unwrap();
+    let journal = world.journal().as_memory().expect("memory journal").clone();
+    let recovered = World::recover_from_memory_journal(WorldConfig::default(), journal).unwrap();
     assert!(recovered.rulesets().pending().is_some());
     assert_eq!(
         recovered.rulesets().live().generation_id,
@@ -101,7 +101,7 @@ fn restart_reconstructs_last_committed_generation() {
     let last = world.journal().last_committed().unwrap().clone();
 
     // Uncommitted tail must be discarded by recover_from_journal.
-    let mut journal = world.journal().clone();
+    let mut journal = world.journal().as_memory().expect("memory journal").clone();
     journal
         .begin(world_server::CommittedGeneration {
             generation: 99,
@@ -115,7 +115,7 @@ fn restart_reconstructs_last_committed_generation() {
         .unwrap();
     assert!(journal.pending().is_some());
 
-    let recovered = World::recover_from_journal(WorldConfig::default(), journal).unwrap();
+    let recovered = World::recover_from_memory_journal(WorldConfig::default(), journal).unwrap();
     assert!(recovered.journal().pending().is_none());
     assert_eq!(recovered.world_value(), 10);
     assert_eq!(

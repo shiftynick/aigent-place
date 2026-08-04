@@ -19,6 +19,7 @@ path = "src/main.rs"
 aigent-protocol = { path = "../aigent-protocol" }
 hex = "0.4.3"
 hmac = "0.12.1"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 sha2 = "0.10.9"
 
 [lints]

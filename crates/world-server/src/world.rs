@@ -3,7 +3,7 @@
 use crate::generation::{AppliedCommand, ImmutableGeneration};
 use crate::lease::LeaseTable;
 use crate::order::{canonical_command_order, CommandKey};
-use crate::persist::{CommittedGeneration, InMemoryJournal, JournalError};
+use crate::persist::{CommittedGeneration, DurableJournal, InMemoryJournal, JournalError};
 use crate::rng::{deterministic_draw_u128, DrawInput, DrawScope, RngError};
 use crate::ruleset::{RulesetParameters, RulesetStore, RulesetValidationError};
 use crate::tick::{TickClock, DEFAULT_LEASE_TTL_MS};
@@ -106,7 +106,7 @@ pub struct World {
     world_value: i64,
     published: Option<ImmutableGeneration>,
     rulesets: RulesetStore,
-    journal: InMemoryJournal,
+    journal: DurableJournal,
     /// When false, pending ruleset is rolled back at activate_at_tick.
     soak_ok: bool,
 }
@@ -114,6 +114,12 @@ pub struct World {
 impl World {
     #[must_use]
     pub fn new(config: WorldConfig) -> Self {
+        Self::with_journal(config, DurableJournal::memory())
+    }
+
+    /// Construct a world that uses an already-opened durable journal (no recovery).
+    #[must_use]
+    pub fn with_journal(config: WorldConfig, journal: DurableJournal) -> Self {
         let rulesets = RulesetStore::new();
         let lease_ttl = rulesets.live().parameters.lease_ttl_ms();
         let _ = config.lease_ttl_ms; // reserved; live ruleset owns TTL
@@ -125,7 +131,7 @@ impl World {
             world_value: 0,
             published: None,
             rulesets,
-            journal: InMemoryJournal::new(),
+            journal,
             soak_ok: true,
         }
     }
@@ -136,7 +142,7 @@ impl World {
     }
 
     #[must_use]
-    pub fn journal(&self) -> &InMemoryJournal {
+    pub fn journal(&self) -> &DurableJournal {
         &self.journal
     }
 
@@ -155,12 +161,26 @@ impl World {
     /// Fails closed on corrupt or gapped committed history.
     pub fn recover_from_journal(
         config: WorldConfig,
-        mut journal: InMemoryJournal,
+        journal: DurableJournal,
+    ) -> Result<Self, WorldError> {
+        Self::recover_durable(config, journal)
+    }
+
+    /// Convenience: recover from an in-memory journal handle.
+    pub fn recover_from_memory_journal(
+        config: WorldConfig,
+        journal: InMemoryJournal,
+    ) -> Result<Self, WorldError> {
+        Self::recover_durable(config, DurableJournal::Memory(journal))
+    }
+
+    fn recover_durable(
+        config: WorldConfig,
+        mut journal: DurableJournal,
     ) -> Result<Self, WorldError> {
         journal.discard_pending();
         let recovered = journal.recover().map_err(WorldError::Persistence)?;
-        let mut world = Self::new(config);
-        world.journal = journal;
+        let mut world = Self::with_journal(config, journal);
         if let Some(last) = recovered.last_committed {
             world.world_value = last.world_value;
             world.rulesets = RulesetStore::from_recovered(last.ruleset, last.pending_ruleset);

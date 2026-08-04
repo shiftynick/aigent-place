@@ -36,7 +36,10 @@ pub use outbound::{
     EnqueueStateOutcome, ObserveOutcome, OutboundQueue, StateKind, OVERFLOW_TICK_OBSERVATIONS,
     QUEUE_LIMIT_BYTES,
 };
-pub use persist::{CommittedGeneration, InMemoryJournal, JournalError, RecoveredState};
+pub use persist::{
+    CommittedGeneration, DurableJournal, InMemoryJournal, JournalError, RecoveredState,
+    SqliteJournal,
+};
 pub use rng::{
     deterministic_draw, deterministic_draw_u128, DrawInput, DrawResult, DrawScope, RngError,
 };
