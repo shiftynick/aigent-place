@@ -98,7 +98,6 @@ project-specific recurring review lessons in `docs/REVIEW-STANDARDS.md`.
   seeds. Never depend on hash iteration, scheduler order, or wall-clock timing.
 - Backpressure and degradation tests must prove that slow viewers or aigent
   connections cannot stall the simulation tick.
-- The repository currently has no product toolchain configuration. The
-  workspace-scaffolding task must pin the selected Rust and JavaScript tools,
-  commit lockfiles, and establish one documented local/CI gate before runtime
-  code grows.
+- The repository pins product toolchains in `rust-toolchain.toml` and `.nvmrc`,
+  commits Cargo and npm lockfiles, and documents `node scripts/product-check.mjs`
+  beside the process gate. Task-014 wires the product gate into CI/pre-commit.

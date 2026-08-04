@@ -8,12 +8,13 @@ A repository for the Aigent Place architecture and implementation.
 
 The repository is in foundation planning and is hosted publicly at
 `shiftynick/aigent-place`. `ARCHITECTURE.md` contains the approved base
-architecture and dependency-ordered build sequence; no product runtime or
-build workspace exists yet. Development uses one pull request per board task.
-An active GitHub ruleset protects `main` and requires the repository gate. The
-next product milestone is to turn the Step 0 contracts into versioned,
-testable artifacts and scaffold the Rust server, browser client, and
-schema-generation workspace around them.
+architecture and dependency-ordered build sequence. Step 0 contracts are
+executable, and the product workspace scaffold exists (`crates/world-server`,
+`apps/viewer`) with a documented product gate; runtime simulation and viewer
+streams are not implemented yet. Development uses one pull request per board
+task. An active GitHub ruleset protects `main` and requires the repository
+gate. The next product milestone is generated protocol types and the
+deterministic world-server core on top of the scaffold.
 
 ## Sources of truth
 
@@ -107,32 +108,33 @@ definitions and edge cases.
 
 ## Quality gate
 
-There is no product build yet. Until the workspace is scaffolded, the
-authoritative executable process gate is:
+Run both documented gates for product-facing changes:
 
 ```text
 node scripts/check.mjs
+node scripts/product-check.mjs
 ```
 
-GitHub Actions runs this gate as `process-gate` on every pull request targeting
+`node scripts/check.mjs` is the authoritative process/contract gate and is what
+GitHub Actions currently runs as `process-gate` on every pull request targeting
 `main` and every push to `main`; the active ruleset requires it on an
-up-to-date branch. The initial board includes tasks to establish the product
-build, formatting, linting, tests, and fast pre-commit hook before runtime
-implementation expands. Keep the current process checks as a constituent when
-the unified product gate grows.
+up-to-date branch.
 
-The wrapper scans all non-binary repository files for unresolved Foundry
-markers, excluding `.git`, `.tasks`, `node_modules`, any directory named
-`target`, and generated Foundry backups. The managed `codebase-audit` skills
-each intentionally quote one marker; their exact paths and counts are
+`node scripts/product-check.mjs` is the product workspace gate: Rust
+`fmt`/`clippy`/`test`, the `world-server` smoke binary, and the viewer
+production build plus smoke script. Use the Node.js version in `.nvmrc` and the
+Rust toolchain in `rust-toolchain.toml`. Task-014 owns wiring this product gate
+into pre-commit and branch CI; keep the process checks as a constituent when
+the unified gate grows.
+
+The process wrapper scans all non-binary repository files for unresolved
+Foundry markers, excluding `.git`, `.tasks`, `node_modules`, any directory
+named `target`, and generated Foundry backups. The managed `codebase-audit`
+skills each intentionally quote one marker; their exact paths and counts are
 allowlisted and tested. Symlinks fail the scan rather than silently escaping
 its root. The gate also behaviorally tests the direct-main push guard and
 therefore requires the POSIX shell supplied by Git on Windows or `sh` on
 POSIX systems.
-
-Task-014 owns the remaining automation step: add the fast product subset to a
-pre-commit hook after the product workspace defines that subset. CI already
-runs the full current gate.
 
 This project tightens the SDLC default: run `codebase-audit` and
 `retrospective` after every 15 completed tasks and before each milestone

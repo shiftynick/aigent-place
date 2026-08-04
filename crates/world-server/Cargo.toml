@@ -1,0 +1,15 @@
+[package]
+name = "world-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Authoritative Aigent Place world server (scaffold)"
+publish = false
+
+[[bin]]
+name = "world-server"
+path = "src/main.rs"
+
+[lints]
+workspace = true
