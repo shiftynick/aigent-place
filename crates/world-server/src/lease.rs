@@ -1,4 +1,4 @@
-//! Internal movement-lease harness (not wire MOVE).
+//! Internal movement-lease harness; wire MOVE maps to UpsertLease until a typed payload exists.
 
 use crate::tick::{ms_to_ticks, DEFAULT_LEASE_TTL_MS};
 use std::collections::BTreeMap;

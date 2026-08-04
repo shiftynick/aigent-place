@@ -400,6 +400,14 @@ impl SessionHub {
         }
     }
 
+    /// Look up the aigent id bound to a live connection, if any.
+    #[must_use]
+    pub fn aigent_id_for(&self, connection_id: &[u8]) -> Option<Vec<u8>> {
+        self.connections
+            .get(connection_id)
+            .and_then(|connection| connection.aigent_id.clone())
+    }
+
     pub fn submit_command(&mut self, command: CommandSubmit) -> CommandOutcome {
         let related = (command.message_id > 0).then_some(command.message_id);
         let Some(connection) = self.connections.get(&command.connection_id).cloned() else {
@@ -576,7 +584,8 @@ impl SessionHub {
 fn kind_available(kind: CommandKind) -> bool {
     matches!(
         kind,
-        CommandKind::CancelIntent
+        CommandKind::Move
+            | CommandKind::CancelIntent
             | CommandKind::Stop
             | CommandKind::PlaceObject
             | CommandKind::SetShape

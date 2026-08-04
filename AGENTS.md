@@ -22,9 +22,9 @@ contract (in-memory journal retained for fast tests). A local WebSocket listen
 path (`world-server --listen`) performs protocol handshake into session epochs
 with demo trusted-inject identity (loopback by default). Connected sockets can
 receive snapshot/delta observe envelopes and command results via the outbound
-fan-out drain API (`TransportState::drain_fanout`); a continuous listen-loop
-tick/drain driver, viewer snapshot streams, and a scripted live move-lease demo
-are not finished yet.
+fan-out drain; `--listen` runs a 20 Hz simulation + drain loop. A scripted aigent
+demo issues wire `MOVE` leases (`npm run aigent:scripted-move` against a listening
+server). Viewer snapshot streams are not finished yet.
 Development uses one pull request per board task. An active GitHub ruleset
 protects `main` and requires the repository gate. The next product milestone
 is wiring a network path that makes the skeleton tangible.

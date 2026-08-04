@@ -313,9 +313,9 @@ fn compatibility_unsupported_feature_and_move() -> Result<(), ScenarioFailure> {
         &epoch,
         2,
         1,
-        b"move-key",
-        CommandKind::Move,
-        b"move-digest",
+        b"say-key",
+        CommandKind::Say,
+        b"say-digest",
     ));
     match unsupported {
         CommandOutcome::Result {

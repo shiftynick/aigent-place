@@ -14,6 +14,8 @@ use crate::session::{
     ConnectionRole, FeatureOffer, HandshakeOutcome, IdentityBinding, SessionHub,
 };
 use crate::snapshot::StubSnapshotPayload;
+use crate::tick::TICK_MS;
+use crate::world::{CommandEffect, QueuedCommand, World, WorldConfig};
 use aigent_protocol::{
     command_result, envelope, handshake_frame, CommandAccepted, CommandKind, CommandRejected,
     CommandResult, ConnectionMode as ProtoMode, ConnectionRole as ProtoRole, Envelope,
@@ -28,12 +30,15 @@ use axum::Router;
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message as ProstMessage;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch, Mutex};
+use tokio::task::JoinHandle;
 
 const OUTBOUND_CHANNEL_CAP: usize = 8;
 
@@ -55,6 +60,8 @@ pub struct TransportState {
     pub sessions: Mutex<SessionHub>,
     pub fanout: Mutex<SnapshotFanout>,
     pub mailbox: PublicationMailbox,
+    /// Authoritative world advanced by the simulation loop / tests.
+    pub world: Mutex<World>,
     /// Logical next arrival tick (simulation-facing counter; not a frame counter).
     pub next_arrival_tick: AtomicU64,
     /// Stamps applied to admitted mutating commands (test/observe).
@@ -78,6 +85,7 @@ impl TransportState {
             sessions: Mutex::new(hub),
             fanout: Mutex::new(SnapshotFanout::new()),
             mailbox: PublicationMailbox::new(),
+            world: Mutex::new(World::new(WorldConfig::default())),
             next_arrival_tick: AtomicU64::new(1),
             stamped_arrivals: Mutex::new(Vec::new()),
             connection_seq: AtomicU64::new(1),
@@ -291,7 +299,9 @@ pub struct DrainReport {
 }
 
 /// Bind `addr` and serve the WebSocket upgrade route forever.
+/// Spawns the 20 Hz simulation + outbound drain loop for the listen path.
 pub async fn serve(addr: SocketAddr, state: Arc<TransportState>) -> Result<(), std::io::Error> {
+    let _sim = spawn_simulation_loop(Arc::clone(&state));
     let listener = TcpListener::bind(addr).await?;
     let app = router(state);
     axum::serve(
@@ -301,7 +311,30 @@ pub async fn serve(addr: SocketAddr, state: Arc<TransportState>) -> Result<(), s
     .await
 }
 
+/// Drive world ticks, mailbox publish, and non-blocking outbound drain at 20 Hz.
+#[must_use]
+pub fn spawn_simulation_loop(state: Arc<TransportState>) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(u64::from(TICK_MS)));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let generation = {
+                let mut world = state.world.lock().await;
+                match world.advance_tick() {
+                    Ok(generation) => generation.clone(),
+                    Err(_) => continue,
+                }
+            };
+            state.publish_generation(generation);
+            state.advance_logical_tick();
+            let _ = state.drain_fanout(None).await;
+        }
+    })
+}
+
 /// Bind an ephemeral local port and return `(bound_addr, server_future)`.
+/// Does not start the simulation loop — tests drive ticks explicitly.
 pub async fn serve_ephemeral(
     state: Arc<TransportState>,
 ) -> Result<
@@ -542,7 +575,10 @@ async fn handle_post_handshake_binary(
     let Some(envelope::Body::Command(command)) = envelope.body else {
         return true;
     };
-    let arrival_tick = state.peek_arrival_tick();
+    let arrival_tick = {
+        let world = state.world.lock().await;
+        state.peek_arrival_tick().max(world.next_tick())
+    };
     let submit = CommandSubmit {
         connection_id: connection_id.to_vec(),
         protocol_major: envelope.protocol_major,
@@ -563,10 +599,7 @@ async fn handle_post_handshake_binary(
             .map(|meta| meta.idempotency_key.clone())
             .unwrap_or_default(),
         kind: CommandKind::try_from(command.kind).unwrap_or(CommandKind::Unspecified),
-        content_digest: {
-            use sha2::{Digest, Sha256};
-            Sha256::digest(&command.payload).to_vec()
-        },
+        content_digest: Sha256::digest(&command.payload).to_vec(),
         required_features: envelope
             .metadata
             .map(|meta| {
@@ -580,6 +613,8 @@ async fn handle_post_handshake_binary(
             })
             .unwrap_or_default(),
     };
+    let kind = submit.kind;
+    let sequence = submit.sequence;
     let outcome = {
         let mut hub = state.sessions.lock().await;
         hub.submit_command(submit)
@@ -589,6 +624,15 @@ async fn handle_post_handshake_binary(
         .lock()
         .await
         .push((connection_id.to_vec(), arrival_tick));
+
+    if let CommandOutcome::Result {
+        result: AuthoritativeResult::Accepted { .. },
+        replayed: false,
+        ..
+    } = &outcome
+    {
+        apply_world_effect(state, connection_id, kind, sequence, arrival_tick).await;
+    }
 
     if let Some(frame) =
         encode_command_outcome(connection_id, state.next_server_message_id(), &outcome)
@@ -603,6 +647,56 @@ async fn handle_post_handshake_binary(
         let _ = state.try_deliver(connection_id, frame).await;
     }
     true
+}
+
+async fn apply_world_effect(
+    state: &TransportState,
+    connection_id: &[u8],
+    kind: CommandKind,
+    sequence: u64,
+    _arrival_hint: u64,
+) {
+    let aigent_id = {
+        let hub = state.sessions.lock().await;
+        hub.aigent_id_for(connection_id)
+    };
+    let Some(aigent_id) = aigent_id else {
+        return;
+    };
+    let body_id = body_id_for_aigent(&aigent_id);
+    let effect = match kind {
+        CommandKind::Move => CommandEffect::UpsertLease {
+            body_id,
+            ttl_ms: None,
+        },
+        CommandKind::CancelIntent | CommandKind::Stop => CommandEffect::CancelLease { body_id },
+        _ => return,
+    };
+    let mut world = state.world.lock().await;
+    let arrival_tick = state.peek_arrival_tick().max(world.next_tick());
+    let command = QueuedCommand {
+        arrival_tick,
+        aigent_id: aigent_id.clone(),
+        sequence,
+        effect: effect.clone(),
+    };
+    match world.enqueue(command) {
+        Ok(()) => {}
+        Err(crate::world::WorldError::StaleArrivalTick { next_tick, .. }) => {
+            let _ = world.enqueue(QueuedCommand {
+                arrival_tick: next_tick,
+                aigent_id,
+                sequence,
+                effect,
+            });
+        }
+        Err(_) => {}
+    }
+}
+
+fn body_id_for_aigent(aigent_id: &[u8]) -> u64 {
+    let digest = Sha256::digest(aigent_id);
+    u64::from_be_bytes(digest[..8].try_into().expect("sha256 prefix"))
 }
 
 fn encode_publish_frames(

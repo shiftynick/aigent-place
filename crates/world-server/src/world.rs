@@ -25,7 +25,7 @@ impl Default for WorldConfig {
     }
 }
 
-/// Internal harness effects. Protocol MOVE is not admitted here.
+/// Internal harness effects. Wire MOVE maps to [`CommandEffect::UpsertLease`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandEffect {
     /// Grant or renew a movement lease for `body_id` (internal only).
@@ -200,6 +200,18 @@ impl World {
     #[must_use]
     pub fn last_completed_tick(&self) -> u64 {
         self.clock.last_completed()
+    }
+
+    /// Most recently published immutable generation, if any.
+    #[must_use]
+    pub fn last_generation(&self) -> Option<&ImmutableGeneration> {
+        self.published.as_ref()
+    }
+
+    /// Tick index that will run on the next [`Self::advance_tick`] call.
+    #[must_use]
+    pub fn next_tick(&self) -> u64 {
+        self.clock.next_tick()
     }
 
     #[must_use]

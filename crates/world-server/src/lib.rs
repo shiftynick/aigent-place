@@ -1,8 +1,7 @@
 //! Authoritative fixed-tick world core and connection session skeleton.
 //!
-//! Wire `MOVE` remains unavailable (`UNSUPPORTED_MESSAGE`) until a typed
-//! payload exists. Movement TTL/expiry is exercised through an internal lease
-//! harness only (operator Q1=B / task-005).
+//! Wire `MOVE` is admitted with an empty payload and applies an internal
+//! movement lease (`UpsertLease`) until a typed move payload exists.
 //!
 //! Connection sessions use test-only trusted `aigent_id` inject (operator Q2=A /
 //! task-018); production authentication is deferred.
@@ -56,8 +55,8 @@ pub use session::{
 pub use snapshot::{SnapshotChannel, SnapshotResyncRequired, SnapshotStatus, StubSnapshotPayload};
 pub use tick::{ms_to_ticks, ticks_to_ms, TickClock, DEFAULT_LEASE_TTL_MS, TICK_HZ, TICK_MS};
 pub use transport::{
-    outbound_channel_cap, outbound_queue_limit_bytes, serve, serve_ephemeral, DrainReport,
-    TransportState,
+    outbound_channel_cap, outbound_queue_limit_bytes, serve, serve_ephemeral,
+    spawn_simulation_loop, DrainReport, TransportState,
 };
 pub use world::{replay_log, CommandEffect, QueuedCommand, World, WorldConfig, WorldError};
 

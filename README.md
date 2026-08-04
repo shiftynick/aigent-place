@@ -34,7 +34,11 @@ marker by default; `world-server --listen [HOST:PORT]` serves
 `ws://HOST:PORT/ws` for local handshake demos (demo trusted-inject identity;
 default `127.0.0.1:7600`). Connected clients receive snapshot observe envelopes
 from the outbound fan-out drain (`TransportState::drain_fanout`); sustained
-outbound overflow isolates only the slow connection. Regenerate TypeScript bindings with
+outbound overflow isolates only the slow connection. `--listen` advances the
+world at 20 Hz and drains observe traffic. Against a listening server, run
+`npm run aigent:scripted-move` for a one-command scripted aigent that issues
+wire `MOVE` leases, prints authoritative results, and demonstrates idempotent
+replay. Regenerate TypeScript bindings with
 `npm run protocol:generate` after editing `protocol/v1/aigent.proto`
 ([ADR-0008](docs/adr/0008-protocol-codegen-toolchain.md)). The accepted v1
 compatibility decision is
