@@ -53,6 +53,7 @@ function encodeMove(connectionId, sessionEpoch, messageId, sequence, idempotency
       protocolMajor: 1,
       connectionId,
       messageId: BigInt(messageId),
+      metadata: {},
       body: { case: "command", value: command },
     }),
   );

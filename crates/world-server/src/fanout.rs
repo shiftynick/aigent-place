@@ -13,7 +13,7 @@ use crate::session::ConnectionRole;
 use crate::snapshot::{
     SnapshotChannel, SnapshotResyncRequired, SnapshotStatus, StubSnapshotPayload,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Hand-off from tick thread to serialization stage.
 ///
@@ -124,6 +124,10 @@ pub struct ConnectionOutbound {
     pub viewer_aoi_cap: u32,
     /// Last delivered ordered interest set.
     pub interest: Vec<u64>,
+    /// When true, skip observe publish until a client-resync full snapshot is queued.
+    pub hold_observe: bool,
+    /// Client→server message IDs already accepted on this connection.
+    pub seen_client_message_ids: HashSet<u64>,
     next_baseline: u64,
 }
 
@@ -137,6 +141,8 @@ impl Default for ConnectionOutbound {
             role: ConnectionRole::Viewer,
             viewer_aoi_cap: AOI_HARD_CAP,
             interest: Vec::new(),
+            hold_observe: false,
+            seen_client_message_ids: HashSet::new(),
             next_baseline: 1,
         }
     }
@@ -239,6 +245,9 @@ impl SnapshotFanout {
         let connection = self.by_conn.get_mut(connection_id)?;
         if connection.queue.is_closed() {
             return Some(PublishOutcome::ConnectionClosed);
+        }
+        if connection.hold_observe {
+            return None;
         }
         let payload = StubSnapshotPayload::from_generation(generation);
         let full_size = encoded_bytes.unwrap_or_else(|| payload.encoded_bytes());

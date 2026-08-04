@@ -134,7 +134,9 @@ async fn command_result_envelope_reaches_aigent_socket() {
         protocol_major: 1,
         connection_id: hello.connection_id.clone(),
         message_id: 1,
-        metadata: None,
+        metadata: Some(aigent_protocol::EnvelopeMetadata {
+            required_features: vec![],
+        }),
         body: Some(envelope::Body::Command(Command {
             metadata: Some(CommandMetadata {
                 session_epoch: hello.session_epoch.clone(),
@@ -169,7 +171,9 @@ async fn protocol_error_envelope_reaches_aigent_socket() {
         protocol_major: 1,
         connection_id: hello.connection_id.clone(),
         message_id: 1,
-        metadata: None,
+        metadata: Some(aigent_protocol::EnvelopeMetadata {
+            required_features: vec![],
+        }),
         body: Some(envelope::Body::Command(Command {
             metadata: Some(CommandMetadata {
                 session_epoch: hello.session_epoch.clone(),

@@ -130,6 +130,56 @@ impl TransportState {
         self.mailbox.publish_from_tick(generation);
     }
 
+    /// Client-initiated full snapshot resync without tearing down the socket.
+    /// Preserves the connection's ordered-event cursor (protocol v1).
+    pub async fn deliver_client_resync(&self, connection_id: &[u8]) -> bool {
+        let generation = {
+            let world = self.world.lock().await;
+            world
+                .last_generation()
+                .cloned()
+                .unwrap_or_else(|| ImmutableGeneration {
+                    generation: 0,
+                    tick: 0,
+                    world_value: world.world_value(),
+                    ruleset_generation_id: 0,
+                    active_leases: Default::default(),
+                    applied_commands: Vec::new(),
+                    expired_leases: Vec::new(),
+                    rng_draws: Vec::new(),
+                })
+        };
+
+        let (baseline_id, payload) = {
+            let mut fanout = self.fanout.lock().await;
+            let Some((baseline_id, payload, _events, _enqueue)) =
+                fanout.client_resync(connection_id, &generation, None)
+            else {
+                return false;
+            };
+            if let Some(connection) = fanout.get_mut(connection_id) {
+                connection.hold_observe = true;
+            }
+            (baseline_id, payload)
+        };
+        let frame = encode_envelope(
+            connection_id,
+            self.next_server_message_id(),
+            envelope::Body::FullSnapshot(FullSnapshot {
+                baseline_id,
+                payload: payload.encode_wire(),
+            }),
+        );
+        let delivered = self.try_deliver(connection_id, Bytes::from(frame)).await;
+        {
+            let mut fanout = self.fanout.lock().await;
+            if let Some(connection) = fanout.get_mut(connection_id) {
+                connection.hold_observe = false;
+            }
+        }
+        delivered
+    }
+
     /// Serialization-stage drain: observe prior undrained pressure, then encode
     /// observe traffic and try_send to sockets. Close only slow connections.
     /// Never awaits I/O. Queue byte accounting clears only after the socket
@@ -592,17 +642,120 @@ async fn handle_post_handshake_binary(
     {
         return false;
     }
-    let Some(envelope::Body::Command(command)) = envelope.body else {
+    let related_message_id = envelope.message_id;
+    if envelope.connection_id != connection_id {
+        deliver_protocol_error(
+            state,
+            connection_id,
+            related_message_id,
+            ProtocolErrorCode::InvalidEnvelope,
+            "connection_id mismatch",
+        )
+        .await;
         return true;
+    }
+    if envelope.protocol_major != 1 {
+        deliver_protocol_error(
+            state,
+            connection_id,
+            related_message_id,
+            ProtocolErrorCode::InvalidEnvelope,
+            "unsupported protocol major",
+        )
+        .await;
+        return true;
+    }
+    if envelope.metadata.is_none() {
+        deliver_protocol_error(
+            state,
+            connection_id,
+            related_message_id,
+            ProtocolErrorCode::InvalidEnvelope,
+            "missing envelope metadata",
+        )
+        .await;
+        return true;
+    }
+    {
+        let mut fanout = state.fanout.lock().await;
+        let Some(connection) = fanout.get_mut(connection_id) else {
+            return false;
+        };
+        if !connection
+            .seen_client_message_ids
+            .insert(envelope.message_id)
+        {
+            drop(fanout);
+            deliver_protocol_error(
+                state,
+                connection_id,
+                related_message_id,
+                ProtocolErrorCode::InvalidEnvelope,
+                "duplicate message_id",
+            )
+            .await;
+            return true;
+        }
+    }
+    let Some(body) = envelope.body else {
+        return false;
     };
+    match body {
+        envelope::Body::SnapshotResyncRequest(_request) => {
+            let _ = state.deliver_client_resync(connection_id).await;
+            true
+        }
+        envelope::Body::Command(command) => {
+            handle_command_envelope(
+                state,
+                connection_id,
+                envelope.protocol_major,
+                envelope.message_id,
+                envelope.metadata,
+                command,
+            )
+            .await
+        }
+        _ => true,
+    }
+}
+
+async fn deliver_protocol_error(
+    state: &TransportState,
+    connection_id: &[u8],
+    related_message_id: u64,
+    code: ProtocolErrorCode,
+    message: &str,
+) {
+    let frame = encode_envelope(
+        connection_id,
+        state.next_server_message_id(),
+        envelope::Body::ProtocolError(ProtocolError {
+            related_message_id: Some(related_message_id),
+            code: code as i32,
+            message: message.into(),
+            retry_after_ticks: None,
+        }),
+    );
+    let _ = state.try_deliver(connection_id, Bytes::from(frame)).await;
+}
+
+async fn handle_command_envelope(
+    state: &TransportState,
+    connection_id: &[u8],
+    protocol_major: u32,
+    message_id: u64,
+    metadata: Option<aigent_protocol::EnvelopeMetadata>,
+    command: aigent_protocol::Command,
+) -> bool {
     let arrival_tick = {
         let world = state.world.lock().await;
         state.peek_arrival_tick().max(world.next_tick())
     };
     let submit = CommandSubmit {
         connection_id: connection_id.to_vec(),
-        protocol_major: envelope.protocol_major,
-        message_id: envelope.message_id,
+        protocol_major,
+        message_id,
         session_epoch: command
             .metadata
             .as_ref()
@@ -620,8 +773,7 @@ async fn handle_post_handshake_binary(
             .unwrap_or_default(),
         kind: CommandKind::try_from(command.kind).unwrap_or(CommandKind::Unspecified),
         content_digest: Sha256::digest(&command.payload).to_vec(),
-        required_features: envelope
-            .metadata
+        required_features: metadata
             .map(|meta| {
                 meta.required_features
                     .into_iter()
@@ -825,7 +977,9 @@ fn encode_envelope(connection_id: &[u8], message_id: u64, body: envelope::Body) 
         protocol_major: 1,
         connection_id: connection_id.to_vec(),
         message_id,
-        metadata: None,
+        metadata: Some(aigent_protocol::EnvelopeMetadata {
+            required_features: vec![],
+        }),
         body: Some(body),
     }
     .encode_to_vec()
