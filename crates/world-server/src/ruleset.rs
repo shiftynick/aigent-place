@@ -38,6 +38,14 @@ impl RulesetParameters {
         Self { values }
     }
 
+    /// Build a parameter map from exact digest pairs (recovery / codec).
+    #[must_use]
+    pub fn from_sorted_pairs(pairs: impl IntoIterator<Item = (String, i64)>) -> Self {
+        Self {
+            values: pairs.into_iter().collect(),
+        }
+    }
+
     #[must_use]
     pub fn get(&self, path: &str) -> Option<i64> {
         self.values.get(path).copied()

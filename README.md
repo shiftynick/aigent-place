@@ -54,7 +54,9 @@ The accepted durable replay decision is
 [ADR-0005](docs/adr/0005-durable-command-replay-and-backpressure.md). The
 [replay and persistence v1 contract](replay/v1/CONTRACT.md) defines canonical
 command admission, atomic durable generations, retry/event retention, crash
-recovery, and counter-based seeded randomness.
+recovery, and counter-based seeded randomness. The world-server keeps an
+in-memory journal for fast tests and a SQLite WAL journal for durable restart
+recovery behind the same single-writer generation contract.
 
 The accepted workload decision is
 [ADR-0006](docs/adr/0006-workload-targets-and-degradation-ladder.md). The

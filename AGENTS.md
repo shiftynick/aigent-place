@@ -16,9 +16,11 @@ documented product gate.
 World-core skeletons on `main` already cover the fixed-tick loop, sessions and
 authoritative command results, snapshot baselines/outbound pressure, ruleset
 activation with ordered persistence, crash/slow-client isolation tests, AOI
-truncation, a gate-wired protocol conformance client, and an in-process
-workload load harness. Real WebSocket transport, durable SQLite, viewer
-snapshot streams, and a live aigent connection path are not implemented yet.
+truncation, a gate-wired protocol conformance client, an in-process workload
+load harness, and a SQLite WAL durable journal behind the single-writer
+contract (in-memory journal retained for fast tests). Real WebSocket transport,
+viewer snapshot streams, and a live aigent connection path are not implemented
+yet.
 Development uses one pull request per board task. An active GitHub ruleset
 protects `main` and requires the repository gate. The next product milestone
 is wiring a network path that makes the skeleton tangible.

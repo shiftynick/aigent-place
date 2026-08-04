@@ -1,8 +1,16 @@
-//! In-memory single-writer persistence journal (skeleton; not SQLite).
+//! Persistence journals: in-memory (tests) and SQLite WAL (durable default).
 
-use crate::ruleset::{PendingRuleset, RulesetGeneration};
-use sha2::{Digest, Sha256};
+mod codec;
+mod memory;
+mod sqlite;
+
+pub use memory::InMemoryJournal;
+pub use sqlite::SqliteJournal;
+
+use crate::lease::LeaseSnapshot;
+use crate::ruleset::{PendingRuleset, RulesetGeneration, RulesetParameters};
 use std::collections::BTreeMap;
+use std::path::Path;
 
 /// One committed generation packet in canonical command order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +22,7 @@ pub struct CommittedGeneration {
     /// Applied command summaries in canonical order.
     pub command_summaries: Vec<String>,
     /// Active leases at commit time.
-    pub active_leases: BTreeMap<u64, crate::lease::LeaseSnapshot>,
+    pub active_leases: BTreeMap<u64, LeaseSnapshot>,
     /// Integrity digest over the sealed packet fields.
     pub integrity_hex: String,
 }
@@ -23,6 +31,7 @@ impl CommittedGeneration {
     /// Compute the integrity digest for the authoritative fields.
     #[must_use]
     pub fn compute_integrity_hex(&self) -> String {
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(b"aigent.journal.generation.v1\0");
         hasher.update(self.generation.to_be_bytes());
@@ -88,6 +97,7 @@ pub enum JournalError {
     NoPending,
     CorruptCommitted { generation: u64 },
     GenerationGap { expected: u64, found: u64 },
+    Storage(String),
 }
 
 impl std::fmt::Display for JournalError {
@@ -101,129 +111,98 @@ impl std::fmt::Display for JournalError {
             Self::GenerationGap { expected, found } => {
                 write!(f, "generation gap: expected {expected}, found {found}")
             }
+            Self::Storage(message) => write!(f, "storage error: {message}"),
         }
     }
 }
 
 impl std::error::Error for JournalError {}
 
-/// Single-writer in-memory journal.
-#[derive(Debug, Default, Clone)]
-pub struct InMemoryJournal {
-    committed: Vec<CommittedGeneration>,
-    /// At most one uncommitted pending packet.
-    pending: Option<CommittedGeneration>,
+/// Durable journal backend used by the world core.
+#[derive(Debug)]
+pub enum DurableJournal {
+    Memory(InMemoryJournal),
+    Sqlite(SqliteJournal),
 }
 
-impl InMemoryJournal {
+impl DurableJournal {
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn memory() -> Self {
+        Self::Memory(InMemoryJournal::new())
     }
 
-    /// Begin a generation packet. Fails if another is already uncommitted.
-    pub fn begin(&mut self, mut draft: CommittedGeneration) -> Result<(), JournalError> {
-        if self.pending.is_some() {
-            return Err(JournalError::WriterBusy);
+    /// Open or create a SQLite WAL journal at `path`.
+    pub fn sqlite(path: impl AsRef<Path>) -> Result<Self, JournalError> {
+        Ok(Self::Sqlite(SqliteJournal::open(path)?))
+    }
+
+    pub fn begin(&mut self, draft: CommittedGeneration) -> Result<(), JournalError> {
+        match self {
+            Self::Memory(journal) => journal.begin(draft),
+            Self::Sqlite(journal) => journal.begin(draft),
         }
-        draft.seal();
-        self.pending = Some(draft);
-        Ok(())
     }
 
-    /// Atomically commit the pending packet.
     pub fn commit(&mut self) -> Result<&CommittedGeneration, JournalError> {
-        let packet = self.pending.take().ok_or(JournalError::NoPending)?;
-        if !packet.integrity_ok() {
-            return Err(JournalError::CorruptCommitted {
-                generation: packet.generation,
-            });
+        match self {
+            Self::Memory(journal) => journal.commit(),
+            Self::Sqlite(journal) => journal.commit(),
         }
-        self.committed.push(packet);
-        Ok(self.committed.last().expect("just pushed"))
     }
 
-    /// Discard the uncommitted tail (crash before commit).
     pub fn discard_pending(&mut self) {
-        self.pending = None;
+        match self {
+            Self::Memory(journal) => journal.discard_pending(),
+            Self::Sqlite(journal) => journal.discard_pending(),
+        }
     }
 
     #[must_use]
     pub fn pending(&self) -> Option<&CommittedGeneration> {
-        self.pending.as_ref()
+        match self {
+            Self::Memory(journal) => journal.pending(),
+            Self::Sqlite(journal) => journal.pending(),
+        }
     }
 
     #[must_use]
     pub fn last_committed(&self) -> Option<&CommittedGeneration> {
-        self.committed.last()
-    }
-
-    /// Test helper: append a sealed committed record.
-    pub fn push_committed_for_test(&mut self, mut packet: CommittedGeneration) {
-        packet.seal();
-        self.committed.push(packet);
-    }
-
-    /// Test helper: corrupt the last committed integrity digest in place.
-    pub fn corrupt_last_committed_integrity_for_test(&mut self) -> bool {
-        if let Some(last) = self.committed.last_mut() {
-            last.integrity_hex = "00".repeat(32);
-            true
-        } else {
-            false
+        match self {
+            Self::Memory(journal) => journal.last_committed(),
+            Self::Sqlite(journal) => journal.last_committed(),
         }
     }
 
-    /// Test helper: insert a generation gap after the last commit.
-    pub fn push_gapped_committed_for_test(&mut self, mut packet: CommittedGeneration) {
-        packet.seal();
-        self.committed.push(packet);
-    }
-
-    /// Test helper: append an incomplete committed record (never sealed).
-    /// Models a truncated/partial write that never finished the integrity seal.
-    pub fn push_incomplete_committed_for_test(&mut self, mut packet: CommittedGeneration) {
-        packet.integrity_hex.clear();
-        self.committed.push(packet);
-    }
-
-    /// Test helper: truncate the last committed integrity digest mid-string.
-    pub fn truncate_last_committed_integrity_for_test(&mut self) -> bool {
-        if let Some(last) = self.committed.last_mut() {
-            if last.integrity_hex.len() > 8 {
-                last.integrity_hex.truncate(8);
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Verify contiguous sealed commits starting at generation 1.
     pub fn verify_committed(&self) -> Result<(), JournalError> {
-        let mut expected = 1u64;
-        for packet in &self.committed {
-            if packet.generation != expected {
-                return Err(JournalError::GenerationGap {
-                    expected,
-                    found: packet.generation,
-                });
-            }
-            if !packet.integrity_ok() {
-                return Err(JournalError::CorruptCommitted {
-                    generation: packet.generation,
-                });
-            }
-            expected = expected.saturating_add(1);
+        match self {
+            Self::Memory(journal) => journal.verify_committed(),
+            Self::Sqlite(journal) => journal.verify_committed(),
         }
-        Ok(())
     }
 
-    /// Restart reconstruction: last committed generation only (pending discarded).
-    /// Fails closed on corrupt or gapped committed history.
     pub fn recover(&self) -> Result<RecoveredState, JournalError> {
-        self.verify_committed()?;
-        Ok(RecoveredState {
-            last_committed: self.committed.last().cloned(),
-        })
+        match self {
+            Self::Memory(journal) => journal.recover(),
+            Self::Sqlite(journal) => journal.recover(),
+        }
     }
+
+    #[must_use]
+    pub fn as_memory(&self) -> Option<&InMemoryJournal> {
+        match self {
+            Self::Memory(journal) => Some(journal),
+            Self::Sqlite(_) => None,
+        }
+    }
+
+    pub fn as_memory_mut(&mut self) -> Option<&mut InMemoryJournal> {
+        match self {
+            Self::Memory(journal) => Some(journal),
+            Self::Sqlite(_) => None,
+        }
+    }
+}
+
+pub(crate) fn parameters_from_pairs(pairs: Vec<(String, i64)>) -> RulesetParameters {
+    RulesetParameters::from_sorted_pairs(pairs)
 }

@@ -4,9 +4,9 @@ use aigent_protocol::ProtocolCloseReason;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use world_server::{
-    CommandEffect, CommittedGeneration, InMemoryJournal, JournalError, ObserveOutcome,
-    PublicationMailbox, QueuedCommand, RulesetParameters, SnapshotFanout, World, WorldConfig,
-    WorldError, OVERFLOW_TICK_OBSERVATIONS, QUEUE_LIMIT_BYTES,
+    CommandEffect, CommittedGeneration, JournalError, ObserveOutcome, PublicationMailbox,
+    QueuedCommand, RulesetParameters, SnapshotFanout, World, WorldConfig, WorldError,
+    OVERFLOW_TICK_OBSERVATIONS, QUEUE_LIMIT_BYTES,
 };
 
 fn bump(arrival: u64, aigent: &[u8], sequence: u64, delta: i64) -> QueuedCommand {
@@ -33,7 +33,7 @@ fn forced_interrupt_recovers_last_committed_boundary() {
     assert_eq!(world.world_value(), 12);
     let last = world.journal().last_committed().unwrap().clone();
 
-    let mut journal = world.journal().clone();
+    let mut journal = world.journal().as_memory().expect("memory journal").clone();
     journal
         .begin(CommittedGeneration {
             generation: 99,
@@ -47,7 +47,7 @@ fn forced_interrupt_recovers_last_committed_boundary() {
         .unwrap();
     assert!(journal.pending().is_some());
 
-    let recovered = World::recover_from_journal(WorldConfig::default(), journal).unwrap();
+    let recovered = World::recover_from_memory_journal(WorldConfig::default(), journal).unwrap();
     assert!(recovered.journal().pending().is_none());
     assert_eq!(recovered.world_value(), 12);
     assert_eq!(recovered.last_completed_tick(), 2);
@@ -63,10 +63,10 @@ fn corrupt_committed_tail_fails_closed() {
     let mut world = World::new(WorldConfig::default());
     world.enqueue(bump(1, b"a", 1, 3)).unwrap();
     world.advance_tick().unwrap();
-    let mut journal = world.journal().clone();
+    let mut journal = world.journal().as_memory().expect("memory journal").clone();
     assert!(journal.corrupt_last_committed_integrity_for_test());
 
-    let err = World::recover_from_journal(WorldConfig::default(), journal).unwrap_err();
+    let err = World::recover_from_memory_journal(WorldConfig::default(), journal).unwrap_err();
     assert!(matches!(
         err,
         WorldError::Persistence(JournalError::CorruptCommitted { generation: 1 })
@@ -78,7 +78,7 @@ fn corrupt_committed_tail_fails_closed() {
 fn incomplete_unsealed_committed_fails_closed() {
     let mut world = World::new(WorldConfig::default());
     world.advance_tick().unwrap();
-    let mut journal = world.journal().clone();
+    let mut journal = world.journal().as_memory().expect("memory journal").clone();
     let base = journal.last_committed().unwrap().clone();
     journal.push_incomplete_committed_for_test(CommittedGeneration {
         generation: 2,
@@ -90,7 +90,7 @@ fn incomplete_unsealed_committed_fails_closed() {
         integrity_hex: String::new(),
     });
 
-    let err = World::recover_from_journal(WorldConfig::default(), journal).unwrap_err();
+    let err = World::recover_from_memory_journal(WorldConfig::default(), journal).unwrap_err();
     assert!(matches!(
         err,
         WorldError::Persistence(JournalError::CorruptCommitted { generation: 2 })
@@ -102,10 +102,10 @@ fn incomplete_unsealed_committed_fails_closed() {
 fn truncated_integrity_digest_fails_closed() {
     let mut world = World::new(WorldConfig::default());
     world.advance_tick().unwrap();
-    let mut journal = world.journal().clone();
+    let mut journal = world.journal().as_memory().expect("memory journal").clone();
     assert!(journal.truncate_last_committed_integrity_for_test());
 
-    let err = World::recover_from_journal(WorldConfig::default(), journal).unwrap_err();
+    let err = World::recover_from_memory_journal(WorldConfig::default(), journal).unwrap_err();
     assert!(matches!(
         err,
         WorldError::Persistence(JournalError::CorruptCommitted { generation: 1 })
@@ -168,7 +168,7 @@ fn pending_parameter_tamper_fails_integrity() {
 fn generation_gap_fails_closed() {
     let mut world = World::new(WorldConfig::default());
     world.advance_tick().unwrap();
-    let mut journal = world.journal().clone();
+    let mut journal = world.journal().as_memory().expect("memory journal").clone();
     let base = journal.last_committed().unwrap().clone();
     journal.push_gapped_committed_for_test(CommittedGeneration {
         generation: 3, // gap: expected 2
@@ -180,7 +180,7 @@ fn generation_gap_fails_closed() {
         integrity_hex: String::new(),
     });
 
-    let err = World::recover_from_journal(WorldConfig::default(), journal).unwrap_err();
+    let err = World::recover_from_memory_journal(WorldConfig::default(), journal).unwrap_err();
     assert!(matches!(
         err,
         WorldError::Persistence(JournalError::GenerationGap {
@@ -193,8 +193,11 @@ fn generation_gap_fails_closed() {
 /// Empty journal recovers to a fresh world (no committed history).
 #[test]
 fn empty_journal_recovers_fresh_world() {
-    let recovered =
-        World::recover_from_journal(WorldConfig::default(), InMemoryJournal::new()).unwrap();
+    let recovered = World::recover_from_journal(
+        WorldConfig::default(),
+        world_server::DurableJournal::memory(),
+    )
+    .unwrap();
     assert_eq!(recovered.world_value(), 0);
     assert_eq!(recovered.last_completed_tick(), 0);
     assert!(recovered.journal().last_committed().is_none());
