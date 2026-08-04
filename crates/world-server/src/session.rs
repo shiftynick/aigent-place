@@ -25,11 +25,29 @@ pub struct CompatibilityRecord {
     pub command_support_until_unix_ms: Option<u64>,
 }
 
-/// Offered feature version during handshake.
+/// Offered or selected feature versions during handshake / command admission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeatureOffer {
     pub feature_id: String,
-    pub version: u32,
+    /// Client-supported versions (handshake) or the single selected/required version.
+    pub supported_versions: Vec<u32>,
+}
+
+impl FeatureOffer {
+    /// Exact single-version offer (command requirements and selected features).
+    #[must_use]
+    pub fn exact(feature_id: impl Into<String>, version: u32) -> Self {
+        Self {
+            feature_id: feature_id.into(),
+            supported_versions: vec![version],
+        }
+    }
+
+    /// Highest listed version (selected features are always a singleton).
+    #[must_use]
+    pub fn version(&self) -> u32 {
+        self.supported_versions.iter().copied().max().unwrap_or(0)
+    }
 }
 
 /// Client hello inputs (semantic; no WebSocket).
@@ -377,7 +395,7 @@ impl SessionHub {
             aigent_id: hello.aigent_id.clone(),
             selected_features: features
                 .iter()
-                .map(|feature| (feature.feature_id.clone(), feature.version))
+                .map(|feature| (feature.feature_id.clone(), feature.version()))
                 .collect(),
             session: issued_epoch.as_ref().map(|epoch| LiveSession {
                 active_epoch: epoch.clone(),
@@ -444,7 +462,7 @@ impl SessionHub {
             };
         }
         for feature in &command.required_features {
-            if connection.selected_features.get(&feature.feature_id) != Some(&feature.version) {
+            if connection.selected_features.get(&feature.feature_id) != Some(&feature.version()) {
                 return CommandOutcome::ProtocolError {
                     code: ProtocolErrorCode::UnsupportedFeature,
                     related_message_id: related,
@@ -616,17 +634,29 @@ fn select_features(
     let mut seen = std::collections::HashSet::new();
     let mut selected = Vec::new();
     for offer in offered {
-        if offer.version == 0 || !seen.insert(offer.feature_id.clone()) {
+        if !seen.insert(offer.feature_id.clone()) {
             return Err(());
         }
-        if let Some(&server_version) = available.get(&offer.feature_id) {
-            let version = offer.version.min(server_version);
-            if version > 0 {
-                selected.push(FeatureOffer {
-                    feature_id: offer.feature_id.clone(),
-                    version,
-                });
-            }
+        let mut versions = offer.supported_versions.clone();
+        if versions.is_empty() || versions.iter().any(|&version| version == 0) {
+            return Err(());
+        }
+        versions.sort_unstable();
+        let before = versions.len();
+        versions.dedup();
+        if versions.len() != before {
+            return Err(());
+        }
+        let Some(&server_max) = available.get(&offer.feature_id) else {
+            continue;
+        };
+        // Server catalog value N means versions 1..=N are available (ADR-0001).
+        let mutual = versions
+            .into_iter()
+            .filter(|&version| version <= server_max)
+            .max();
+        if let Some(version) = mutual {
+            selected.push(FeatureOffer::exact(offer.feature_id.clone(), version));
         }
     }
     selected.sort_by(|left, right| left.feature_id.cmp(&right.feature_id));

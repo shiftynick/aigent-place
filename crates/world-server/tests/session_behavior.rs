@@ -235,17 +235,11 @@ fn unsupported_feature_and_move_rejection_are_stable() {
     let mut hub = SessionHub::new_v1();
     hub.offer_feature(1, ConnectionMode::CommandCapable, "demo", 1);
     let mut hello = hello_aigent(b"c1", b"a1");
-    hello.offered_features = vec![FeatureOffer {
-        feature_id: "demo".into(),
-        version: 1,
-    }];
+    hello.offered_features = vec![FeatureOffer::exact("demo", 1)];
     let epoch = accepted_epoch(hub.handshake(hello));
 
     let bad_feature = hub.submit_command(CommandSubmit {
-        required_features: vec![FeatureOffer {
-            feature_id: "demo".into(),
-            version: 99,
-        }],
+        required_features: vec![FeatureOffer::exact("demo", 99)],
         ..cmd(b"c1", &epoch, 1, 1, b"k", CommandKind::Stop, b"d")
     });
     assert!(matches!(

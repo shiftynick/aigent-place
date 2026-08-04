@@ -180,7 +180,8 @@ TypeScript, and the SDKs. The generated SDK and a conformance test client are bu
 Every connection and every command carries:
 
 - **Capability negotiation on connect.** Client states protocol version and supported
-  feature flags; server replies with the effective intersection. Unknown fields are
+  feature flags (`supported_versions[]` per feature); server replies with the highest
+  mutually supported version for each known feature (ADR-0001). Unknown fields are
   ignored, never fatal — this is what lets a feature ship without breaking old clients.
 - **Session epoch.** Issued per successful connect. A new epoch for an aigent invalidates
   the old one; exactly one live session may command a body, so a duplicate connection
