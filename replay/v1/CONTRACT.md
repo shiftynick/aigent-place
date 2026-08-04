@@ -542,16 +542,20 @@ semantic frame records the same size, so admission and durable evidence cannot
 use different estimates.
 
 For recovery cases, fixture records provide both exact frame fields/bytes and
-the decoded semantic `COMMAND_OUTCOME` projection that task-004 will generate.
-Exact payload bytes use lowercase even-length `payload_hex`, including for
-non-UTF-8 octets. Declared length, CRC32C, and `payload_sha256` operate on the
-decoded bytes, never the hex text or a UTF-8 replacement. The decoded
-projection is independently bound by `projection_sha256`. Until task-004
-provides the protobuf decoder, this semantic oracle's only executable decoder
-is canonical UTF-8 JSON: it requires `payload_hex` to equal the canonical JSON
-bytes of the supplied projection before applying it. Arbitrary non-UTF-8 frame
-bytes remain representable for corruption and integrity vectors but cannot be
-applied as a semantic outcome without the task-004 decoder.
+the decoded semantic `COMMAND_OUTCOME` projection. Exact payload bytes use
+lowercase even-length `payload_hex` carrying the generated protobuf encoding of
+the durable outcome (see `scripts/replay-command-outcome.mjs`). Declared
+length, CRC32C, and `payload_sha256` operate on those decoded bytes, never the
+hex text. The decoded projection remains independently bound by
+`projection_sha256` over canonical UTF-8 JSON of the semantic projection.
+Recovery validates that `payload_hex` decodes as protobuf, that the decoded
+durable fields match the wire-representable subset of the supplied semantic
+`payload` (RNG audits stay projection-only and empty on the wire), that
+re-encoding both the decoded outcome and the supplied projection yields the
+same `payload_hex` bytes, then applies the semantic `payload` object
+(including projection-only fields). Arbitrary non-UTF-8 frame bytes remain
+representable for corruption and integrity vectors but cannot be applied as a
+semantic outcome without a successful protobuf decode.
 The evaluator independently encodes and validates magic, version, type,
 generation, ordinal, declared payload length, payload bytes, and CRC32C before
 it may apply that projection to a checkpoint. Supplying the decoded projection
