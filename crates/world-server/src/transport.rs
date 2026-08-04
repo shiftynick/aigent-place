@@ -545,7 +545,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
                     .iter()
                     .map(|feature| FeatureSelection {
                         feature_id: feature.feature_id.clone(),
-                        selected_version: feature.version,
+                        selected_version: feature.version(),
                     })
                     .collect(),
                 session_epoch: session_epoch.unwrap_or_default(),
@@ -777,10 +777,7 @@ async fn handle_command_envelope(
             .map(|meta| {
                 meta.required_features
                     .into_iter()
-                    .map(|feature| FeatureOffer {
-                        feature_id: feature.feature_id,
-                        version: feature.version,
-                    })
+                    .map(|feature| FeatureOffer::exact(feature.feature_id, feature.version))
                     .collect()
             })
             .unwrap_or_default(),
@@ -1017,18 +1014,14 @@ fn wire_to_semantic_hello(
 
     let mut offered_features = Vec::new();
     for feature in wire.offered_features {
-        let version = feature
-            .supported_versions
-            .iter()
-            .copied()
-            .max()
-            .unwrap_or(0);
-        if version == 0 {
+        let mut versions = feature.supported_versions;
+        versions.retain(|&version| version != 0);
+        if versions.is_empty() {
             continue;
         }
         offered_features.push(FeatureOffer {
             feature_id: feature.feature_id,
-            version,
+            supported_versions: versions,
         });
     }
 
@@ -1077,4 +1070,29 @@ pub fn outbound_channel_cap() -> usize {
 #[must_use]
 pub fn outbound_queue_limit_bytes() -> usize {
     QUEUE_LIMIT_BYTES
+}
+
+#[cfg(test)]
+mod feature_wire_tests {
+    use super::*;
+    use aigent_protocol::FeatureOffer as WireFeatureOffer;
+
+    #[test]
+    fn wire_to_semantic_hello_preserves_noncontiguous_versions() {
+        let wire = aigent_protocol::ClientHello {
+            role: ProtoRole::Aigent as i32,
+            offered_protocol_majors: vec![1],
+            offered_features: vec![WireFeatureOffer {
+                feature_id: "demo".into(),
+                supported_versions: vec![1, 3],
+            }],
+            aigent_id: b"aigent-a".to_vec(),
+        };
+        let hello = wire_to_semantic_hello(wire, b"conn-1".to_vec()).expect("hello");
+        assert_eq!(
+            hello.offered_features[0].supported_versions,
+            vec![1, 3],
+            "wire conversion must not collapse the client version set to its max"
+        );
+    }
 }

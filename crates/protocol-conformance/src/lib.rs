@@ -168,14 +168,8 @@ fn feature_negotiation_selects_offered_version() -> Result<(), ScenarioFailure> 
     hub.offer_feature(1, ConnectionMode::CommandCapable, "demo", 2);
     let mut hello = hello_aigent(b"c-feat", b"a-feat");
     hello.offered_features = vec![
-        FeatureOffer {
-            feature_id: "demo".into(),
-            version: 2,
-        },
-        FeatureOffer {
-            feature_id: "unknown-feature".into(),
-            version: 9,
-        },
+        FeatureOffer::exact("demo", 2),
+        FeatureOffer::exact("unknown-feature", 9),
     ];
     match hub.handshake(hello) {
         HandshakeOutcome::Accepted { features, .. } => {
@@ -183,10 +177,10 @@ fn feature_negotiation_selects_offered_version() -> Result<(), ScenarioFailure> 
                 .iter()
                 .find(|f| f.feature_id == "demo")
                 .ok_or_else(|| fail(id, "demo feature not selected"))?;
-            if demo.version != 2 {
+            if demo.version() != 2 {
                 return Err(fail(
                     id,
-                    format!("expected demo version 2, got {}", demo.version),
+                    format!("expected demo version 2, got {}", demo.version()),
                 ));
             }
             if features.iter().any(|f| f.feature_id == "unknown-feature") {
@@ -282,17 +276,11 @@ fn compatibility_unsupported_feature_and_move() -> Result<(), ScenarioFailure> {
     let mut hub = world_server::SessionHub::new_v1();
     hub.offer_feature(1, ConnectionMode::CommandCapable, "demo", 1);
     let mut hello = hello_aigent(b"c-uf", b"a-uf");
-    hello.offered_features = vec![FeatureOffer {
-        feature_id: "demo".into(),
-        version: 1,
-    }];
+    hello.offered_features = vec![FeatureOffer::exact("demo", 1)];
     let epoch = accepted_epoch(hub.handshake(hello)).map_err(|detail| fail(id, detail))?;
 
     let bad_feature = hub.submit_command(CommandSubmit {
-        required_features: vec![FeatureOffer {
-            feature_id: "demo".into(),
-            version: 99,
-        }],
+        required_features: vec![FeatureOffer::exact("demo", 99)],
         ..cmd(b"c-uf", &epoch, 1, 1, b"k", CommandKind::Stop, b"d")
     });
     match bad_feature {
