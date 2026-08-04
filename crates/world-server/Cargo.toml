@@ -4,12 +4,21 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Authoritative Aigent Place world server (scaffold)"
+description = "Authoritative Aigent Place world server"
 publish = false
+
+[lib]
+name = "world_server"
+path = "src/lib.rs"
 
 [[bin]]
 name = "world-server"
 path = "src/main.rs"
+
+[dependencies]
+hex = "0.4.3"
+hmac = "0.12.1"
+sha2 = "0.10.9"
 
 [lints]
 workspace = true
