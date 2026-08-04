@@ -20,8 +20,11 @@ truncation, a gate-wired protocol conformance client, an in-process workload
 load harness, and a SQLite WAL durable journal behind the single-writer
 contract (in-memory journal retained for fast tests). A local WebSocket listen
 path (`world-server --listen`) performs protocol handshake into session epochs
-with demo trusted-inject identity (loopback by default). Viewer snapshot
-streams and a scripted live move-lease demo path are not finished yet.
+with demo trusted-inject identity (loopback by default). Connected sockets can
+receive snapshot/delta observe envelopes and command results via the outbound
+fan-out drain API (`TransportState::drain_fanout`); a continuous listen-loop
+tick/drain driver, viewer snapshot streams, and a scripted live move-lease demo
+are not finished yet.
 Development uses one pull request per board task. An active GitHub ruleset
 protects `main` and requires the repository gate. The next product milestone
 is wiring a network path that makes the skeleton tangible.

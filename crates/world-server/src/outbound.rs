@@ -133,10 +133,34 @@ impl OutboundQueue {
         })
     }
 
-    /// Drain replaceable state (models a successful socket write).
+    /// Enqueue a non-coalesced event/result frame into byte accounting.
+    pub fn enqueue_event(&mut self, encoded_bytes: usize) -> bool {
+        if self.closed {
+            return false;
+        }
+        self.event_bytes = self.event_bytes.saturating_add(encoded_bytes);
+        true
+    }
+
+    /// Clear event-byte accounting after those frames have been written.
+    pub fn drain_events(&mut self) {
+        if !self.closed {
+            self.event_bytes = 0;
+        }
+    }
+
+    /// Drain replaceable state (models a successful socket write of current state).
     pub fn drain_state(&mut self) {
         if !self.closed {
             self.state_items.clear();
+        }
+    }
+
+    /// Clear all replaceable state and event accounting (socket fully caught up).
+    pub fn drain_all(&mut self) {
+        if !self.closed {
+            self.state_items.clear();
+            self.event_bytes = 0;
         }
     }
 

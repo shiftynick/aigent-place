@@ -182,6 +182,16 @@ impl SnapshotFanout {
         self.by_conn.entry(connection_id).or_default();
     }
 
+    /// Remove a connection's outbound state (socket closed).
+    pub fn detach(&mut self, connection_id: &[u8]) {
+        self.by_conn.remove(connection_id);
+    }
+
+    #[must_use]
+    pub fn connection_ids(&self) -> Vec<Vec<u8>> {
+        self.by_conn.keys().cloned().collect()
+    }
+
     #[must_use]
     pub fn get(&self, connection_id: &[u8]) -> Option<&ConnectionOutbound> {
         self.by_conn.get(connection_id)
