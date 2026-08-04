@@ -39,6 +39,12 @@ numeric namespace derived from that branch, so stale and concurrent branches
 do not mint the same sequential ID. The filename, frontmatter, and dependency
 syntax remain `task-<digits>`.
 
+Detached HEAD namespaces also include the absolute worktree root, so two
+detached worktrees parked on the same commit cannot mint colliding IDs.
+When `.agent-foundry.json` cannot name the default branch and
+`refs/remotes/origin/HEAD` is missing, allocation still fails safe to a
+namespaced ID and prints an observable `task-tracker: warning` on stderr.
+
 The board CLI works in linked worktrees, and shared `core.hooksPath` applies
 without per-worktree setup.
 
