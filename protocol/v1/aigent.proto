@@ -455,3 +455,107 @@ message Envelope {
     ConnectionDisplaced connection_displaced = 29;
   }
 }
+
+// Durable replay record payload for AIGR type=1 (COMMAND_OUTCOME).
+// Frame header fields (magic/version/type/generation/ordinal/length/CRC) are
+// owned by the replay v1 contract; this message is only the payload body.
+// Semantic JSON projections remain the replay oracle's interim decoder until
+// a follow-up switches recovery fixtures onto these bytes.
+
+message RequiredFeature {
+  string feature_id = 1;
+  uint32 version = 2;
+}
+
+enum DurablePayloadMode {
+  // Matches replay v1 payload_mode values 0..1.
+  DURABLE_PAYLOAD_MODE_EMPTY = 0;
+  DURABLE_PAYLOAD_MODE_BYTES = 1;
+}
+
+message DurableCommandDescriptor {
+  string command_id = 1;
+  uint64 arrival_tick = 2;
+  bytes aigent_id = 3;
+  bytes session_epoch = 4;
+  uint64 sequence = 5;
+  bytes idempotency_key = 6;
+  uint32 protocol_major = 7;
+  CommandKind kind = 8;
+  repeated RequiredFeature required_features = 9;
+  // EMPTY vs BYTES. Replay's textual digest projection hex-encodes the raw
+  // octets stored in canonical_payload; this field is never hex text.
+  DurablePayloadMode payload_mode = 10;
+  bytes canonical_payload = 11;
+}
+
+message DurableCommandResult {
+  oneof outcome {
+    CommandAccepted accepted = 1;
+    CommandRejected rejected = 2;
+  }
+}
+
+message DurableOrderedEvent {
+  bytes stream_id = 1;
+  uint64 stream_epoch = 2;
+  uint64 sequence = 3;
+  uint64 ordinal = 4;
+  uint64 encoded_bytes = 5;
+  int64 committed_at = 6;
+  bytes payload = 7;
+}
+
+message RngDrawCandidateBlock {
+  uint32 rejection_block = 1;
+  bytes hmac = 2;
+  repeated bytes candidates = 3;
+}
+
+message RngDrawOutput {
+  bytes hmac = 1;
+  bytes raw = 2;
+  bytes value = 3;
+  uint32 candidate_index = 4;
+  uint32 rejection_block = 5;
+  repeated RngDrawCandidateBlock blocks = 6;
+}
+
+message RngSpatialCoordinates {
+  sint64 x = 1;
+  sint64 z = 2;
+}
+
+message RngDrawInput {
+  uint32 rng_contract_version = 1;
+  string subsystem = 2;
+  string purpose = 3;
+  optional uint64 generation = 4;
+  uint32 canonical_command_index = 5;
+  uint64 entity_id = 6;
+  uint32 draw_index = 7;
+  optional RngSpatialCoordinates stable_spatial_coordinates = 8;
+}
+
+message RngAuditRecord {
+  RngDrawInput input = 1;
+  bytes bound = 2;
+  RngDrawOutput output = 3;
+}
+
+message CommandOutcome {
+  string build_id = 1;
+  uint32 replay_version = 2;
+  uint64 prior_generation = 3;
+  DurableCommandDescriptor command = 4;
+  // SHA-256 digest bytes (32).
+  bytes digest = 5;
+  DurableCommandResult result = 6;
+  uint64 encoded_frame_bytes = 7;
+  uint32 generation_record_count = 8;
+  bool alias = 9;
+  bool preserve_idempotency = 10;
+  int64 committed_at = 11;
+  repeated DurableOrderedEvent events = 12;
+  repeated RngAuditRecord rng_audit = 13;
+}

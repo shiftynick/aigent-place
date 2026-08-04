@@ -118,7 +118,8 @@ It runs the process/contract checks (Foundry suites, contract oracles,
 push-guard tests, process-document scan) and then the full product gate
 (`node scripts/product-check.mjs`: Rust `fmt`/`clippy`/`test`, `world-server`
 smoke, `npm ci` which recreates `node_modules` from `package-lock.json`,
-viewer build + smoke). Use the exact Node.js version in `.nvmrc` (enforced by
+protocol generate freshness check, TypeScript binary conformance, viewer
+build + smoke). Use the exact Node.js version in `.nvmrc` (enforced by
 `product-check`) and the Rust toolchain in `rust-toolchain.toml`.
 
 GitHub Actions runs this unified gate as `process-gate` on every pull request

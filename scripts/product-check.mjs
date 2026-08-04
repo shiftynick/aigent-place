@@ -51,7 +51,8 @@ export function main(argv = process.argv) {
     console.log(`Usage: node scripts/product-check.mjs [--fast]
 
   (default)  full product gate: fmt, clippy, test, server smoke, npm ci,
-             viewer build + smoke
+             protocol generate --check, protocol TS conformance, viewer
+             build + smoke
   --fast     pre-commit subset: fmt, clippy, test, server smoke
 `);
     return;
@@ -92,6 +93,17 @@ export function main(argv = process.argv) {
 
   console.log("product-check: npm ci");
   run(npmCmd, ["ci"], { shell: npmShell });
+
+  console.log("product-check: protocol generate --check");
+  run(process.execPath, ["scripts/generate-protocol.mjs", "--check"]);
+
+  console.log("product-check: protocol binary conformance (TypeScript)");
+  run(npmCmd, ["run", "test", "-w", "@aigent-place/protocol"], {
+    shell: npmShell,
+  });
+  run(npmCmd, ["run", "test", "-w", "@aigent-place/aigent-sdk"], {
+    shell: npmShell,
+  });
 
   console.log("product-check: viewer build + smoke");
   run(npmCmd, ["run", "viewer:build"], { shell: npmShell });

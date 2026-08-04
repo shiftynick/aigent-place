@@ -216,6 +216,12 @@ randomness, or protobuf serialization. Supplied `encoded_bytes` and
 
 Task-004 owns generated Rust and TypeScript bindings, raw protobuf
 unknown-field and malformed-byte tests, and cross-target binary round trips.
+Those live in `crates/aigent-protocol`, `@aigent-place/protocol`,
+`@aigent-place/aigent-sdk`, and
+[`conformance/binary/`](conformance/binary/). The durable
+`COMMAND_OUTCOME` protobuf schema is defined in `aigent.proto`; the replay
+semantic oracle may continue to apply JSON projections until a follow-up
+switches recovery fixtures onto the generated decoder.
 
 `ProtocolCloseReason` supplies the stable symbolic reason used by server
 implementations and diagnostics. The WebSocket close code and the transport

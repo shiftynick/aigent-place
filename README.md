@@ -25,12 +25,17 @@ product workspace checks) on every pull request and push to `main`. Set
 `git config core.hooksPath .githooks` so the pre-commit fast product subset
 runs locally.
 
-The product workspace is a Cargo workspace (`crates/world-server`) plus a
-Three.js Vite viewer (`apps/viewer`). The accepted v1 compatibility decision is
+The product workspace is a Cargo workspace (`crates/world-server`,
+`crates/aigent-protocol`) plus npm workspaces for the Three.js Vite viewer
+(`apps/viewer`), generated protocol package (`packages/protocol`), and owner
+SDK façade (`packages/aigent-sdk`). Regenerate TypeScript bindings with
+`npm run protocol:generate` after editing `protocol/v1/aigent.proto`
+([ADR-0008](docs/adr/0008-protocol-codegen-toolchain.md)). The accepted v1
+compatibility decision is
 [ADR-0001](docs/adr/0001-protocol-v1-compatibility-and-recovery.md). The
 [protocol v1 contract](protocol/v1/CONTRACT.md), canonical
 [`aigent.proto`](protocol/v1/aigent.proto), and executable semantic examples
-are the foundation for generated server, browser, and owner-SDK bindings.
+are the foundation for those generated server, browser, and owner-SDK bindings.
 
 The accepted world-geometry decision is
 [ADR-0002](docs/adr/0002-world-geometry-and-displacement-semantics.md). Its

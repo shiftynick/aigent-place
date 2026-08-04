@@ -32,3 +32,4 @@ per decision.
 | [ADR-0005](0005-durable-command-replay-and-backpressure.md) | Durable command replay and persistence backpressure | accepted |
 | [ADR-0006](0006-workload-targets-and-degradation-ladder.md) | Workload targets and degradation ladder | accepted |
 | [ADR-0007](0007-ruleset-schema-and-constitution-boundary.md) | Ruleset schema, constitution, and governance lifecycle | accepted |
+| [ADR-0008](0008-protocol-codegen-toolchain.md) | Protocol codegen toolchain and package layout | accepted |
