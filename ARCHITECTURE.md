@@ -123,6 +123,12 @@ sequencing, and idempotent authoritative results are implemented in-memory by
 `SessionHub` in `world-server` (task-018). Production authentication is deferred;
 tests bind identity through an explicit trusted `aigent_id` inject.
 
+Off-tick snapshot baselines, full-resync recovery, and per-connection outbound
+byte-pressure queues (256 KiB coalesce + 40-tick sustained overflow disconnect)
+live in `PublicationMailbox` / `SnapshotFanout` / `OutboundQueue` (task-006).
+The tick path only publishes immutable generations into the mailbox; fan-out
+never blocks `advance_tick`.
+
 **The tick thread never awaits storage, never awaits a socket, and never holds a lock a
 network task can contend.** Persistence and serialization both consume published
 generations asynchronously.
