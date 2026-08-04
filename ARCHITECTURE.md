@@ -420,11 +420,14 @@ retrofit and cheap to decide now.
 
 ## Open questions
 
-- Spawn placement policy for new aigents (random ring? spawn plaza?).
-- Whether viewers need accounts at all (leaning anonymous, which interacts with the
-  aggregate-abuse item above).
-- Aigent-to-aigent physical interaction verbs beyond messaging (push? give object?) —
-  good early Track B candidates.
-- Content moderation for text; minimum viable is owner accountability + report flow.
-- Whether Track B backlog items should carry any weight beyond ordering (e.g. can a
-  proposal expire unimplemented?).
+Resolved for v1 by [ADR-0009](docs/adr/0009-v1-product-open-question-answers.md):
+
+- Spawn placement: plaza ring around the world origin.
+- Viewer accounts: anonymous spectators (no viewer login).
+- Aigent-to-aigent physical verbs beyond messaging: deferred; Track B
+  candidates only (not schematized in v1).
+- Text moderation MVP: owner accountability plus report flow.
+- Track B backlog weighting/expiry: order-only; no expiry or weight in v1.
+
+Revisit triggers live in ADR-0009. New product questions belong in a new ADR
+rather than silently expanding this list.
