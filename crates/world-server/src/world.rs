@@ -3,7 +3,7 @@
 use crate::generation::{AppliedCommand, ImmutableGeneration};
 use crate::lease::LeaseTable;
 use crate::order::{canonical_command_order, CommandKey};
-use crate::persist::{CommittedGeneration, InMemoryJournal};
+use crate::persist::{CommittedGeneration, InMemoryJournal, JournalError};
 use crate::rng::{deterministic_draw_u128, DrawInput, DrawScope, RngError};
 use crate::ruleset::{RulesetParameters, RulesetStore, RulesetValidationError};
 use crate::tick::{TickClock, DEFAULT_LEASE_TTL_MS};
@@ -66,7 +66,7 @@ pub enum WorldError {
     DuplicateCommandTuple,
     StaleArrivalTick { arrival_tick: u64, next_tick: u64 },
     Ruleset(RulesetValidationError),
-    Persistence(&'static str),
+    Persistence(JournalError),
     Rng(RngError),
 }
 
@@ -152,9 +152,13 @@ impl World {
     }
 
     /// Reconstruct world from the journal's last committed generation.
-    pub fn recover_from_journal(config: WorldConfig, mut journal: InMemoryJournal) -> Self {
+    /// Fails closed on corrupt or gapped committed history.
+    pub fn recover_from_journal(
+        config: WorldConfig,
+        mut journal: InMemoryJournal,
+    ) -> Result<Self, WorldError> {
         journal.discard_pending();
-        let recovered = journal.recover();
+        let recovered = journal.recover().map_err(WorldError::Persistence)?;
         let mut world = Self::new(config);
         world.journal = journal;
         if let Some(last) = recovered.last_committed {
@@ -170,7 +174,7 @@ impl World {
                 let _ = world.clock.advance();
             }
         }
-        world
+        Ok(world)
     }
 
     #[must_use]
@@ -258,6 +262,7 @@ impl World {
             pending_ruleset: self.rulesets.pending().cloned(),
             command_summaries,
             active_leases: self.leases.snapshots(),
+            integrity_hex: String::new(),
         };
         self.journal
             .begin(packet)
