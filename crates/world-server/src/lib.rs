@@ -37,8 +37,8 @@ pub use outbound::{
     QUEUE_LIMIT_BYTES,
 };
 pub use persist::{
-    CommittedGeneration, DurableJournal, InMemoryJournal, JournalError, RecoveredState,
-    SqliteJournal,
+    AsyncSqliteWriter, CommittedGeneration, DurableJournal, InMemoryJournal, JournalError,
+    RecoveredState, SqliteJournal, ASYNC_WRITER_QUEUE_CAP,
 };
 pub use rng::{
     deterministic_draw, deterministic_draw_u128, DrawInput, DrawResult, DrawScope, RngError,
@@ -62,7 +62,9 @@ pub use transport::{
     outbound_channel_cap, outbound_queue_limit_bytes, serve, serve_ephemeral,
     spawn_simulation_loop, DrainReport, TransportState,
 };
-pub use world::{replay_log, CommandEffect, QueuedCommand, World, WorldConfig, WorldError};
+pub use world::{
+    replay_log, CommandEffect, QueuedCommand, TickAdvance, World, WorldConfig, WorldError,
+};
 
 /// Documented smoke marker printed by the `world-server` binary.
 pub const SMOKE_MARKER: &str = "world-server: smoke ok";

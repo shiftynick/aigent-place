@@ -319,14 +319,34 @@ pub fn spawn_simulation_loop(state: Arc<TransportState>) -> JoinHandle<()> {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
-            let generation = {
+            let generations = {
                 let mut world = state.world.lock().await;
-                match world.advance_tick() {
-                    Ok(generation) => generation.clone(),
-                    Err(_) => continue,
+                let mut published = Vec::new();
+                match world.poll_durable() {
+                    Ok(Some(generation)) => published.push(generation.clone()),
+                    Ok(None) => {}
+                    Err(_) => {
+                        // Fail-closed: tentative discarded; retry on a later tick.
+                    }
                 }
+                match world.advance_tick_nonblocking() {
+                    Ok(crate::TickAdvance::Published) => {
+                        if let Some(generation) = world.last_generation() {
+                            published.push(generation.clone());
+                        }
+                    }
+                    Ok(crate::TickAdvance::Submitted { .. }) | Ok(crate::TickAdvance::Busy) => {
+                        if let Ok(Some(generation)) = world.poll_durable() {
+                            published.push(generation.clone());
+                        }
+                    }
+                    Err(_) => {}
+                }
+                published
             };
-            state.publish_generation(generation);
+            for generation in generations {
+                state.publish_generation(generation);
+            }
             state.advance_logical_tick();
             let _ = state.drain_fanout(None).await;
         }
