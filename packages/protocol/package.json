@@ -1,0 +1,20 @@
+{
+  "name": "@aigent-place/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Generated aigent.protocol.v1 TypeScript bindings",
+  "exports": {
+    ".": "./src/index.js",
+    "./gen/*": "./src/gen/*"
+  },
+  "scripts": {
+    "test": "node --test ./test/binary-conformance.test.mjs"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.13.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

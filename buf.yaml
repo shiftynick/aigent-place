@@ -1,0 +1,13 @@
+version: v2
+modules:
+  - path: protocol/v1
+lint:
+  use:
+    - STANDARD
+  except:
+    # Authored path is protocol/v1/aigent.proto (repo convention), not
+    # aigent/protocol/v1/.
+    - PACKAGE_DIRECTORY_MATCH
+breaking:
+  use:
+    - FILE

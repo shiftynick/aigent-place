@@ -1,0 +1,19 @@
+[package]
+name = "aigent-protocol"
+description = "Generated aigent.protocol.v1 protobuf bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bytes = "1.10.1"
+hex = "0.4.3"
+prost = "0.13.5"
+
+[build-dependencies]
+prost-build = "0.13.5"
+protoc-bin-vendored = "3.1.0"
+
+[lints]
+workspace = true

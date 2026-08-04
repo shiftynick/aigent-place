@@ -237,9 +237,24 @@ test("the authored proto has unique message field numbers and reserved gaps", ()
     );
   }
 
-  const envelope = source.slice(source.indexOf("message Envelope {"));
+  let envelopeBody = "";
+  for (const match of messageStarts) {
+    if (match[1] !== "Envelope") {
+      continue;
+    }
+    const start = match.index + match[0].length;
+    let depth = 1;
+    let end = start;
+    for (; end < source.length && depth > 0; end += 1) {
+      if (source[end] === "{") depth += 1;
+      if (source[end] === "}") depth -= 1;
+    }
+    envelopeBody = source.slice(start, end - 1);
+    break;
+  }
+  assert.ok(envelopeBody.length > 0, "Envelope message body missing");
   const envelopeFields = Object.fromEntries(
-    [...envelope.matchAll(/^\s+[A-Za-z0-9_.<>]+\s+([a-z0-9_]+)\s*=\s*(\d+);/gm)]
+    [...envelopeBody.matchAll(/^\s+[A-Za-z0-9_.<>]+\s+([a-z0-9_]+)\s*=\s*(\d+);/gm)]
       .map(([, name, number]) => [name, Number(number)]),
   );
   assert.deepEqual(

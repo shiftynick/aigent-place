@@ -4,12 +4,20 @@
   "version": "0.1.0",
   "description": "Aigent Place product workspace scripts",
   "workspaces": [
-    "apps/viewer"
+    "apps/viewer",
+    "packages/protocol",
+    "packages/aigent-sdk"
   ],
   "scripts": {
     "viewer:build": "npm run build -w @aigent-place/viewer",
     "viewer:smoke": "npm run smoke -w @aigent-place/viewer",
+    "protocol:generate": "node scripts/generate-protocol.mjs",
+    "protocol:check": "node scripts/generate-protocol.mjs --check",
     "product:check": "node scripts/product-check.mjs"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "1.72.0",
+    "@bufbuild/protoc-gen-es": "2.13.0"
   },
   "engines": {
     "node": ">=20"
