@@ -261,9 +261,9 @@ fn unsupported_feature_and_move_rejection_are_stable() {
         &epoch,
         2,
         1,
-        b"move-key",
-        CommandKind::Move,
-        b"move-digest",
+        b"say-key",
+        CommandKind::Say,
+        b"say-digest",
     ));
     assert_eq!(
         result_code(&unsupported),
@@ -274,9 +274,9 @@ fn unsupported_feature_and_move_rejection_are_stable() {
         &epoch,
         3,
         1,
-        b"move-key",
-        CommandKind::Move,
-        b"move-digest",
+        b"say-key",
+        CommandKind::Say,
+        b"say-digest",
     ));
     assert!(matches!(
         replay,
