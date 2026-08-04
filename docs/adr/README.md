@@ -31,3 +31,4 @@ per decision.
 | [ADR-0004](0004-terminal-revision-and-forced-sleep.md) | Terminal revision and forced sleep | accepted |
 | [ADR-0005](0005-durable-command-replay-and-backpressure.md) | Durable command replay and persistence backpressure | accepted |
 | [ADR-0006](0006-workload-targets-and-degradation-ladder.md) | Workload targets and degradation ladder | accepted |
+| [ADR-0007](0007-ruleset-schema-and-constitution-boundary.md) | Ruleset schema, constitution, and governance lifecycle | accepted |

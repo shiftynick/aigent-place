@@ -246,7 +246,9 @@ owner-only at v1 (sharing rules are an obvious early governance proposal).
 
 **The ruleset is externalized from day one** (build step 1, not step 7) — every limit in
 this document lives in a versioned config document, loaded as an immutable **generation**
-and swapped only at a tick boundary.
+and swapped only at a tick boundary. The normative Step 0 encoding is
+[`ruleset/v1/CONTRACT.md`](ruleset/v1/CONTRACT.md) and
+[ADR-0007](docs/adr/0007-ruleset-schema-and-constitution-boundary.md).
 
 ### The constitution (non-votable)
 
