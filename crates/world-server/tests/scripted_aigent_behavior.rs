@@ -35,7 +35,9 @@ fn move_command(
         protocol_major: 1,
         connection_id: connection_id.to_vec(),
         message_id,
-        metadata: None,
+        metadata: Some(aigent_protocol::EnvelopeMetadata {
+            required_features: vec![],
+        }),
         body: Some(envelope::Body::Command(Command {
             metadata: Some(CommandMetadata {
                 session_epoch: session_epoch.to_vec(),

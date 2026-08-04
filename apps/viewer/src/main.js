@@ -5,6 +5,7 @@ import {
   ConnectionRole,
   EnvelopeSchema,
   HandshakeFrameSchema,
+  SnapshotResyncRequestSchema,
 } from "@aigent-place/protocol";
 
 const status = document.querySelector("#status");
@@ -111,6 +112,9 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   let lastTick = 0n;
   let socket = null;
   let closed = false;
+  /** @type {Uint8Array | null} */
+  let connectionId = null;
+  let nextMessageId = 1n;
 
   function upsertBodies(list) {
     const seen = new Set();
@@ -148,8 +152,29 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   function requestResync(reason) {
     waitingForFull = true;
     baselineId = null;
-    setStatus(`viewer: ${reason} — reconnecting for full snapshot`);
-    socket?.close();
+    if (!socket || socket.readyState !== WebSocket.OPEN || !connectionId) {
+      setStatus(`viewer: ${reason} — reconnecting for full snapshot`);
+      socket?.close();
+      return;
+    }
+    setStatus(`viewer: ${reason} — requesting full snapshot`);
+    const messageId = nextMessageId;
+    nextMessageId += 1n;
+    socket.send(
+      toBinary(
+        EnvelopeSchema,
+        create(EnvelopeSchema, {
+          protocolMajor: 1,
+          connectionId,
+          messageId,
+          metadata: {},
+          body: {
+            case: "snapshotResyncRequest",
+            value: create(SnapshotResyncRequestSchema, {}),
+          },
+        }),
+      ),
+    );
   }
 
   function handleEnvelope(bytes) {
@@ -198,6 +223,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     handshakeDone = false;
     waitingForFull = true;
     baselineId = null;
+    connectionId = null;
     setStatus(`viewer: connecting ${wsUrl}`);
     socket = new WebSocket(wsUrl);
     socket.binaryType = "arraybuffer";
@@ -228,6 +254,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
           const frame = fromBinary(HandshakeFrameSchema, bytes);
           if (frame.body.case === "serverHello") {
             handshakeDone = true;
+            connectionId = frame.body.value.connectionId;
             setStatus(
               `viewer: handshake ok major=${frame.body.value.selectedProtocolMajor} — waiting for snapshots`,
             );
