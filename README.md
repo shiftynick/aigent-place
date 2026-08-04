@@ -39,3 +39,9 @@ The accepted durable replay decision is
 [replay and persistence v1 contract](replay/v1/CONTRACT.md) defines canonical
 command admission, atomic durable generations, retry/event retention, crash
 recovery, and counter-based seeded randomness.
+
+The accepted workload decision is
+[ADR-0006](docs/adr/0006-workload-targets-and-degradation-ladder.md). The
+[workload and degradation v1 contract](workload/v1/CONTRACT.md) defines the §1
+targets, measurement windows, AOI truncation, and ordered degradation ladder
+consumed by the future load harness.

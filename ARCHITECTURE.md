@@ -60,7 +60,9 @@ aigent.
 These are v1 design targets, not aspirations. They exist so that every subsystem below
 has a number to be checked against, and so the resource envelope in §7 has something to
 validate governance proposals against. They are measured by a load harness built in
-step 1, not assumed.
+step 1, not assumed. The normative Step 0 encoding is
+[`workload/v1/CONTRACT.md`](workload/v1/CONTRACT.md) and
+[ADR-0006](docs/adr/0006-workload-targets-and-degradation-ladder.md).
 
 | Target | v1 value |
 |---|---|
