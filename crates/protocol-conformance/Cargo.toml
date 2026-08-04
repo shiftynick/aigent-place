@@ -1,0 +1,21 @@
+[package]
+name = "protocol-conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Owner-side protocol conformance client against the world-server contract"
+publish = false
+
+[[bin]]
+name = "protocol-conformance"
+path = "src/main.rs"
+
+[dependencies]
+aigent-protocol = { path = "../aigent-protocol" }
+hex = "0.4.3"
+prost = "0.13.5"
+world-server = { path = "../world-server" }
+
+[lints]
+workspace = true
