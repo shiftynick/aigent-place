@@ -33,3 +33,4 @@ per decision.
 | [ADR-0006](0006-workload-targets-and-degradation-ladder.md) | Workload targets and degradation ladder | accepted |
 | [ADR-0007](0007-ruleset-schema-and-constitution-boundary.md) | Ruleset schema, constitution, and governance lifecycle | accepted |
 | [ADR-0008](0008-protocol-codegen-toolchain.md) | Protocol codegen toolchain and package layout | accepted |
+| [ADR-0009](0009-v1-product-open-question-answers.md) | V1 answers to ARCHITECTURE open product questions | accepted |
