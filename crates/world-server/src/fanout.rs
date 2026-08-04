@@ -3,8 +3,13 @@
 //! The simulation stage publishes into [`PublicationMailbox`] without waiting.
 //! A separate serialization stage drains the mailbox into [`SnapshotFanout`].
 
+use crate::aoi::{
+    aoi_cap_for_role, interest_diff, truncate_nearest, AoiEntity, AoiError, FocusPoint,
+    InterestDiff, AOI_HARD_CAP,
+};
 use crate::generation::ImmutableGeneration;
 use crate::outbound::{EnqueueStateOutcome, ObserveOutcome, OutboundQueue, StateKind};
+use crate::session::ConnectionRole;
 use crate::snapshot::{
     SnapshotChannel, SnapshotResyncRequired, SnapshotStatus, StubSnapshotPayload,
 };
@@ -112,6 +117,13 @@ pub struct ConnectionOutbound {
     pub queue: OutboundQueue,
     pub snapshot: SnapshotChannel,
     pub events: EventStreamCursor,
+    /// Interest focus for AOI truncation (viewer camera / aigent body origin).
+    pub focus: FocusPoint,
+    pub role: ConnectionRole,
+    /// Active viewer AOI policy cap (ignored for aigents).
+    pub viewer_aoi_cap: u32,
+    /// Last delivered ordered interest set.
+    pub interest: Vec<u64>,
     next_baseline: u64,
 }
 
@@ -121,8 +133,36 @@ impl Default for ConnectionOutbound {
             queue: OutboundQueue::new(),
             snapshot: SnapshotChannel::new(),
             events: EventStreamCursor::default(),
+            focus: FocusPoint::origin(),
+            role: ConnectionRole::Viewer,
+            viewer_aoi_cap: AOI_HARD_CAP,
+            interest: Vec::new(),
             next_baseline: 1,
         }
+    }
+}
+
+impl ConnectionOutbound {
+    /// Refresh interest from a candidate catalog; returns enter/leave vs prior set.
+    pub fn refresh_interest(
+        &mut self,
+        entities: &[AoiEntity],
+    ) -> Result<(Vec<u64>, InterestDiff), AoiError> {
+        let cap = aoi_cap_for_role(self.role, self.viewer_aoi_cap);
+        let next = if entities.len()
+            > usize::try_from(AOI_HARD_CAP)
+                .unwrap_or(100)
+                .saturating_mul(2)
+        {
+            let mut hash = crate::aoi::SpatialHash::new(16.0);
+            hash.insert_all(entities.iter().copied());
+            hash.nearest(self.focus, cap)?
+        } else {
+            truncate_nearest(entities, self.focus, cap)?
+        };
+        let diff = interest_diff(&self.interest, &next);
+        self.interest = next.clone();
+        Ok((next, diff))
     }
 }
 
@@ -149,6 +189,15 @@ impl SnapshotFanout {
 
     pub fn get_mut(&mut self, connection_id: &[u8]) -> Option<&mut ConnectionOutbound> {
         self.by_conn.get_mut(connection_id)
+    }
+
+    /// Update one connection's AOI from a candidate catalog (serialization stage).
+    pub fn refresh_interest(
+        &mut self,
+        connection_id: &[u8],
+        entities: &[AoiEntity],
+    ) -> Option<Result<(Vec<u64>, InterestDiff), AoiError>> {
+        Some(self.get_mut(connection_id)?.refresh_interest(entities))
     }
 
     /// Drain a mailbox generation into every attached connection.
