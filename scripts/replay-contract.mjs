@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  decodeCommandOutcomeHex,
+  encodeCommandOutcomeHex,
+  wireSemanticProjection,
+} from "./replay-command-outcome.mjs";
 
 export const MAX_COMMANDS_PER_GENERATION = 4096;
 export const MAX_DURABLE_BYTES_PER_GENERATION = 16 * 1024 * 1024;
@@ -179,7 +184,15 @@ function encodedFrame(record) {
 
 export function recoveryFrame({ payload, generation, ordinal = 0, prior_generation, ...overrides }) {
   const priorGeneration = prior_generation ?? decrementJsonU64(generation);
-  const payloadHex = overrides.payload_hex ?? Buffer.from(canonicalJson(payload), "utf8").toString("hex");
+  let payloadHex = overrides.payload_hex;
+  if (payloadHex === undefined) {
+    try {
+      payloadHex = encodeCommandOutcomeHex(payload ?? {});
+    } catch {
+      // Leave an undecodable body so recovery fails closed on bad projections.
+      payloadHex = "00";
+    }
+  }
   const frame = {
     magic: "AIGR",
     version: 1,
@@ -895,7 +908,7 @@ function commit(state, step) {
       events: item.alias ? [] : clone(item.emitted_events ?? []),
       rng_audit: item.alias ? [] : clone(derivedAudits.get(item)),
     };
-    const payloadBytes = Buffer.from(canonicalJson(payload), "utf8");
+    const payloadBytes = Buffer.from(encodeCommandOutcomeHex(payload), "hex");
     const payloadHex = payloadBytes.toString("hex");
     const frame = {
       magic: "AIGR",
@@ -1122,11 +1135,29 @@ function validateRecoveryFrames(records, checkpointGeneration) {
       return recoveryFailure(record);
     }
     const projectedPayload = Buffer.from(canonicalJson(record.payload ?? {}), "utf8");
+    let decodedProjection;
+    try {
+      decodedProjection = decodeCommandOutcomeHex(record.payload_hex);
+    } catch {
+      return recoveryFailure(record);
+    }
+    let expectedWire;
+    let encodedFromPayload;
+    let reboundDecodedHex;
+    try {
+      expectedWire = wireSemanticProjection(record.payload ?? {});
+      encodedFromPayload = encodeCommandOutcomeHex(record.payload ?? {});
+      reboundDecodedHex = encodeCommandOutcomeHex(decodedProjection);
+    } catch {
+      return recoveryFailure(record);
+    }
     if (record.magic !== "AIGR" || record.version !== 1 || record.type !== 1 ||
       !Number.isSafeInteger(record.ordinal) || record.declared_length !== payload.length ||
       record.payload_sha256 !== sha256(payload) ||
       record.projection_sha256 !== sha256(projectedPayload) ||
-      !payload.equals(projectedPayload) ||
+      record.payload_hex !== encodedFromPayload ||
+      record.payload_hex !== reboundDecodedHex ||
+      canonicalJson(decodedProjection) !== canonicalJson(expectedWire) ||
       record.checksum !== frameChecksum(record)) return recoveryFailure(record);
     let priorGeneration;
     try {

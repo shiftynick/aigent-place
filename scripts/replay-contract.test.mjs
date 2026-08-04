@@ -16,6 +16,7 @@ import {
   semanticCommandDigest,
   validateFixture,
 } from "./replay-contract.mjs";
+import { encodeCommandOutcomeHex } from "./replay-command-outcome.mjs";
 
 const fixture = loadFixture();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -459,6 +460,29 @@ test("cold recovery validates exact frames and rebuilds durable state from a che
     checkpoint,
     running_build_id: "build-a",
     records: [{ ...frame, payload_hex: "ff0" }],
+  }]).trace[0].type, "recovery_failed");
+  assert.equal(evaluateScenario({}, [{
+    op: "recover",
+    checkpoint,
+    running_build_id: "build-a",
+    records: [recoveryFrame({ payload, generation: 1, payload_hex: "ffffffff" })],
+  }]).trace[0].type, "recovery_failed");
+  assert.equal(evaluateScenario({}, [{
+    op: "recover",
+    checkpoint,
+    running_build_id: "build-a",
+    records: [recoveryFrame({
+      payload,
+      generation: 1,
+      payload_hex: encodeCommandOutcomeHex({ ...payload, build_id: "evil-build" }),
+    })],
+  }]).trace[0].type, "recovery_failed");
+  const nonCanonicalHex = `${frame.payload_hex}1800`;
+  assert.equal(evaluateScenario({}, [{
+    op: "recover",
+    checkpoint,
+    running_build_id: "build-a",
+    records: [recoveryFrame({ payload, generation: 1, payload_hex: nonCanonicalHex })],
   }]).trace[0].type, "recovery_failed");
   const corruptAudit = structuredClone(payload);
   corruptAudit.rng_audit[0].output.hmac = "00".repeat(32);
