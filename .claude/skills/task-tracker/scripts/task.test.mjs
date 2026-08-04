@@ -93,12 +93,195 @@ describe("task run (recorded evidence)", () => {
         "utf8",
       );
       // Evidence has to be committable: a "  | " line fails `git diff --check`
-      // and any trailing-whitespace hook. Scope note: this asserts the PREFIX
-      // adds none — whitespace inside a command's own output is preserved on
-      // purpose, because evidence is a record, not a reformat.
+      // and any trailing-whitespace hook. Interior blank lines stay bare "  |".
       const offenders = file.split("\n").filter((line) => /[ \t]$/u.test(line));
       assert.deepEqual(offenders, []);
       assert.match(file, /\n {2}\|\n/u);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("strips ANSI color codes from recorded evidence", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      run(repo, [
+        "run", "task-001", "--",
+        "node", "-e", `"console.log('\\u001b[31mred\\u001b[0m')"`,
+      ]);
+      const file = readFileSync(
+        join(repo, ".tasks", "tasks", "task-001-alpha.md"),
+        "utf8",
+      );
+      const evidenceLines = file.split("\n").filter((line) => line.startsWith("  |"));
+      assert.equal(evidenceLines.some((l) => l.includes("\u001b")), false, "ESC in evidence");
+      assert.equal(evidenceLines.some((l) => l.includes("?[")), false, "scrub artifact in evidence");
+      assert.deepEqual(evidenceLines, ["  | red"]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("strips escape forms other than SGR from recorded evidence", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      // The ST terminator is built with fromCharCode: a literal backslash in
+      // the command string is reduced differently by each platform shell.
+      run(repo, [
+        "run", "task-001", "--",
+        "node", "-e",
+        `"process.stdout.write('\\u001b[>0ca'+'\\u009b31mb'+'\\u009b0m'+'\\u001b]0;t\\u0007c'+'\\u001b]8;;u'+String.fromCharCode(27)+String.fromCharCode(92)+'d'+'\\u001b7e'+'\\n')"`,
+      ]);
+      const file = readFileSync(
+        join(repo, ".tasks", "tasks", "task-001-alpha.md"),
+        "utf8",
+      );
+      const evidenceLines = file.split("\n").filter((line) => line.startsWith("  |"));
+      assert.equal(evidenceLines.some((l) => l.includes("?")), false, "scrub artifact in evidence");
+      assert.deepEqual(evidenceLines, ["  | abcde"]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("strips 8-bit C1 introducers from recorded evidence", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      // 8-bit OSC and DCS introduce strings that run to ST. The C0 control
+      // scrub does not reach them, so a survivor would land in the log.
+      run(repo, [
+        "run", "task-001", "--",
+        "node", "-e",
+        `"process.stdout.write(String.fromCharCode(157)+'0;t'+String.fromCharCode(156)+'a'+String.fromCharCode(144)+'q'+String.fromCharCode(156)+'b'+String.fromCharCode(152)+'s'+String.fromCharCode(156)+'c'+'\\n')"`,
+      ]);
+      const file = readFileSync(
+        join(repo, ".tasks", "tasks", "task-001-alpha.md"),
+        "utf8",
+      );
+      const evidenceLines = file.split("\n").filter((line) => line.startsWith("  |"));
+      assert.deepEqual(evidenceLines, ["  | abc"]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("ends a control string only at its own terminator", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      // BEL ends OSC by xterm convention but not DCS, so a BEL inside a DCS
+      // payload must not release the rest of that payload into the log.
+      run(repo, [
+        "run", "task-001", "--",
+        "node", "-e",
+        `"process.stdout.write('a'+String.fromCharCode(27)+'Pq'+String.fromCharCode(7)+'x'+String.fromCharCode(27)+String.fromCharCode(92)+'b'+'\\n')"`,
+      ]);
+      const file = readFileSync(
+        join(repo, ".tasks", "tasks", "task-001-alpha.md"),
+        "utf8",
+      );
+      const evidenceLines = file.split("\n").filter((line) => line.startsWith("  |"));
+      assert.deepEqual(evidenceLines, ["  | ab"]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+  it("sanitizes the recorded command line, not only the output", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      // The command line is echoed into the log, so an escape or a trailing
+      // space in an argument would land on a committed line. The argument
+      // carries a real ESC byte and a trailing space, and must not look like
+      // a node flag or the child exits before writing anything.
+      const esc = String.fromCharCode(27);
+      run(repo, [
+        "run", "task-001", "--",
+        "node", "-e", `"console.log('ok')"`, `label=${esc}[31mx `,
+      ]);
+      const file = readFileSync(
+        join(repo, ".tasks", "tasks", "task-001-alpha.md"),
+        "utf8",
+      );
+      const runLine = file.split("\n").find((line) => line.includes("run: "));
+      assert.ok(runLine, "recorded command line missing");
+      assert.equal(runLine.includes("\u001b"), false, "ESC in recorded command");
+      assert.equal(runLine.includes("?["), false, "scrub artifact in recorded command");
+      assert.equal(/[ \t]$/u.test(runLine), false, "trailing whitespace in recorded command");
+      const offenders = file.split("\n").filter((line) => /[ \t]$/u.test(line));
+      assert.deepEqual(offenders, []);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("records a command that sanitizes away without trailing whitespace", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      const esc = String.fromCharCode(27);
+      // A command consisting only of escapes leaves nothing to echo, and the
+      // fixed "run: " prefix would otherwise end the line in a space.
+      try {
+        run(repo, ["run", "task-001", "--", `${esc}[31m`]);
+      } catch {
+        // The command itself is expected to fail; the log is what matters.
+      }
+      const file = readFileSync(
+        join(repo, ".tasks", "tasks", "task-001-alpha.md"),
+        "utf8",
+      );
+      const offenders = file.split("\n").filter((line) => /[ \t]$/u.test(line));
+      assert.deepEqual(offenders, []);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("strips trailing whitespace after an ANSI reset in recorded evidence", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      // Colorized tool output: text, reset, trailing space, then another line
+      // so the whole-tail trimEnd cannot hide the defect.
+      run(repo, [
+        "run", "task-001", "--",
+        "node", "-e", `"console.log('warning\\u001b[0m ');console.log('next')"`,
+      ]);
+      const file = readFileSync(
+        join(repo, ".tasks", "tasks", "task-001-alpha.md"),
+        "utf8",
+      );
+      const offenders = file.split("\n").filter((line) => /[ \t]$/u.test(line));
+      assert.deepEqual(offenders, [], "trailing whitespace in task file");
+      const evidenceLines = file.split("\n").filter((line) => line.startsWith("  |"));
+      assert.equal(evidenceLines.some((l) => l.includes("\u001b")), false, "ESC in evidence");
+      assert.equal(evidenceLines.some((l) => l.includes("?[")), false, "scrub artifact in evidence");
+      assert.deepEqual(evidenceLines, ["  | warning", "  | next"]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("scrubs reserved markers in command output so evidence stays recordable", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      // Build the marker at runtime so the recorded command line itself does
+      // not contain the reserved substring (only stdout should).
+      run(repo, [
+        "run", "task-001", "--",
+        "node", "-e", `"console.log('<' + '!-- task-tracker:log -->')"`,
+      ]);
+      const file = readFileSync(
+        join(repo, ".tasks", "tasks", "task-001-alpha.md"),
+        "utf8",
+      );
+      const evidenceLines = file.split("\n").filter((line) => line.startsWith("  |"));
+      assert.deepEqual(evidenceLines, ["  | <!- - task-tracker:log -->"]);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }

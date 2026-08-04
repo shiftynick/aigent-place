@@ -20,7 +20,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { argv, cwd, execPath, exit, stdout } from "node:process";
+import process, { argv, cwd, execPath, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 
 const MANAGED_ROOTS = [".agent-foundry", ".agents", ".claude"];
@@ -71,7 +71,8 @@ function main() {
   const repoRoot = findRepoRoot();
   if (!repoRoot) {
     stdout.write("run-checks: no repo root found (no .git ancestor)\n");
-    return exit(2);
+    process.exitCode = 2;
+    return;
   }
   const tests = discoverTestFiles(repoRoot);
 
@@ -81,7 +82,8 @@ function main() {
   }
   if (tests.length === 0) {
     stdout.write("run-checks: no test suites found under the managed trees\n");
-    return exit(2);
+    process.exitCode = 2;
+    return;
   }
 
   const failures = [];
@@ -104,7 +106,8 @@ function main() {
 
   if (failures.length > 0) {
     stdout.write(`\nrun-checks: FAIL (${failures.join(", ")})\n`);
-    return exit(1);
+    process.exitCode = 1;
+    return;
   }
   stdout.write(`\nrun-checks: PASS (skill-sync + ${tests.length} suites)\n`);
 }

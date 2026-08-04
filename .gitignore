@@ -10,3 +10,4 @@
 # Toolchain output
 node_modules/
 target/
+.agent-foundry/feedback/

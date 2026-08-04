@@ -10,8 +10,8 @@ node .claude/skills/task-tracker/scripts/task.mjs board
 node .claude/skills/task-tracker/scripts/task.mjs next
 ```
 
-Use `.claude/skills/codex-in-claude/` for cold Codex review when the shared
-`execute-task` workflow requires the other model family. When it is
+Use `.claude/skills/agent-headless/` with provider `codex` for cold review
+when the shared `execute-task` workflow requires the other model family. When it is
 unavailable, descend the cold-review ladder in `docs/SDLC.md` rather than
 skipping the review.
 

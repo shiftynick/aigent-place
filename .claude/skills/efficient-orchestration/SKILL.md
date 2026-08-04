@@ -40,8 +40,8 @@ The worker a slice runs on is a dial, not an identity:
 - **Opt-in: the other model family.** When the invocation names the
   counterpart CLI (e.g. "efficient orchestration with codex" from Claude
   Code, or "with claude" from Codex), route the **work/implementation
-  slices** through this harness's bridge skill (`codex-in-claude` from Claude
-  Code; `claude-in-codex` from Codex), which owns the invocation contract,
+  slices** through the shared `agent-headless` skill (provider `codex` from
+  Claude Code; provider `claude` from Codex), which owns the invocation contract,
   sandbox rules, and prompt discipline. A different family is the point: it
   does not share the orchestrator's blind spots on a slice.
 
@@ -63,6 +63,16 @@ reporting — not just how long it thinks.
 - At low effort, workers prefer asking for context over spending tokens to
   find it — so low-effort slices need packets that leave nothing to ask
   about.
+
+## Announce the dials
+
+Before dispatching delegated work, state the routing plan to the operator:
+for work slices and for review/verification slices separately, which backend
+and model family runs them, which specific model, and at which effort
+level — plus the reason for any deviation from the defaults above. When a dial changes mid-run (effort raised, a slice escalated to a
+bigger model, work pulled back to the orchestrator), announce the change and
+why as it happens. The operator should never have to ask which model and
+effort produced or reviewed a given piece of work.
 
 ## Workflow
 
@@ -175,7 +185,7 @@ Delegation changes who does the labor, not what the lifecycle requires:
 
 ## Related
 
-- `codex-in-claude` / `claude-in-codex` — the cross-family backend contract
+- `agent-headless` — the cross-family backend invocation contract
 - `execute-task` — the lifecycle this operates inside; review stays cold
 - `task-tracker` — recorded evidence (`task.mjs run`) and board ownership
 - `plan-milestone` — slicing at milestone scale; this skill slices within a

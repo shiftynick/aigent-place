@@ -1,8 +1,8 @@
 # ADR NNNN: Title
 
-**Status:** proposed  
-**Date:** YYYY-MM-DD  
-**Task:** task-NNN or `none`
+- **Status:** proposed
+- **Date:** YYYY-MM-DD
+- **Task:** task-NNN or `none`
 
 ## Context and problem statement
 
@@ -38,4 +38,3 @@ How will implementation prove the decision works?
 ## Follow-up
 
 - Task, revisit condition, or `none`.
-

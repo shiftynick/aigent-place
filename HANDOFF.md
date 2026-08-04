@@ -1,4 +1,4 @@
-# HANDOFF — Aigent Place, 2026-07-31
+# HANDOFF — Aigent Place, 2026-08-04
 
 Cold-start checkpoint after a workflow-maintenance session. Foundation
 contracts are unchanged; the repository's operational state was cleaned up and
@@ -12,7 +12,7 @@ Aigent Place is still in foundation-contract work; there is no Rust/browser
 product workspace or runtime yet. Protocol v1, deterministic world geometry,
 and replay/persistence contracts are merged into public `main` with their ADRs
 accepted. The workflow-maintenance work shipped no product code: Agent Foundry
-is now upgraded from 0.6.0 through 0.10.0, stale worktrees and branches were
+is now upgraded from 0.6.0 through 0.15.0, stale worktrees and branches were
 removed, and completed cards were archived. Resume product work with
 `task-012` (ruleset schema and constitution boundary) from the single checkout
 at `N:\aigent-place`.
@@ -88,6 +88,14 @@ commit to it directly; deliver through a PR that passes `process-gate`.
 No product contract changed. The prior cleanup PRs and current upgrade are
 process/workflow work.
 
+- **Agent Foundry 0.10.0 → 0.15.0 delivery** (task-030). This adds `CHECKED`
+  cold-review attestations, `attack-the-board`, the reusable upgrade and
+  feedback skills, sanitized recorded evidence, and the unified
+  `agent-headless` runner. The four prior local mold fixes remain applied and
+  recorded. The exact local source commit is `1cf45f9`; it was three commits
+  ahead of `origin/master` when installed, so do not describe the payload as a
+  published remote release. The new rollback backup is retained pending
+  operator acceptance.
 - **Agent Foundry 0.9.0 → 0.10.0 delivery** (task-029). The reconciler restored
   eight non-preserved committed seeds; the installer retained and re-baselined
   the three append-only preserved seeds. The upgrade installed branch-namespaced
@@ -126,7 +134,7 @@ process/workflow work.
 
 ## What's in progress / half-done
 
-Task-029 is the workflow-upgrade delivery task. After it merges, no board task
+Task-030 is the workflow-upgrade delivery task. After it merges, no board task
 is `in_progress`, `review`, or `blocked`; `task-012` remains next.
 
 - The repository still has no product workspace, build, runtime service,
@@ -145,7 +153,7 @@ node .claude/skills/task-tracker/scripts/task.mjs list --tag needs:operator
 
 ## Validation state
 
-For the 0.10.0 upgrade, use task-029's recorded command evidence and the
+For the 0.15.0 upgrade, use task-030's recorded command evidence and the
 delivery PR checks; do not reuse the historical pre-review test totals. The
 authoritative commands are:
 
@@ -167,12 +175,15 @@ merge.
 - Public remote: `git@github.com:shiftynick/aigent-place.git`
 - Protected branch: `main`, ruleset `19976689`, strict `process-gate` required,
   squash merges only, no bypass actors
-- Task-029 base commit on `main`: `dcd616b`
-- **Checkouts: exactly one, `N:\aigent-place`; task-029 uses its own branch**
+- Task-030 base commit on `main`: `0be1a0b`
+- **Checkouts: exactly one, `N:\aigent-place`; task-030 uses its own branch**
 - Open GitHub PRs: none
 - Services/deployments: none
 - Git hooks: clones should set `core.hooksPath=.githooks`
-- Installed workflow kit: Agent Foundry 0.10.0, upstream at `N:\agent-foundry`
+- Installed workflow kit: Agent Foundry 0.15.0 from local source commit
+  `1cf45f9`, upstream checkout at `N:\agent-foundry`
+- The 0.10.0→0.15.0 rollback backup is retained at
+  `.agent-foundry-backups/20260804T145635517Z` pending operator acceptance
 - The 0.9.0→0.10.0 rollback backup is retained at
   `.agent-foundry-backups/20260731T124533613Z` pending operator acceptance
 - The 0.6.0→0.9.0 upgrade backup under `.agent-foundry-backups/` was deleted

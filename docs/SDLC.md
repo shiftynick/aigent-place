@@ -155,7 +155,7 @@ Both axes must return a valid terminal result. A failed, timed-out, cancelled,
 missing, or malformed axis makes the round incomplete; retry that axis and
 never treat the other axis's `PASS` as a complete review.
 
-Review output is findings-only:
+Review output is findings-only, closed by a coverage attestation:
 
 - return `PASS` when the axis has no findings;
 - otherwise return only numbered findings, highest severity first;
@@ -164,14 +164,20 @@ Review output is findings-only:
   confidence;
 - each STANDARDS finding names its location, the existing standard or project
   invariant it violates, the concrete failure or contradiction, severity, and
-  confidence.
+  confidence;
+- in both cases the output ends with a `CHECKED` list naming each rubric line
+  or standard the reviewer actively verified and how. `PASS` is a complete
+  terminal result only when its `CHECKED` list demonstrates real coverage; a
+  thin or missing list makes the axis incomplete — re-run it with a more
+  complete packet rather than treating silence as a pass.
 
 Severity is `high` when the defect blocks correctness, safety, or the stated
 objective; `medium` when it materially harms operability or maintainability;
 and `low` when it is localized and nonblocking. Confidence is `high`, `medium`,
 or `low`.
 
-No preamble, praise, recap, or clean-check inventory is needed. Reviewers still
+No preamble, praise, or recap is needed; the `CHECKED` list is the one
+required inventory. Reviewers still
 report every substantiated defect on their axis, including low-severity
 defects; concise output does not lower recall. An improvement idea that cannot
 cite the supplied objective, rubric, standard, or invariant is not a defect
@@ -188,8 +194,9 @@ Review independence is a ladder, not a single vendor requirement. Use the
 highest rung available in the current environment, and **log which rung was
 used** in the task log — an unrecorded rung is treated as rung 4.
 
-1. **Separate CLI, different model family.** Codex normally uses
-   `claude-in-codex`; Claude Code normally uses `codex-in-claude`. An
+1. **Separate CLI, different model family.** Invoke the shared
+   `agent-headless` skill: Codex normally selects provider `claude`; Claude
+   Code normally selects provider `codex`. An
    operator-selected neutral router such as Cursor also qualifies only when
    the operator explicitly selected its exact model and that model's family
    differs from the implementer. Log the transport, model ID, and family.
@@ -230,8 +237,8 @@ to an unprotected default branch or impose stricter boundaries.
 - **A commit is not the end of the lifecycle.** Committing work to a task
   branch so a cold reviewer can see it is part of the review step, not a claim
   that the task is done — a reviewer in its own process cannot read your index,
-  so an uncommitted packet must be exported instead (the bridge skills show
-  how). Review findings are then addressed in further commits on the same
+  so an uncommitted packet must be exported instead (the `execute-task`
+  cold-review reference shows how). Review findings are then addressed in further commits on the same
   branch. What requires the task to be *complete* is not the first commit; it
   is merging or delivering the branch.
 
