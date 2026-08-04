@@ -16,6 +16,7 @@ name = "world-server"
 path = "src/main.rs"
 
 [dependencies]
+aigent-protocol = { path = "../aigent-protocol" }
 hex = "0.4.3"
 hmac = "0.12.1"
 sha2 = "0.10.9"

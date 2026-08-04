@@ -118,6 +118,11 @@ and sockets remain later tasks.
 Intent validation, application, and collision all read one frozen ruleset generation, so
 two commands in the same tick can never be judged by different rules.
 
+Connection handshake, live session epochs, duplicate-session displacement, command
+sequencing, and idempotent authoritative results are implemented in-memory by
+`SessionHub` in `world-server` (task-018). Production authentication is deferred;
+tests bind identity through an explicit trusted `aigent_id` inject.
+
 **The tick thread never awaits storage, never awaits a socket, and never holds a lock a
 network task can contend.** Persistence and serialization both consume published
 generations asynchronously.
