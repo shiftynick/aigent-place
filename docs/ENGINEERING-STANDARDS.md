@@ -99,5 +99,6 @@ project-specific recurring review lessons in `docs/REVIEW-STANDARDS.md`.
 - Backpressure and degradation tests must prove that slow viewers or aigent
   connections cannot stall the simulation tick.
 - The repository pins product toolchains in `rust-toolchain.toml` and `.nvmrc`,
-  commits Cargo and npm lockfiles, and documents `node scripts/product-check.mjs`
-  beside the process gate. Task-014 wires the product gate into CI/pre-commit.
+  commits Cargo and npm lockfiles, and runs the product gate inside
+  `node scripts/check.mjs`. The fast subset is `.githooks/pre-commit`
+  (`node scripts/product-check.mjs --fast`).

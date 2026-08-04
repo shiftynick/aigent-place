@@ -57,43 +57,47 @@ the same commit and run `node .agent-foundry/check-skill-sync.mjs`.
 
 ## Validation
 
-For every change, run the process/contract gate:
+For every change, run the unified gate:
 
 ```text
 node scripts/check.mjs
 ```
 
-For product workspace changes (Rust server, viewer, or their tooling), also run:
+That command runs the process/contract checks and the full product gate. Use
+the exact Node.js version in `.nvmrc` and the Rust toolchain pinned by
+`rust-toolchain.toml`. The unified gate refuses to continue when
+`process.versions.node` does not equal `.nvmrc`; Node 20+ is only enough for
+isolated Foundry process scripts run outside `check.mjs`. The process half runs
+Foundry suites, contract oracles, direct-main push-guard tests, and the
+process-document scan whose exact scope is defined in `AGENTS.md`. Those hook
+tests require `sh`, supplied by Git for Windows and standard on supported POSIX
+development environments. The product half runs `cargo fmt --check`,
+`cargo clippy -D warnings`, `cargo test`, the `world-server` smoke binary,
+`npm ci` (recreates `node_modules` to match `package-lock.json`), and the
+viewer production build plus smoke script.
+
+Before each commit, the fast product subset runs via `.githooks/pre-commit`
+when the clone sets `git config core.hooksPath .githooks`:
 
 ```text
-node scripts/product-check.mjs
+node scripts/product-check.mjs --fast
 ```
 
-Use the exact Node.js version in `.nvmrc` and the Rust toolchain pinned by
-`rust-toolchain.toml`. Node 20 is only the minimum runtime supported by the
-process tooling. The process gate runs the Foundry suites, contract oracles,
-direct-main push-guard tests, and the process-document scan whose exact scope
-is defined in `AGENTS.md`. Those hook tests require `sh`, supplied by Git for
-Windows and standard on supported POSIX development environments. The product
-gate runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, the
-`world-server` smoke binary, and the viewer production build plus smoke script.
+GitHub Actions runs `node scripts/check.mjs` as `process-gate` on every pull
+request and push to `main` after installing npm dependencies and the Rust
+toolchain from `rust-toolchain.toml`. The active `main` ruleset requires the
+check on an up-to-date branch.
 
-GitHub Actions currently runs `node scripts/check.mjs` as `process-gate` on
-every pull request and push to `main`. Task-014 wires the product gate into CI
-and pre-commit. The active `main` ruleset requires the process check on an
-up-to-date branch.
-
-Verified product helper commands (also exercised by `product-check`):
+Verified product helper commands:
 
 ```text
 cargo run -p world-server
 npm ci
 npm run viewer:build
 npm run viewer:smoke
+node scripts/product-check.mjs
+node scripts/product-check.mjs --fast
 ```
 
-`product-check` always runs `npm ci` so the install matches `package-lock.json`.
-It also refuses to continue when `process.versions.node` does not equal the
-exact version in `.nvmrc`.
 Do not claim a check passed unless it was executed successfully in the current
 change packet.

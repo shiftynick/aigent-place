@@ -109,10 +109,12 @@ function main() {
       "--test",
       "scripts/check.test.mjs",
       "scripts/protocol-contract.test.mjs",
+      "scripts/product-check.test.mjs",
       "scripts/replay-contract.test.mjs",
       "scripts/ruleset-contract.test.mjs",
       "scripts/world-contract.test.mjs",
       "scripts/workload-contract.test.mjs",
+      ".githooks/pre-commit.test.mjs",
       ".githooks/pre-push.test.mjs",
     ],
     root,
@@ -131,6 +133,8 @@ function main() {
   console.log(
     "process-docs: PASS (no unresolved markers in scoped non-binary files)",
   );
+
+  run(process.execPath, ["scripts/product-check.mjs"], root);
 }
 
 if (isMainModule(process.argv[1], import.meta.url)) {

@@ -108,24 +108,33 @@ definitions and edge cases.
 
 ## Quality gate
 
-Run both documented gates for product-facing changes:
+The unified repository gate is:
 
 ```text
 node scripts/check.mjs
-node scripts/product-check.mjs
 ```
 
-`node scripts/check.mjs` is the authoritative process/contract gate and is what
-GitHub Actions currently runs as `process-gate` on every pull request targeting
-`main` and every push to `main`; the active ruleset requires it on an
-up-to-date branch.
+It runs the process/contract checks (Foundry suites, contract oracles,
+push-guard tests, process-document scan) and then the full product gate
+(`node scripts/product-check.mjs`: Rust `fmt`/`clippy`/`test`, `world-server`
+smoke, `npm ci` which recreates `node_modules` from `package-lock.json`,
+viewer build + smoke). Use the exact Node.js version in `.nvmrc` (enforced by
+`product-check`) and the Rust toolchain in `rust-toolchain.toml`.
 
-`node scripts/product-check.mjs` is the product workspace gate: Rust
-`fmt`/`clippy`/`test`, the `world-server` smoke binary, and the viewer
-production build plus smoke script. Use the Node.js version in `.nvmrc` and the
-Rust toolchain in `rust-toolchain.toml`. Task-014 owns wiring this product gate
-into pre-commit and branch CI; keep the process checks as a constituent when
-the unified gate grows.
+GitHub Actions runs this unified gate as `process-gate` on every pull request
+targeting `main` and every push to `main`; the active ruleset requires it on
+an up-to-date branch.
+
+The fast product subset for local commits is:
+
+```text
+node scripts/product-check.mjs --fast
+```
+
+That subset is installed as `.githooks/pre-commit` when the clone sets
+`git config core.hooksPath .githooks`. It runs Rust `fmt`/`clippy`/`test` and
+the `world-server` smoke path only. Hook and CI failures print actionable
+fix output and do not suggest bypasses.
 
 The process wrapper scans all non-binary repository files for unresolved
 Foundry markers, excluding `.git`, `.tasks`, `node_modules`, any directory

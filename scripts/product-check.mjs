@@ -5,6 +5,27 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+export function parseArgs(argv) {
+  const args = argv.slice(2);
+  return {
+    fast: args.includes("--fast"),
+    help: args.includes("--help") || args.includes("-h"),
+  };
+}
+
+export function assertNodeMatchesNvmrc(
+  nodeVersion = process.versions.node,
+  nvmrcPath = path.join(root, ".nvmrc"),
+) {
+  const expected = fs.readFileSync(nvmrcPath, "utf8").trim();
+  if (nodeVersion !== expected) {
+    throw new Error(
+      `product-check: Node ${nodeVersion} does not match .nvmrc (${expected})`,
+    );
+  }
+  return expected;
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: root,
@@ -18,23 +39,30 @@ function run(command, args, options = {}) {
     throw result.error;
   }
   if (result.status !== 0) {
+    const label = [command, ...args].join(" ");
+    console.error(`product-check: FAIL (${label})`);
     process.exit(result.status ?? 1);
   }
 }
 
-function assertNodeMatchesNvmrc() {
-  const expected = fs.readFileSync(path.join(root, ".nvmrc"), "utf8").trim();
-  const actual = process.versions.node;
-  if (actual !== expected) {
-    console.error(
-      `product-check: Node ${actual} does not match .nvmrc (${expected})`,
-    );
+export function main(argv = process.argv) {
+  const { fast, help } = parseArgs(argv);
+  if (help) {
+    console.log(`Usage: node scripts/product-check.mjs [--fast]
+
+  (default)  full product gate: fmt, clippy, test, server smoke, npm ci,
+             viewer build + smoke
+  --fast     pre-commit subset: fmt, clippy, test, server smoke
+`);
+    return;
+  }
+
+  try {
+    assertNodeMatchesNvmrc();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
-}
-
-function main() {
-  assertNodeMatchesNvmrc();
 
   const cargo = process.env.CARGO_BIN || "cargo";
   if (process.env.CARGO_BIN) {
@@ -42,6 +70,8 @@ function main() {
   }
   const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
   const npmShell = process.platform === "win32";
+  const mode = fast ? "fast" : "full";
+  console.log(`product-check: mode=${mode}`);
 
   console.log("product-check: cargo fmt --check");
   run(cargo, ["fmt", "--all", "--", "--check"]);
@@ -55,6 +85,11 @@ function main() {
   console.log("product-check: world-server smoke");
   run(cargo, ["run", "-q", "-p", "world-server"]);
 
+  if (fast) {
+    console.log("product-check: PASS (fast subset)");
+    return;
+  }
+
   console.log("product-check: npm ci");
   run(npmCmd, ["ci"], { shell: npmShell });
 
@@ -65,4 +100,11 @@ function main() {
   console.log("product-check: PASS");
 }
 
-main();
+const isDirectRun =
+  process.argv[1] &&
+  fs.realpathSync(process.argv[1]) ===
+    fs.realpathSync(fileURLToPath(import.meta.url));
+
+if (isDirectRun) {
+  main();
+}
