@@ -1,0 +1,31 @@
+#!/bin/sh
+# Fast product subset before each commit. Enable per clone:
+#   git config core.hooksPath .githooks
+#
+# Full unified gate (process + product) remains CI / `node scripts/check.mjs`.
+# Failures must stay actionable; do not document hook-skipping workarounds.
+
+set -eu
+
+root="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+if ! command -v node >/dev/null 2>&1; then
+	echo "" >&2
+	echo "pre-commit: node is required to run the fast product subset." >&2
+	echo "  Install Node from .nvmrc ($(cat .nvmrc 2>/dev/null || echo unknown))." >&2
+	echo "" >&2
+	exit 1
+fi
+
+echo "pre-commit: running fast product subset (node scripts/product-check.mjs --fast)"
+if ! node scripts/product-check.mjs --fast; then
+	echo "" >&2
+	echo "pre-commit: fast product subset failed." >&2
+	echo "  Fix the reported fmt/clippy/test/smoke errors, then commit again." >&2
+	echo "  Full gate: node scripts/check.mjs" >&2
+	echo "" >&2
+	exit 1
+fi
+
+exit 0

@@ -11,3 +11,6 @@
 node_modules/
 target/
 .agent-foundry/feedback/
+
+# Local scratch (cold-review packets, ephemeral worktrees helpers)
+.tmp/
