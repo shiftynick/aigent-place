@@ -38,7 +38,9 @@ outbound overflow isolates only the slow connection. `--listen` advances the
 world at 20 Hz and drains observe traffic. Against a listening server, run
 `npm run aigent:scripted-move` for a one-command scripted aigent that issues
 wire `MOVE` leases, prints authoritative results, and demonstrates idempotent
-replay. Regenerate TypeScript bindings with
+replay. Open the viewer with `?ws=ws://127.0.0.1:7600/ws` (`npm run viewer:dev`
+or a built preview) to spectate placeholder body poses from live snapshots while
+the scripted aigent renews leases. Regenerate TypeScript bindings with
 `npm run protocol:generate` after editing `protocol/v1/aigent.proto`
 ([ADR-0008](docs/adr/0008-protocol-codegen-toolchain.md)). The accepted v1
 compatibility decision is

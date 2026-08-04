@@ -707,28 +707,28 @@ fn encode_publish_frames(
 ) -> Vec<Vec<u8>> {
     match outcome {
         PublishOutcome::FullSnapshot { baseline_id, .. } => {
-            let digest = last_payload
-                .map(|payload| payload.digest.to_vec())
+            let payload = last_payload
+                .map(StubSnapshotPayload::encode_wire)
                 .unwrap_or_else(|| vec![0; 32]);
             vec![encode_envelope(
                 connection_id,
                 message_id,
                 envelope::Body::FullSnapshot(FullSnapshot {
                     baseline_id: *baseline_id,
-                    payload: digest,
+                    payload,
                 }),
             )]
         }
         PublishOutcome::Delta { baseline_id, .. } => {
-            let digest = last_payload
-                .map(|payload| payload.digest.to_vec())
+            let payload = last_payload
+                .map(StubSnapshotPayload::encode_wire)
                 .unwrap_or_else(|| b"delta".to_vec());
             vec![encode_envelope(
                 connection_id,
                 message_id,
                 envelope::Body::SnapshotDelta(SnapshotDelta {
                     baseline_id: *baseline_id,
-                    payload: digest,
+                    payload,
                 }),
             )]
         }

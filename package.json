@@ -11,6 +11,7 @@
   "scripts": {
     "viewer:build": "npm run build -w @aigent-place/viewer",
     "viewer:smoke": "npm run smoke -w @aigent-place/viewer",
+    "viewer:dev": "npm run dev -w @aigent-place/viewer",
     "aigent:scripted-move": "npm run aigent:scripted-move -w @aigent-place/aigent-sdk",
     "protocol:generate": "node scripts/generate-protocol.mjs",
     "protocol:check": "node scripts/generate-protocol.mjs --check",
