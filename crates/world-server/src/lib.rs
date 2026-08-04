@@ -52,7 +52,11 @@ pub use session::{
     ConnectionDisplaced, ConnectionMode, ConnectionRole, FeatureOffer, HandshakeOutcome,
     IdentityBinding, SessionHub,
 };
-pub use snapshot::{SnapshotChannel, SnapshotResyncRequired, SnapshotStatus, StubSnapshotPayload};
+pub use snapshot::{
+    decode_placeholder_payload, encode_placeholder_payload, placeholder_body_from_lease,
+    PlaceholderBody, SnapshotChannel, SnapshotResyncRequired, SnapshotStatus, StubSnapshotPayload,
+    PLACEHOLDER_MAGIC, PLACEHOLDER_VERSION,
+};
 pub use tick::{ms_to_ticks, ticks_to_ms, TickClock, DEFAULT_LEASE_TTL_MS, TICK_HZ, TICK_MS};
 pub use transport::{
     outbound_channel_cap, outbound_queue_limit_bytes, serve, serve_ephemeral,

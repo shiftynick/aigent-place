@@ -24,7 +24,8 @@ with demo trusted-inject identity (loopback by default). Connected sockets can
 receive snapshot/delta observe envelopes and command results via the outbound
 fan-out drain; `--listen` runs a 20 Hz simulation + drain loop. A scripted aigent
 demo issues wire `MOVE` leases (`npm run aigent:scripted-move` against a listening
-server). Viewer snapshot streams are not finished yet.
+server). The browser viewer can spectate live placeholder bodies via
+`npm run viewer:dev` with `?ws=ws://127.0.0.1:7600/ws` while a scripted aigent moves.
 Development uses one pull request per board task. An active GitHub ruleset
 protects `main` and requires the repository gate. The next product milestone
 is wiring a network path that makes the skeleton tangible.

@@ -84,6 +84,7 @@ fn mismatched_baseline_requires_resync() {
         generation: 1,
         tick: 1,
         digest: [0; 32],
+        bodies: vec![],
     };
     channel.install_full(7, payload.clone());
     let err = channel

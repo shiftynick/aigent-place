@@ -14,5 +14,6 @@ assert.ok(
 const html = fs.readFileSync(distIndex, "utf8");
 assert.match(html, /Aigent Place/);
 assert.match(html, /assets\//);
+assert.match(html, /ws=/);
 
 console.log("viewer: smoke ok");
