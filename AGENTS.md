@@ -10,17 +10,18 @@ The repository is hosted publicly at `shiftynick/aigent-place`.
 `ARCHITECTURE.md` contains the approved base architecture and
 dependency-ordered build sequence. Step 0 contracts are executable. The
 product workspace exists (`crates/world-server`, `crates/aigent-protocol`,
-`crates/protocol-conformance`, `apps/viewer`) with a documented product gate.
+`crates/protocol-conformance`, `crates/workload-harness`, `apps/viewer`) with a
+documented product gate.
 
 World-core skeletons on `main` already cover the fixed-tick loop, sessions and
 authoritative command results, snapshot baselines/outbound pressure, ruleset
-activation with ordered persistence, crash/slow-client isolation tests, and a
-gate-wired protocol conformance client. Real WebSocket transport, durable
-SQLite, viewer snapshot streams, and a live aigent connection path are not
-implemented yet. Development uses one pull request per board task. An active
-GitHub ruleset protects `main` and requires the repository gate. The next
-product milestone is finishing world-core interest/AOI and the workload
-harness, then wiring a network path that makes the skeleton tangible.
+activation with ordered persistence, crash/slow-client isolation tests, AOI
+truncation, a gate-wired protocol conformance client, and an in-process
+workload load harness. Real WebSocket transport, durable SQLite, viewer
+snapshot streams, and a live aigent connection path are not implemented yet.
+Development uses one pull request per board task. An active GitHub ruleset
+protects `main` and requires the repository gate. The next product milestone
+is wiring a network path that makes the skeleton tangible.
 
 ## Sources of truth
 
@@ -123,10 +124,11 @@ node scripts/check.mjs
 It runs the process/contract checks (Foundry suites, contract oracles,
 push-guard tests, process-document scan) and then the full product gate
 (`node scripts/product-check.mjs`: Rust `fmt`/`clippy`/`test`, `world-server`
-smoke, `protocol-conformance`, `npm ci` which recreates `node_modules` from
-`package-lock.json`, protocol generate freshness check, TypeScript binary
-conformance, viewer build + smoke). Use the exact Node.js version in `.nvmrc`
-(enforced by `product-check`) and the Rust toolchain in `rust-toolchain.toml`.
+smoke, `protocol-conformance`, `workload-harness`, `npm ci` which recreates
+`node_modules` from `package-lock.json`, protocol generate freshness check,
+TypeScript binary conformance, viewer build + smoke). Use the exact Node.js
+version in `.nvmrc` (enforced by `product-check`) and the Rust toolchain in
+`rust-toolchain.toml`.
 
 GitHub Actions runs this unified gate as `process-gate` on every pull request
 targeting `main` and every push to `main`; the active ruleset requires it on
@@ -140,8 +142,8 @@ node scripts/product-check.mjs --fast
 
 That subset is installed as `.githooks/pre-commit` when the clone sets
 `git config core.hooksPath .githooks`. It runs Rust `fmt`/`clippy`/`test`, the
-`world-server` smoke path, and `protocol-conformance`. Hook and CI failures
-print actionable fix output and do not suggest bypasses.
+`world-server` smoke path, `protocol-conformance`, and `workload-harness`. Hook
+and CI failures print actionable fix output and do not suggest bypasses.
 
 The process wrapper scans all non-binary repository files for unresolved
 Foundry markers, excluding `.git`, `.tasks`, `node_modules`, any directory

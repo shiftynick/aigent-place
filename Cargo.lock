@@ -509,6 +509,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "workload-harness"
+version = "0.1.0"
+dependencies = [
+ "world-server",
+]
+
+[[package]]
 name = "world-server"
 version = "0.1.0"
 dependencies = [
