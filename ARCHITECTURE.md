@@ -107,6 +107,14 @@ routing, and rule enforcement.
 5. Emit events; publish the new world generation.
 6. At the tick boundary only: activate a pending ruleset generation, if any.
 
+The `world-server` crate hosts the executable skeleton for steps 1 and 3 plus
+immutable generation publication from step 5: logical 20 Hz ticks,
+`(arrival_tick, aigent_id, sequence)` ordering, counter-based seeded draws
+(`replay/v1` section 9), an internal movement-lease harness (wire `MOVE`
+remains `UNSUPPORTED_MESSAGE` until a typed payload exists), and generation
+digests for same-build replay checks. Event emission, collision, persistence,
+and sockets remain later tasks.
+
 Intent validation, application, and collision all read one frozen ruleset generation, so
 two commands in the same tick can never be judged by different rules.
 
