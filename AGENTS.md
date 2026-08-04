@@ -18,9 +18,10 @@ authoritative command results, snapshot baselines/outbound pressure, ruleset
 activation with ordered persistence, crash/slow-client isolation tests, AOI
 truncation, a gate-wired protocol conformance client, an in-process workload
 load harness, and a SQLite WAL durable journal behind the single-writer
-contract (in-memory journal retained for fast tests). Real WebSocket transport,
-viewer snapshot streams, and a live aigent connection path are not implemented
-yet.
+contract (in-memory journal retained for fast tests). A local WebSocket listen
+path (`world-server --listen`) performs protocol handshake into session epochs
+with demo trusted-inject identity (loopback by default). Viewer snapshot
+streams and a scripted live move-lease demo path are not finished yet.
 Development uses one pull request per board task. An active GitHub ruleset
 protects `main` and requires the repository gate. The next product milestone
 is wiring a network path that makes the skeleton tangible.
