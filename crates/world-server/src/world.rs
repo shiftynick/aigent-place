@@ -109,6 +109,20 @@ pub struct World {
     journal: DurableJournal,
     /// When false, pending ruleset is rolled back at activate_at_tick.
     soak_ok: bool,
+    /// Tentative tick awaiting async durability (not yet authoritative).
+    tentative: Option<TentativeTick>,
+}
+
+/// Draft world state for one tick, installed only after durable commit.
+#[derive(Debug, Clone)]
+struct TentativeTick {
+    leases: LeaseTable,
+    world_value: i64,
+    rulesets: RulesetStore,
+    generation: ImmutableGeneration,
+    /// Commands removed from `pending` for this tick; restored on writer failure.
+    restored_pending: Vec<QueuedCommand>,
+    remaining_pending: Vec<QueuedCommand>,
 }
 
 impl World {
@@ -133,6 +147,7 @@ impl World {
             rulesets,
             journal,
             soak_ok: true,
+            tentative: None,
         }
     }
 
@@ -144,6 +159,10 @@ impl World {
     #[must_use]
     pub fn journal(&self) -> &DurableJournal {
         &self.journal
+    }
+
+    pub fn journal_mut(&mut self) -> &mut DurableJournal {
+        &mut self.journal
     }
 
     pub fn set_soak_ok(&mut self, soak_ok: bool) {
@@ -242,9 +261,48 @@ impl World {
         Ok(())
     }
 
-    /// Run one simulation tick and publish an immutable generation.
+    /// Run one simulation tick. Mutations become authoritative only after the
+    /// durable commit succeeds (ADR-0005). Sync journals commit inline; async
+    /// SQLite enqueues and installs when [`Self::poll_durable`] observes success.
+    ///
+    /// For async journals this may wait for the writer. The 20 Hz simulation
+    /// stage must use [`Self::advance_tick_nonblocking`] + [`Self::poll_durable`]
+    /// so it never awaits storage.
     pub fn advance_tick(&mut self) -> Result<&ImmutableGeneration, WorldError> {
-        let tick = self.clock.advance();
+        let _ = self.poll_durable()?;
+        match self.advance_tick_nonblocking()? {
+            TickAdvance::Published => Ok(self
+                .published
+                .as_ref()
+                .expect("published after TickAdvance::Published")),
+            TickAdvance::Submitted { .. } => {
+                self.wait_durable()?;
+                Ok(self
+                    .published
+                    .as_ref()
+                    .expect("published after durable wait"))
+            }
+            TickAdvance::Busy => Err(WorldError::Persistence(JournalError::WriterBusy)),
+        }
+    }
+
+    /// Non-blocking tick advance for the async writer path.
+    ///
+    /// Callers own durability polling via [`Self::poll_durable`] before invoking
+    /// this method so an install cannot be swallowed inside a subsequent submit.
+    pub fn advance_tick_nonblocking(&mut self) -> Result<TickAdvance, WorldError> {
+        if self.tentative.is_some() {
+            return Ok(TickAdvance::Busy);
+        }
+        if self
+            .journal
+            .as_async_sqlite_mut()
+            .is_some_and(|writer| writer.in_flight())
+        {
+            return Ok(TickAdvance::Busy);
+        }
+
+        let tick = self.clock.next_tick();
         let mut due = Vec::new();
         let mut remaining = Vec::new();
         for command in self.pending.drain(..) {
@@ -254,8 +312,16 @@ impl World {
                 remaining.push(command);
             }
         }
-        self.pending = remaining;
 
+        let restore_pending =
+            |world: &mut Self, due: Vec<QueuedCommand>, remaining: Vec<QueuedCommand>| {
+                world.pending = due;
+                world.pending.extend(remaining);
+            };
+
+        let mut leases = self.leases.clone();
+        let mut world_value = self.world_value;
+        let mut rulesets = self.rulesets.clone();
         let keys: Vec<CommandKey> = due.iter().map(QueuedCommand::key).collect();
         let order = canonical_command_order(&keys);
 
@@ -263,7 +329,20 @@ impl World {
         let mut rng_draws = Vec::new();
         for (canonical_index, &index) in order.iter().enumerate() {
             let command = &due[index];
-            let summary = self.apply_effect(tick, canonical_index as u32, command)?;
+            let summary = match apply_effect(
+                &self.seed,
+                tick,
+                canonical_index as u32,
+                command,
+                &mut leases,
+                &mut world_value,
+            ) {
+                Ok(summary) => summary,
+                Err(error) => {
+                    restore_pending(self, due, remaining);
+                    return Err(error);
+                }
+            };
             if let Some(draw) = summary.1 {
                 rng_draws.push((canonical_index as u32, draw));
             }
@@ -276,11 +355,9 @@ impl World {
             });
         }
 
-        let expired_leases = self.leases.expire_due(tick);
-        // Tick-boundary activation after commands observed the prior live ruleset.
-        if self.rulesets.try_activate_at_boundary(tick, self.soak_ok) {
-            self.leases
-                .set_default_ttl_ms(self.rulesets.live().parameters.lease_ttl_ms());
+        let expired_leases = leases.expire_due(tick);
+        if rulesets.try_activate_at_boundary(tick, self.soak_ok) {
+            leases.set_default_ttl_ms(rulesets.live().parameters.lease_ttl_ms());
         }
 
         let command_summaries: Vec<String> = applied
@@ -289,30 +366,125 @@ impl World {
             .collect();
         let packet = CommittedGeneration {
             generation: tick,
-            world_value: self.world_value,
-            ruleset: self.rulesets.live().clone(),
-            pending_ruleset: self.rulesets.pending().cloned(),
+            world_value,
+            ruleset: rulesets.live().clone(),
+            pending_ruleset: rulesets.pending().cloned(),
             command_summaries,
-            active_leases: self.leases.snapshots(),
+            active_leases: leases.snapshots(),
             integrity_hex: String::new(),
         };
-        self.journal
-            .begin(packet)
-            .map_err(WorldError::Persistence)?;
-        self.journal.commit().map_err(WorldError::Persistence)?;
-
         let generation = ImmutableGeneration {
             generation: tick,
             tick,
-            world_value: self.world_value,
-            ruleset_generation_id: self.rulesets.live().generation_id,
-            active_leases: self.leases.snapshots(),
+            world_value,
+            ruleset_generation_id: rulesets.live().generation_id,
+            active_leases: leases.snapshots(),
             applied_commands: applied,
             expired_leases,
             rng_draws,
         };
-        self.published = Some(generation);
-        Ok(self.published.as_ref().expect("just published"))
+
+        if self.journal.is_async() {
+            let writer = self.journal.as_async_sqlite_mut().expect("async journal");
+            match writer.try_submit(packet) {
+                Ok(()) => {
+                    self.tentative = Some(TentativeTick {
+                        leases,
+                        world_value,
+                        rulesets,
+                        generation,
+                        restored_pending: due,
+                        remaining_pending: remaining,
+                    });
+                    // Keep command queue empty until install/fail; restore on fail.
+                    Ok(TickAdvance::Submitted { generation: tick })
+                }
+                Err(error) => {
+                    restore_pending(self, due, remaining);
+                    Err(WorldError::Persistence(error))
+                }
+            }
+        } else {
+            if let Err(error) = self.journal.begin(packet) {
+                restore_pending(self, due, remaining);
+                return Err(WorldError::Persistence(error));
+            }
+            match self.journal.commit() {
+                Ok(_) => {
+                    self.pending = remaining;
+                    self.install_tentative(TentativeTick {
+                        leases,
+                        world_value,
+                        rulesets,
+                        generation,
+                        restored_pending: due,
+                        remaining_pending: Vec::new(),
+                    });
+                    Ok(TickAdvance::Published)
+                }
+                Err(error) => {
+                    self.journal.discard_pending();
+                    restore_pending(self, due, remaining);
+                    Err(WorldError::Persistence(error))
+                }
+            }
+        }
+    }
+
+    /// Install a successfully committed async generation, if ready.
+    pub fn poll_durable(&mut self) -> Result<Option<&ImmutableGeneration>, WorldError> {
+        let Some(writer) = self.journal.as_async_sqlite_mut() else {
+            return Ok(None);
+        };
+        match writer.try_poll() {
+            Ok(Some(_packet)) => {
+                let arrived_during_flight = std::mem::take(&mut self.pending);
+                let mut tentative = self
+                    .tentative
+                    .take()
+                    .expect("committed generation has tentative state");
+                self.pending = std::mem::take(&mut tentative.remaining_pending);
+                self.pending.extend(arrived_during_flight);
+                self.install_tentative(tentative);
+                Ok(self.published.as_ref())
+            }
+            Ok(None) => Ok(None),
+            Err(error) => {
+                let arrived_during_flight = std::mem::take(&mut self.pending);
+                if let Some(tentative) = self.tentative.take() {
+                    self.pending = tentative.restored_pending;
+                    self.pending.extend(tentative.remaining_pending);
+                }
+                self.pending.extend(arrived_during_flight);
+                Err(WorldError::Persistence(error))
+            }
+        }
+    }
+
+    /// Block until an in-flight async generation commits or fails.
+    pub fn wait_durable(&mut self) -> Result<&ImmutableGeneration, WorldError> {
+        while self.tentative.is_some() {
+            if self.poll_durable()?.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        self.published
+            .as_ref()
+            .ok_or(WorldError::Persistence(JournalError::NoPending))
+    }
+
+    #[must_use]
+    pub fn has_tentative(&self) -> bool {
+        self.tentative.is_some()
+    }
+
+    fn install_tentative(&mut self, tentative: TentativeTick) {
+        let _ = self.clock.advance();
+        self.leases = tentative.leases;
+        self.world_value = tentative.world_value;
+        self.rulesets = tentative.rulesets;
+        self.published = Some(tentative.generation);
     }
 
     /// Advance `count` ticks. `count` must be at least 1.
@@ -325,63 +497,73 @@ impl World {
         }
         Ok(self.published.as_ref().expect("published after advance"))
     }
+}
 
-    fn apply_effect(
-        &mut self,
-        tick: u64,
-        canonical_index: u32,
-        command: &QueuedCommand,
-    ) -> Result<(String, Option<crate::rng::DrawResult>), WorldError> {
-        match &command.effect {
-            CommandEffect::UpsertLease { body_id, ttl_ms } => {
-                let applied = self.leases.upsert(
-                    *body_id,
-                    command.aigent_id.clone(),
-                    command.sequence,
-                    tick,
-                    *ttl_ms,
-                );
-                Ok((
-                    format!(
-                        "upsert_lease:body={body_id}:applied={applied}:seq={}",
-                        command.sequence
-                    ),
-                    None,
-                ))
-            }
-            CommandEffect::CancelLease { body_id } => {
-                let removed = self.leases.cancel(*body_id);
-                Ok((
-                    format!("cancel_lease:body={body_id}:removed={removed}"),
-                    None,
-                ))
-            }
-            CommandEffect::SeededDraw {
-                subsystem,
-                purpose,
-                entity_id,
-                draw_index,
-                bound,
-            } => {
-                let input = DrawInput {
-                    rng_contract_version: 1,
-                    subsystem: subsystem.clone(),
-                    purpose: purpose.clone(),
-                    scope: DrawScope::Generation(tick),
-                    canonical_command_index: canonical_index,
-                    entity_id: *entity_id,
-                    draw_index: *draw_index,
-                };
-                let draw = deterministic_draw_u128(&self.seed, &input, *bound)?;
-                Ok((format!("seeded_draw:value={}", draw.value), Some(draw)))
-            }
-            CommandEffect::BumpWorldValue { delta } => {
-                self.world_value = self.world_value.saturating_add(*delta);
-                Ok((
-                    format!("bump:delta={delta}:value={}", self.world_value),
-                    None,
-                ))
-            }
+/// Outcome of a non-blocking tick attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TickAdvance {
+    /// Sync journal committed and the generation is published.
+    Published,
+    /// Async writer accepted the sealed packet; call [`World::poll_durable`].
+    Submitted { generation: u64 },
+    /// Prior generation still awaiting durability.
+    Busy,
+}
+
+fn apply_effect(
+    seed: &[u8; 32],
+    tick: u64,
+    canonical_index: u32,
+    command: &QueuedCommand,
+    leases: &mut LeaseTable,
+    world_value: &mut i64,
+) -> Result<(String, Option<crate::rng::DrawResult>), WorldError> {
+    match &command.effect {
+        CommandEffect::UpsertLease { body_id, ttl_ms } => {
+            let applied = leases.upsert(
+                *body_id,
+                command.aigent_id.clone(),
+                command.sequence,
+                tick,
+                *ttl_ms,
+            );
+            Ok((
+                format!(
+                    "upsert_lease:body={body_id}:applied={applied}:seq={}",
+                    command.sequence
+                ),
+                None,
+            ))
+        }
+        CommandEffect::CancelLease { body_id } => {
+            let removed = leases.cancel(*body_id);
+            Ok((
+                format!("cancel_lease:body={body_id}:removed={removed}"),
+                None,
+            ))
+        }
+        CommandEffect::SeededDraw {
+            subsystem,
+            purpose,
+            entity_id,
+            draw_index,
+            bound,
+        } => {
+            let input = DrawInput {
+                rng_contract_version: 1,
+                subsystem: subsystem.clone(),
+                purpose: purpose.clone(),
+                scope: DrawScope::Generation(tick),
+                canonical_command_index: canonical_index,
+                entity_id: *entity_id,
+                draw_index: *draw_index,
+            };
+            let draw = deterministic_draw_u128(seed, &input, *bound)?;
+            Ok((format!("seeded_draw:value={}", draw.value), Some(draw)))
+        }
+        CommandEffect::BumpWorldValue { delta } => {
+            *world_value = world_value.saturating_add(*delta);
+            Ok((format!("bump:delta={delta}:value={}", *world_value), None))
         }
     }
 }

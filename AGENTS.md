@@ -18,7 +18,8 @@ authoritative command results, snapshot baselines/outbound pressure, ruleset
 activation with ordered persistence, crash/slow-client isolation tests, AOI
 truncation, a gate-wired protocol conformance client, an in-process workload
 load harness, and a SQLite WAL durable journal behind the single-writer
-contract (in-memory journal retained for fast tests). A local WebSocket listen
+contract (in-memory journal retained for fast tests; async SQLite writer keeps
+the 20 Hz simulation stage off storage I/O). A local WebSocket listen
 path (`world-server --listen`) performs protocol handshake into session epochs
 with demo trusted-inject identity (loopback by default). Connected sockets can
 receive snapshot/delta observe envelopes and command results via the outbound

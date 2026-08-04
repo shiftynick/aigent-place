@@ -67,7 +67,9 @@ The accepted durable replay decision is
 command admission, atomic durable generations, retry/event retention, crash
 recovery, and counter-based seeded randomness. The world-server keeps an
 in-memory journal for fast tests and a SQLite WAL journal for durable restart
-recovery behind the same single-writer generation contract.
+recovery behind the same single-writer generation contract. Async SQLite commits
+use a bounded writer thread so the 20 Hz simulation stage never awaits storage;
+mutations install only after durable success.
 
 The accepted workload decision is
 [ADR-0006](docs/adr/0006-workload-targets-and-degradation-ladder.md). The

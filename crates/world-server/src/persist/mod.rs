@@ -1,9 +1,11 @@
 //! Persistence journals: in-memory (tests) and SQLite WAL (durable default).
 
+mod async_writer;
 mod codec;
 mod memory;
 mod sqlite;
 
+pub use async_writer::{AsyncSqliteWriter, ASYNC_WRITER_QUEUE_CAP};
 pub use memory::InMemoryJournal;
 pub use sqlite::SqliteJournal;
 
@@ -123,6 +125,8 @@ impl std::error::Error for JournalError {}
 pub enum DurableJournal {
     Memory(InMemoryJournal),
     Sqlite(SqliteJournal),
+    /// SQLite owned by a dedicated writer thread (tick never awaits storage).
+    AsyncSqlite(AsyncSqliteWriter),
 }
 
 impl DurableJournal {
@@ -131,15 +135,23 @@ impl DurableJournal {
         Self::Memory(InMemoryJournal::new())
     }
 
-    /// Open or create a SQLite WAL journal at `path`.
+    /// Open or create a SQLite WAL journal at `path` (sync commits on the caller).
     pub fn sqlite(path: impl AsRef<Path>) -> Result<Self, JournalError> {
         Ok(Self::Sqlite(SqliteJournal::open(path)?))
+    }
+
+    /// Open SQLite and move commits onto the bounded async writer thread.
+    pub fn async_sqlite(path: impl AsRef<Path>) -> Result<Self, JournalError> {
+        Ok(Self::AsyncSqlite(AsyncSqliteWriter::spawn(path)?))
     }
 
     pub fn begin(&mut self, draft: CommittedGeneration) -> Result<(), JournalError> {
         match self {
             Self::Memory(journal) => journal.begin(draft),
             Self::Sqlite(journal) => journal.begin(draft),
+            Self::AsyncSqlite(_) => Err(JournalError::Storage(
+                "async sqlite uses try_submit, not begin/commit".into(),
+            )),
         }
     }
 
@@ -147,6 +159,9 @@ impl DurableJournal {
         match self {
             Self::Memory(journal) => journal.commit(),
             Self::Sqlite(journal) => journal.commit(),
+            Self::AsyncSqlite(_) => Err(JournalError::Storage(
+                "async sqlite uses try_submit, not begin/commit".into(),
+            )),
         }
     }
 
@@ -154,6 +169,7 @@ impl DurableJournal {
         match self {
             Self::Memory(journal) => journal.discard_pending(),
             Self::Sqlite(journal) => journal.discard_pending(),
+            Self::AsyncSqlite(_) => {}
         }
     }
 
@@ -162,6 +178,7 @@ impl DurableJournal {
         match self {
             Self::Memory(journal) => journal.pending(),
             Self::Sqlite(journal) => journal.pending(),
+            Self::AsyncSqlite(_) => None,
         }
     }
 
@@ -170,6 +187,7 @@ impl DurableJournal {
         match self {
             Self::Memory(journal) => journal.last_committed(),
             Self::Sqlite(journal) => journal.last_committed(),
+            Self::AsyncSqlite(writer) => writer.last_committed(),
         }
     }
 
@@ -177,6 +195,10 @@ impl DurableJournal {
         match self {
             Self::Memory(journal) => journal.verify_committed(),
             Self::Sqlite(journal) => journal.verify_committed(),
+            Self::AsyncSqlite(writer) => {
+                // Writer thread owns the live connection; reopen read-only via WAL.
+                SqliteJournal::open(writer.path())?.verify_committed()
+            }
         }
     }
 
@@ -184,6 +206,7 @@ impl DurableJournal {
         match self {
             Self::Memory(journal) => journal.recover(),
             Self::Sqlite(journal) => journal.recover(),
+            Self::AsyncSqlite(writer) => SqliteJournal::open(writer.path())?.recover(),
         }
     }
 
@@ -191,15 +214,28 @@ impl DurableJournal {
     pub fn as_memory(&self) -> Option<&InMemoryJournal> {
         match self {
             Self::Memory(journal) => Some(journal),
-            Self::Sqlite(_) => None,
+            Self::Sqlite(_) | Self::AsyncSqlite(_) => None,
         }
     }
 
     pub fn as_memory_mut(&mut self) -> Option<&mut InMemoryJournal> {
         match self {
             Self::Memory(journal) => Some(journal),
-            Self::Sqlite(_) => None,
+            Self::Sqlite(_) | Self::AsyncSqlite(_) => None,
         }
+    }
+
+    #[must_use]
+    pub fn as_async_sqlite_mut(&mut self) -> Option<&mut AsyncSqliteWriter> {
+        match self {
+            Self::AsyncSqlite(writer) => Some(writer),
+            Self::Memory(_) | Self::Sqlite(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub fn is_async(&self) -> bool {
+        matches!(self, Self::AsyncSqlite(_))
     }
 }
 
