@@ -19,6 +19,7 @@ mod ruleset;
 mod session;
 mod snapshot;
 mod tick;
+mod transport;
 mod world;
 
 pub use aoi::{
@@ -54,6 +55,7 @@ pub use session::{
 };
 pub use snapshot::{SnapshotChannel, SnapshotResyncRequired, SnapshotStatus, StubSnapshotPayload};
 pub use tick::{ms_to_ticks, ticks_to_ms, TickClock, DEFAULT_LEASE_TTL_MS, TICK_HZ, TICK_MS};
+pub use transport::{serve, serve_ephemeral, TransportState};
 pub use world::{replay_log, CommandEffect, QueuedCommand, World, WorldConfig, WorldError};
 
 /// Documented smoke marker printed by the `world-server` binary.

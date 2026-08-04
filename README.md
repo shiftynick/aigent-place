@@ -29,7 +29,10 @@ The product workspace is a Cargo workspace (`crates/world-server`,
 `crates/aigent-protocol`, `crates/protocol-conformance`,
 `crates/workload-harness`) plus npm workspaces for the Three.js Vite viewer
 (`apps/viewer`), generated protocol package (`packages/protocol`), and owner
-SDK façade (`packages/aigent-sdk`). Regenerate TypeScript bindings with
+SDK façade (`packages/aigent-sdk`). The world-server binary prints a smoke
+marker by default; `world-server --listen [HOST:PORT]` serves
+`ws://HOST:PORT/ws` for local handshake demos (demo trusted-inject identity;
+default `127.0.0.1:7600`). Regenerate TypeScript bindings with
 `npm run protocol:generate` after editing `protocol/v1/aigent.proto`
 ([ADR-0008](docs/adr/0008-protocol-codegen-toolchain.md)). The accepted v1
 compatibility decision is
