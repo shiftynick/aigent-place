@@ -7,6 +7,7 @@
 //! Connection sessions use test-only trusted `aigent_id` inject (operator Q2=A /
 //! task-018); production authentication is deferred.
 
+mod aoi;
 mod fanout;
 mod generation;
 mod lease;
@@ -19,6 +20,11 @@ mod session;
 mod snapshot;
 mod tick;
 mod world;
+
+pub use aoi::{
+    aoi_cap_for_role, interest_diff, truncate_nearest, AoiEntity, AoiError, FocusPoint,
+    InterestDiff, SpatialHash, AOI_HARD_CAP, VIEWER_AOI_CAPS,
+};
 
 pub use fanout::{
     ConnectionOutbound, EventStreamCursor, PublicationMailbox, PublishOutcome, SnapshotFanout,
