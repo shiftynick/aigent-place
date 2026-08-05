@@ -58,6 +58,21 @@ node .agents/skills/task-tracker/scripts/task.mjs board
 node .agents/skills/task-tracker/scripts/task.mjs next
 ```
 
+For a short human-facing view of direction, active work, decisions, and the
+latest recorded check, use:
+
+```text
+node .agent-foundry/project-status.mjs
+node .agent-foundry/project-status.mjs --mark-seen
+node .agent-foundry/project-overview.mjs
+```
+
+The second command prints the same view and records a local, Git-ignored marker
+for the next "since last look" comparison. Use `--json` for other generated
+views; the board remains the source of task truth.
+The overview command refreshes the Git-ignored, self-contained
+`.agent-foundry/project-overview.html` visual from the same status projection.
+
 New fronts of work enter the board through the `plan-milestone` skill with
 operator approval (`docs/SDLC.md` → "Planning above the task"); anything
 waiting on a human carries the `needs:operator` tag.
@@ -82,6 +97,12 @@ authoritative when the preferred provider is unavailable.
 Architecture-significant decisions use the `adr` skill. Agent-authored ADRs
 start as `proposed`. A proposed ADR discovered mid-task does not automatically
 halt the task — apply the reversibility test in `docs/SDLC.md`.
+
+## Operator communication
+
+For human-facing questions, updates, explanations, and closeouts, follow
+`docs/SDLC.md` → "Operator communication". It keeps the conversation brief and
+understandable while detailed evidence stays in project records.
 
 ## Commit authority
 

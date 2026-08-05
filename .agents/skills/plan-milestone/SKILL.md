@@ -102,9 +102,28 @@ On approval, file each task with the milestone tag and the dependency edges:
 node .agents/skills/task-tracker/scripts/task.mjs add "<task title>" --priority p1 --tag milestone:<name> --tag area:<area> --blocked-by task-NNN --description "<durable description + acceptance criteria>"
 ```
 
-Record the approved plan summary in `PLANNING-JOURNAL.md` — date, milestone
-name, task IDs, and the assumptions. That entry is what a future re-plan
-diffs against.
+Record the approved plan summary in `PLANNING-JOURNAL.md` with this stable
+header so the operator status can quote the approved direction without
+generating prose:
+
+```markdown
+## YYYY-MM-DD — <milestone-tag-suffix>
+
+**Goal:** <the approved one-sentence goal>
+
+**Done when:** <the approved one-sentence finish line>
+
+Approved front:
+
+1. `task-NNN` — <short outcome>
+
+Assumptions: <the load-bearing assumptions>
+```
+
+Use the exact suffix carried by `milestone:<name>` and list every task ID in
+the approved front. Append entries in chronological order; if two accepted
+entries share a date, the later one supersedes the earlier one. That entry is
+what a future re-plan diffs against.
 
 ### 6. Re-planning an existing front
 
@@ -115,8 +134,10 @@ When evidence invalidates queued work:
    re-planning is surgery, not amputation.
 3. Propose the delta to the operator: tasks to drop, amend, add, re-order.
    Small deltas are still proposals; they change agreed direction.
-4. On approval: `task.mjs edit` / `rm` / `add`, and append the delta with its
-   reason to `PLANNING-JOURNAL.md`.
+4. On approval: `task.mjs edit` / `rm` / `add`, then append a complete
+   replacement entry in the stable format above, including the current full
+   approved front and the reason for the change. The status projection reads
+   the latest accepted entry rather than reconstructing a chain of deltas.
 
 ## Anti-patterns
 

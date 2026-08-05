@@ -10,6 +10,20 @@ node .claude/skills/task-tracker/scripts/task.mjs board
 node .claude/skills/task-tracker/scripts/task.mjs next
 ```
 
+The shared operator status is available without a harness-specific skill:
+
+```text
+node .agent-foundry/project-status.mjs
+node .agent-foundry/project-status.mjs --mark-seen
+node .agent-foundry/project-overview.mjs
+```
+
+The second command records a local, Git-ignored comparison point after the
+operator reads the view. Use `--json` for generated consumers; the task board
+remains the source of task truth.
+The overview command refreshes the Git-ignored, self-contained
+`.agent-foundry/project-overview.html` visual from that same projection.
+
 Use `.claude/skills/agent-headless/` with provider `codex` for cold review
 when the shared `execute-task` workflow requires the other model family. When it is
 unavailable, descend the cold-review ladder in `docs/SDLC.md` rather than

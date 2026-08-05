@@ -75,6 +75,14 @@ Do not promote work merely because review ran. Verify and adjudicate findings
 against live repository evidence, fix confirmed defects, and re-review
 task-scoped changes made after the latest review.
 
+### Report review results
+
+Apply `docs/SDLC.md` → "Operator communication" when reporting review results.
+Record each finding and its adjudication in the task log; the operator receives
+the result and a plain-language account of each material problem, its practical
+effect, and the recommendation. Provide the technical record only when it
+helps a decision or the operator asks for it.
+
 ## Validate
 
 Before validating, read `docs/SDLC.md` → "Validation" completely and apply
@@ -89,6 +97,12 @@ node .agents/skills/task-tracker/scripts/task.mjs run task-NNN -- <exact command
 Use `task.mjs note` only for evidence a command cannot express, such as a
 browser observation. A hand-written claim that a runnable check passed is not
 validation.
+
+### Report validation results
+
+Apply `docs/SDLC.md` → "Operator communication" to validation results too. State
+what passed or failed and what that means; keep raw output in the task log
+unless the operator needs it to decide or asks to see it.
 
 ## Complete and commit
 

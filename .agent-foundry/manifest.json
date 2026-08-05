@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.15.0",
-  "installedAt": "2026-08-04T14:56:35.517Z",
+  "foundryVersion": "0.16.0",
+  "installedAt": "2026-08-05T02:02:01.340Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "ec1820a00c1e56221ba4ab156e662fe5af137d8e6190a5ccf15fb5a5d61148e9"
+      "sha256": "60b335bb1630620383f836d839565b7b64bcd218bc1fe38408448d39ebd04c61"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
-      "sha256": "eeebe3ee4dd0c93a66e0a4b57583fe9d2904415df62db7bda131f1659206caa3",
+      "sha256": "ba721c957b844dd15286754dce3860bdf091dd68665b68d24792c8e610914aa5",
       "preserveIfExists": true
     },
     ".agent-foundry/README.md": {
       "tier": "mold",
-      "sha256": "a54ed86ce50c088456e94ee49939df1c3496e5cd633dc4fd13dfbe704b31f993"
+      "sha256": "8e394d9b6f60bb8a11b5fa94ae8cda2cb0be6e964817583c5f25177af0c79687"
     },
     ".agent-foundry/agent-headless/COMPATIBILITY.md": {
       "tier": "mold",
@@ -63,6 +63,22 @@
     ".agent-foundry/check-skill-sync.test.mjs": {
       "tier": "mold",
       "sha256": "9fed1497e11ef594e1f6ad71c53d3590626f0504acbd252ca7a3f4a288ceb678"
+    },
+    ".agent-foundry/project-overview.mjs": {
+      "tier": "mold",
+      "sha256": "07ed2d08651967f3bcdd09941099f4bc05c276298867c2505640891207c9f398"
+    },
+    ".agent-foundry/project-overview.test.mjs": {
+      "tier": "mold",
+      "sha256": "8c501a4e6347e70974ed3b9dd7308e7cdcf2db04797e08ae9bace09f1cfa0a57"
+    },
+    ".agent-foundry/project-status.mjs": {
+      "tier": "mold",
+      "sha256": "1774e33f8bdebbd9b98f9fde67a761367d9ec70aea314585b7af1d3189bd0e06"
+    },
+    ".agent-foundry/project-status.test.mjs": {
+      "tier": "mold",
+      "sha256": "15f636c6bd69c4f43fb7acb6c9e051e63a053ef92d419baa32002569d0c86553"
     },
     ".agent-foundry/reconcile-seeds.mjs": {
       "tier": "mold",
@@ -150,7 +166,7 @@
     },
     ".agents/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "4ba44aa01414ff155bbac63bff974c668631296ac9362cf96b1e737ca1d811f5"
+      "sha256": "94505403901cbfd2b360f0f6887eb434775917fd99e4f5ac5665acb7be674a28"
     },
     ".agents/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
@@ -162,7 +178,7 @@
     },
     ".agents/skills/grill-me/SKILL.md": {
       "tier": "mold",
-      "sha256": "67a94b5bb7110cb91a387daef6fe213c628d06a3b9df41bb4690fd7ccbaa3b16"
+      "sha256": "4b04ac96ede6e6490f218f3d0b2da77fde374d2bee9a19b703bdab8d3293fc5f"
     },
     ".agents/skills/handoff-writer/SKILL.md": {
       "tier": "mold",
@@ -170,7 +186,7 @@
     },
     ".agents/skills/plan-milestone/SKILL.md": {
       "tier": "mold",
-      "sha256": "81f0153482a769f7289c8f31a518961d3aede3b2c19564ac32050097b6367aba"
+      "sha256": "13baf81c46d25beac5aab0fc9b7b353043b2e602bb24db2af1f9c9aea1ba2d1f"
     },
     ".agents/skills/retrospective/SKILL.md": {
       "tier": "mold",
@@ -206,11 +222,11 @@
     },
     ".agents/skills/task-tracker/scripts/_lib.mjs": {
       "tier": "mold",
-      "sha256": "113c0d94f890fce43b12b7f67320e801a16c442daf5f17ecf5ee2575ca233890"
+      "sha256": "453902d5163bc0cb4498bd245bc7db3288755a0b18117d68b785effd69703865"
     },
     ".agents/skills/task-tracker/scripts/_lib.test.mjs": {
       "tier": "mold",
-      "sha256": "03899453158ed09c4b521edeb3d6bcf221f42d0d45f413889965a519c352a0a1"
+      "sha256": "98ad19e581f432d03695a4bf43dfe1f0de0af5bec7063b5039e8639fadfebaaa"
     },
     ".agents/skills/task-tracker/scripts/board-html.mjs": {
       "tier": "mold",
@@ -298,7 +314,7 @@
     },
     ".claude/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "9ce2194b918316c412615359250687ed0756d8a14bd97eec5194a08f3dedb020"
+      "sha256": "2dbae0a6a2d08c399f23590b4910c39f102ac93cc4ec7bb6bf95de49bb11d0a1"
     },
     ".claude/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
@@ -310,7 +326,7 @@
     },
     ".claude/skills/grill-me/SKILL.md": {
       "tier": "mold",
-      "sha256": "67a94b5bb7110cb91a387daef6fe213c628d06a3b9df41bb4690fd7ccbaa3b16"
+      "sha256": "4b04ac96ede6e6490f218f3d0b2da77fde374d2bee9a19b703bdab8d3293fc5f"
     },
     ".claude/skills/handoff-writer/SKILL.md": {
       "tier": "mold",
@@ -318,7 +334,7 @@
     },
     ".claude/skills/plan-milestone/SKILL.md": {
       "tier": "mold",
-      "sha256": "20da5e53ae286c9936ccc9172b0dc05ace16b2380e8db1d8d3a1bb2a1b96a921"
+      "sha256": "267e3d683170b41b2b5ba3f4ba930e51ec56f9480d9f8905fcf33dc313443c21"
     },
     ".claude/skills/retrospective/SKILL.md": {
       "tier": "mold",
@@ -354,11 +370,11 @@
     },
     ".claude/skills/task-tracker/scripts/_lib.mjs": {
       "tier": "mold",
-      "sha256": "113c0d94f890fce43b12b7f67320e801a16c442daf5f17ecf5ee2575ca233890"
+      "sha256": "453902d5163bc0cb4498bd245bc7db3288755a0b18117d68b785effd69703865"
     },
     ".claude/skills/task-tracker/scripts/_lib.test.mjs": {
       "tier": "mold",
-      "sha256": "03899453158ed09c4b521edeb3d6bcf221f42d0d45f413889965a519c352a0a1"
+      "sha256": "98ad19e581f432d03695a4bf43dfe1f0de0af5bec7063b5039e8639fadfebaaa"
     },
     ".claude/skills/task-tracker/scripts/board-html.mjs": {
       "tier": "mold",
@@ -394,7 +410,7 @@
     },
     "AGENTS.md": {
       "tier": "seed",
-      "sha256": "c5969d0b0e09198b17a2ed9575afa3a58a099a0b5dc6fb592e4529715282dea3"
+      "sha256": "6dbf2e20dc626a451f64103a86b3661bd80df609a7070c565548a926e77d5d48"
     },
     "BLOCKED-JOURNAL.md": {
       "tier": "seed",
@@ -403,7 +419,7 @@
     },
     "CLAUDE.md": {
       "tier": "seed",
-      "sha256": "4a0416365ea0c0c5a0e33da4a9164f70b60b9208d3d3bb4f57e7a7ad7ae6c9c8"
+      "sha256": "0224482b3c9bc4947e32d18cac9830455345ff8d42e6a0a77cb6493a32478315"
     },
     "CONTRIBUTING.md": {
       "tier": "seed",
@@ -415,7 +431,7 @@
     },
     "PLANNING-JOURNAL.md": {
       "tier": "seed",
-      "sha256": "c7a8c37b06201604ba2c9ae83b08682cdae04eaf356bea41a3a1a15fc531bd6e",
+      "sha256": "1f279cae4d9f82a6e7182809d1d54d479ee74626ff7de0089357f9c54d99074c",
       "preserveIfExists": true
     },
     "docs/ENGINEERING-STANDARDS.md": {
@@ -428,7 +444,7 @@
     },
     "docs/SDLC.md": {
       "tier": "mold",
-      "sha256": "c07fb857aaff9ecc73c58a2879c5f5435870f096d314cba8dc1e8cb6ebc324ed"
+      "sha256": "cf2f9efb793666c59bef48c7f781961d730cf90cc0b743cdfdba9807e9593190"
     },
     "docs/adr/README.md": {
       "tier": "seed",
