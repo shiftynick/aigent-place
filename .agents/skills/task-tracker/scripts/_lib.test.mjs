@@ -25,6 +25,7 @@ import {
   unmetBlockers,
   claimableTasks,
   appendLog,
+  parseRunEvidenceLog,
   nowIso,
   NotFoundError,
 } from "./_lib.mjs";
@@ -766,6 +767,46 @@ describe("appendLog", () => {
   it("starts a fresh log when current is empty", () => {
     const out = appendLog("", "created");
     assert.match(out, /^- \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z — created\n$/);
+  });
+});
+
+describe("parseRunEvidenceLog", () => {
+  it("parses the task tracker's recorded command evidence", () => {
+    const log = [
+      "- 2026-08-04T10:00:00Z — run: node test.mjs",
+      "  started 2026-08-04T09:59:58Z, exit 0 in 2.5s",
+      "  output:",
+      "  | PASS",
+      "",
+    ].join("\n");
+    assert.deepEqual(parseRunEvidenceLog(log, "task-007"), [{
+      taskId: "task-007",
+      recordedAt: "2026-08-04T10:00:00Z",
+      command: "node test.mjs",
+      startedAt: "2026-08-04T09:59:58Z",
+      exitCode: 0,
+      durationSeconds: 2.5,
+    }]);
+  });
+
+  it("handles multiple CRLF records, non-zero exits, and empty logs", () => {
+    const log = [
+      "- 2026-08-04T10:00:00Z — run: node first.mjs",
+      "  started 2026-08-04T09:59:58Z, exit 0 in 2.5s",
+      "- 2026-08-04T11:00:00Z — run: node second.mjs",
+      "  started 2026-08-04T10:59:58Z, exit -3 in 1.25s",
+      "",
+    ].join("\r\n");
+    const results = parseRunEvidenceLog(log, "task-008");
+    assert.equal(results.length, 2);
+    assert.equal(results[1].command, "node second.mjs");
+    assert.equal(results[1].exitCode, -3);
+    assert.equal(results[1].durationSeconds, 1.25);
+    assert.deepEqual(parseRunEvidenceLog(null, "task-008"), []);
+    assert.deepEqual(parseRunEvidenceLog(
+      "- not-a-date — run: node bad.mjs\n  started also-not-a-date, exit 0 in 1s\n",
+      "task-008",
+    ), []);
   });
 });
 

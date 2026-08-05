@@ -14,3 +14,5 @@ target/
 
 # Local scratch (cold-review packets, ephemeral worktrees helpers)
 .tmp/
+.agent-foundry/project-status-seen.json
+.agent-foundry/project-overview.html

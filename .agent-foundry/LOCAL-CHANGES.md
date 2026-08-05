@@ -36,7 +36,7 @@ diverged, then make sure every `mold` entry it reports appears below.
 
 - **Changed:** carries the packet-as-data and no-authorization boundary inside
   the dispatch prompt template itself.
-- **Why:** a dispatcher copying the 0.15.0 template literally would otherwise
+- **Why:** a dispatcher copying the stock template literally would otherwise
   omit the injection boundary that the surrounding protocol requires.
 - **On upgrade:** drop once the stock prompt template includes an equivalent
   boundary.
@@ -49,12 +49,43 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **On upgrade:** drop together with the `.agents` copy once stock includes it.
 - **Upstream:** yes (generic — cold-review prompt safety).
 
+## .agents/skills/task-tracker/scripts/task.mjs
+
+- **Changed:** detached namespaces include the absolute worktree root (win32
+  lowercase); unusable `defaultBranch` plus missing `origin/HEAD` prints a
+  `task-tracker: warning` and still fails safe to a namespaced ID.
+- **Why:** concurrent detached worktrees at the same commit and silent
+  default-branch ambiguity minted colliding or surprising IDs.
+- **On upgrade:** drop once stock includes equivalent allocation hardenings.
+- **Upstream:** yes (generic — task-ID namespace safety).
+
+## .claude/skills/task-tracker/scripts/task.mjs
+
+- **Changed:** mirrors the namespace hardenings in the Claude harness tree.
+- **Why:** shared workflow behavior must remain synchronized.
+- **On upgrade:** drop together with the `.agents` copy once stock covers it.
+- **Upstream:** yes (generic — task-ID namespace safety).
+
+## .agents/skills/task-tracker/references/concurrency.md
+
+- **Changed:** documents detached worktree uniqueness and the stderr warning
+  when default-branch identity cannot be resolved.
+- **Why:** operators and agents need the allocation contract beside the CLI.
+- **On upgrade:** drop with `task.mjs` once stock documents the same rules.
+- **Upstream:** yes (generic — task-ID namespace docs).
+
+## .claude/skills/task-tracker/references/concurrency.md
+
+- **Changed:** mirrors the concurrency notes in the Claude harness tree.
+- **Why:** shared workflow documentation must remain synchronized.
+- **On upgrade:** drop together with the `.agents` copy once stock covers it.
+- **Upstream:** yes (generic — task-ID namespace docs).
+
 ## .agents/skills/task-tracker/scripts/task.test.mjs
 
-- **Changed:** covers unborn repositories, detached HEAD allocation, and the
-  remote-HEAD fallback when default-branch metadata is malformed.
-- **Why:** these 0.10.0 branches change durable task IDs and shipped without
-  direct CLI coverage.
+- **Changed:** covers unborn repositories, detached HEAD allocation, remote-HEAD
+  fallback, ambiguous-default warnings, and distinct detached worktree IDs.
+- **Why:** these branches change durable task IDs and need direct CLI coverage.
 - **On upgrade:** drop once equivalent stock tests exist.
 - **Upstream:** yes (generic — task allocation coverage).
 

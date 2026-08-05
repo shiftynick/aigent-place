@@ -3,6 +3,18 @@
 This project uses a small, evidence-driven lifecycle for humans and agents
 working from the same durable state.
 
+## Operator communication
+
+Human-facing conversation is a translation of the work, not the evidence
+store. Lead with the outcome and practical effect, use everyday language, and
+define a technical term when it is genuinely needed. Be brief by default and
+expand when asked; send progress only for a material change, blocker, or
+decision. Keep raw command, review, and delegated-agent output in durable
+records, then summarize each material issue as the problem, practical effect,
+and recommendation. Questions present one concrete choice at a time with a
+recommended answer, what a wrong choice would affect, and whether it would be
+easy or hard to undo.
+
 ## Planning above the task
 
 Tasks are the unit of execution; **milestones** are the unit of steering. A

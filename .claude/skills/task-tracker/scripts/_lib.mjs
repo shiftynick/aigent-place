@@ -798,6 +798,28 @@ export function claimableTasks(allTasks) {
     });
 }
 
+export function parseRunEvidenceLog(log, taskId) {
+  const results = [];
+  const pattern = /^-\s+(\S+)\s+[—-]\s+run:\s+(.+)\r?\n\s+started\s+(\S+),\s+exit\s+(-?\d+)\s+in\s+([\d.]+)s/gmu;
+  for (const match of String(log ?? "").matchAll(pattern)) {
+    const durationSeconds = Number(match[5]);
+    if (
+      Number.isNaN(Date.parse(match[1]))
+      || Number.isNaN(Date.parse(match[3]))
+      || !Number.isFinite(durationSeconds)
+    ) continue;
+    results.push({
+      taskId,
+      recordedAt: match[1],
+      command: match[2].trim(),
+      startedAt: match[3],
+      exitCode: Number(match[4]),
+      durationSeconds,
+    });
+  }
+  return results;
+}
+
 export function appendLog(currentLog, message) {
   const ts = nowIso();
   const cur = (currentLog ?? "").trimEnd();
