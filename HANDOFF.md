@@ -1,306 +1,225 @@
-# HANDOFF — Aigent Place, 2026-08-04
+# HANDOFF — Aigent Place, 2026-08-04 (evening)
 
-Cold-start checkpoint after a workflow-maintenance session. Foundation
-contracts are unchanged; the repository's operational state was cleaned up and
-the installed workflow kit was upgraded.
+Cold-start checkpoint after finishing the `live-connection-slice` milestone
+and clearing the remaining claimable follow-ups. Checkout is clean on `main`
+except untracked local `.tasks/review-packets/` (never commit those).
 
 ---
 
 ## TL;DR
 
-Aigent Place is still in foundation-contract work; there is no Rust/browser
-product workspace or runtime yet. Protocol v1, deterministic world geometry,
-and replay/persistence contracts are merged into public `main` with their ADRs
-accepted. The workflow-maintenance work shipped no product code: Agent Foundry
-is now upgraded from 0.6.0 through 0.15.0, stale worktrees and branches were
-removed, and completed cards were archived. Resume product work with
-`task-012` (ruleset schema and constitution boundary) from the single checkout
-at `N:\aigent-place`.
+The vertical demo works: listen server + scripted aigent MOVE leases + viewer
+placeholder spectate. Async durable writer, in-band snapshot resync, feature
+version-set intersection, and task-ID namespace hardening all landed on `main`.
+The board has **one** backlog card left: `task-021` (derived-oracle review
+lens), which needs **operator approval** before work. Next product work is a
+new milestone plan, not more claimable board burn-down.
 
 ---
 
-## To pick up next
-
-There is now exactly one checkout, it is clean, and it is on `main`:
+## To pick up tomorrow
 
 ```powershell
 Set-Location N:\aigent-place
 git status -sb
 git pull --ff-only
-node .claude/skills/task-tracker/scripts/task.mjs next
-node .claude/skills/task-tracker/scripts/task.mjs show task-012
+node .claude/skills/task-tracker/scripts/task.mjs board
 ```
 
-`task.mjs next` returned `task-012` at this checkpoint. Use the `execute-task`
-lifecycle: log a checkable rubric before claiming, then work on a new
-`task-012-*` branch cut from current `origin/main`. `main` is protected — never
-commit to it directly; deliver through a PR that passes `process-gate`.
+**Immediate human decision:** approve or reject `task-021` (governance edit to
+`docs/REVIEW-STANDARDS.md`). Until then, do **not** claim it.
+
+**If continuing product work:** run `plan-milestone` for the next front after
+`live-connection-slice` (shape grammar / terrain / auth / Postgres are still
+out of the demo slice). Operator must approve the plan before filing tasks.
+
+**Demo path (smoke the slice):**
+
+```powershell
+# Terminal A
+cargo run -p world-server -- --listen
+
+# Terminal B
+npm run aigent:scripted-move
+
+# Terminal C
+npm run viewer:dev
+# open http://127.0.0.1:5173/?ws=ws://127.0.0.1:7600/ws
+```
 
 ## What's where
 
 | Thing | Location |
 | --- | --- |
 | Product architecture and build order | `ARCHITECTURE.md` |
-| Agent operating contract and source precedence | `AGENTS.md` |
-| Task lifecycle and cold-review ladder | `docs/SDLC.md` |
-| Persistent task board and evidence | `.tasks/` |
-| Accepted architecture decisions | `docs/adr/` |
-| Protocol v1 contract and fixtures | `protocol/v1/` |
-| World geometry/physics contract and fixtures | `world/v1/` |
-| Replay/persistence contract and fixtures | `replay/v1/` |
-| Replay semantic oracle and focused tests | `scripts/replay-contract.mjs`, `scripts/replay-contract.test.mjs` |
-| Unified current process/contract gate | `scripts/check.mjs` |
-| Review lenses learned from completed work | `docs/REVIEW-STANDARDS.md` |
-| Installed workflow kit metadata and checks | `.agent-foundry/` |
-| Deliberate divergence from stock Foundry | `.agent-foundry/LOCAL-CHANGES.md` |
-| Planning and historical blockers | `PLANNING-JOURNAL.md`, `BLOCKED-JOURNAL.md` |
+| Agent operating contract | `AGENTS.md` |
+| Task lifecycle / cold-review ladder | `docs/SDLC.md` |
+| Task board | `.tasks/` (`node .claude/skills/task-tracker/scripts/task.mjs board`) |
+| ADRs | `docs/adr/` (incl. ADR-0010 tokio+axum WebSocket) |
+| World server | `crates/world-server/` |
+| Async durable writer | `crates/world-server/src/persist/async_writer.rs` |
+| WS transport + sim loop | `crates/world-server/src/transport.rs` |
+| Protocol crate | `crates/aigent-protocol/` |
+| Viewer | `apps/viewer/` |
+| Scripted aigent | `packages/aigent-sdk/scripts/scripted-move.mjs` |
+| Unified gate | `node scripts/check.mjs` |
+| Fast pre-commit subset | `node scripts/product-check.mjs --fast` |
+| Planning journal (milestone notes) | `PLANNING-JOURNAL.md` |
 
 ## Mental model (don't lose this)
 
-- The world server is authoritative. Owner-run aigent services submit bounded
-  intents; browsers are read-only spectators.
-- Simulation runs at a fixed 20 Hz. Serialization, persistence waits, and
-  socket writes cannot block the simulation stage.
-- Same-build replay is deterministic through canonical command ordering,
-  counter-based seeded randomness, versioned durable frames, and strict
-  recovery validation. It is not promised to be bit-identical across
-  platforms.
-- Exactly one live session epoch may command an aigent body. Sequence results
-  and cross-epoch idempotency rows are distinct durable views with finite
-  retention.
-- Persistence admits at most one atomic generation at a time. Transient
-  backpressure has no authoritative effect; committed results, mutations,
-  events, retention choices, and allocator state recover together.
-- The shared parametric primitive grammar drives bodies, built objects, and
-  collision geometry. Positions are canonical `f64` values within ±100 km.
-- `aigent` means a world inhabitant. Use `agent` only for the generic industry
-  concept.
-- Convex was evaluated and rejected for this design. Keep the authoritative
-  fixed-tick Rust server and explicit replay/persistence model unless a later
-  accepted ADR changes it.
-- The installed workflow under `.agents/` and `.claude/` is a *vendored* kit
-  (Agent Foundry), not project code. It has an upstream at `N:\agent-foundry`
-  and its own upgrade procedure. Files are tiered `seed` (this project owns
-  them) or `mold` (upstream owns them; divergence must be recorded).
+- World server is authoritative; aigents submit intents; browsers are
+  spectators only.
+- Fixed **20 Hz** tick. Simulation stage must not await SQLite, sockets, or
+  locks a network task can contend. Use `advance_tick_nonblocking` +
+  `poll_durable` on the listen path; sync `advance_tick` may wait (tests).
+- **Durable-before-apply (ADR-0005):** draft → submit/commit → install.
+  Tentative mutations are not authoritative until durable success.
+- Async SQLite: `DurableJournal::async_sqlite`, queue cap 1, dedicated writer
+  thread. Listen demo still uses in-memory world by default; async path is
+  API + tests.
+- Snapshot resync: client sends `SnapshotResyncRequest`; server
+  `deliver_client_resync` via `fanout.client_resync` without reconnect;
+  `hold_observe` prevents delta race ahead of the full snapshot.
+- Feature negotiation (ADR-0001): client `supported_versions[]` intersects
+  server catalog `1..=N`; do not collapse the client set to max before
+  intersect.
+- Task IDs: compact `task-NNN` on default branch; 16-digit
+  `task-<10-digit-ns><6-digit-counter>` off-main. Detached namespaces include
+  absolute worktree root so same-commit worktrees cannot collide.
+- Cold reviews: Codex rung 1 from Claude; separate SPEC + STANDARDS packets;
+  do not commit `.tasks/review-packets/`.
+- One task / one branch / one PR; squash-merge when `process-gate` is green.
+- `aigent` = world inhabitant; reserve `agent` for the industry term.
 
-## Workflow state at this checkpoint
+## What was finished this session
 
-No product contract changed. The prior cleanup PRs and current upgrade are
-process/workflow work.
+Milestone **`live-connection-slice`** (already on `main` before late session)
+plus follow-ups burned down today:
 
-- **Agent Foundry 0.10.0 → 0.15.0 delivery** (task-030). This adds `CHECKED`
-  cold-review attestations, `attack-the-board`, the reusable upgrade and
-  feedback skills, sanitized recorded evidence, and the unified
-  `agent-headless` runner. The four prior local mold fixes remain applied and
-  recorded. The exact local source commit is `1cf45f9`; it was three commits
-  ahead of `origin/master` when installed, so do not describe the payload as a
-  published remote release. The new rollback backup is retained pending
-  operator acceptance.
-- **Agent Foundry 0.9.0 → 0.10.0 delivery** (task-029). The reconciler restored
-  eight non-preserved committed seeds; the installer retained and re-baselined
-  the three append-only preserved seeds. The upgrade installed branch-namespaced
-  task allocation and fail-closed aggregate checks, and recorded `main` as the
-  default branch. Stock Foundry now carries the
-  integration-only default-branch rule, so the former `docs/SDLC.md` mold
-  divergence was retired; Aigent Place's stricter PR/ruleset policy remains in
-  `AGENTS.md`. Cold review also hardened the installed seed reconciler against
-  partial preflight failure and link traversal, and added missing allocation
-  coverage; those local mold changes are recorded for upstreaming. The rollback
-  backup is retained pending operator acceptance.
-- **Upgraded Agent Foundry 0.6.0 → 0.9.0** (PR #9, `9171ebe`), applying the
-  upgrade actions of every intervening release:
-  - 0.7.0 agent-boundary convention in `docs/SDLC.md`
-  - 0.8.0 slimmed `execute-task` / `task-tracker` entrypoints with detail moved
-    into routed `references/` files
-  - 0.9.0 shared `cursor-cli` skill in both harness trees, plus its wrapper
-    test suites
-  Seed files were restored from Git and re-merged; the sole `mold` divergence
-  (the task-019 "Protected default branch" section in `docs/SDLC.md`) was
-  re-applied and is now recorded in `.agent-foundry/LOCAL-CHANGES.md`.
-- **Cleaned up the worktree sprawl.** Removed 17 stale worktrees and deleted 11
-  merged/superseded local branches. Verified before deleting that every branch
-  was either merged into `origin/main` or a strict subset of it — `main`'s
-  `world/` tree is byte-identical to the merged task-010 branch.
-- **Closed out and archived the board** (PR #10, `f21a139`): 11 completed cards
-  moved to `.tasks/archive/`.
-- **Documented `CURSOR_AGENT_BIN`** in `AGENTS.md` (PR #11, `b0f18d9`) after
-  the `cursor-cli` smoke test found Cursor's shim is not on a non-interactive
-  shell's `PATH`.
-- **Smoke-tested `cursor-cli`** read-only against `docs/SDLC.md` with
-  `cursor-grok-4.5-low-fast`; output was verified line by line against the
-  source file.
-- Refreshed this handoff and removed a stale `N:/cadre` path from
-  `.claude/skills/codex-in-cc/SKILL.md` (task-028).
+| Task | PR | Substance |
+| --- | --- | --- |
+| 031–036 | #32–#37 | ADR-0010, SQLite WAL, WS sessions, outbound drain, scripted MOVE, viewer spectate |
+| **250444** | [#38](https://github.com/shiftynick/aigent-place/pull/38) | Async durable writer + durable-before-apply |
+| **951113** | [#39](https://github.com/shiftynick/aigent-place/pull/39) | `SnapshotResyncRequest` without reconnect |
+| **919264** | [#40](https://github.com/shiftynick/aigent-place/pull/40) | Full feature `supported_versions` intersection |
+| **986341** | [#41](https://github.com/shiftynick/aigent-place/pull/41) | Task-ID namespace diagnostics + detached uniqueness |
+
+`HEAD` / `origin/main`: `23b5c40`.
 
 ## What's in progress / half-done
 
-Task-030 is the workflow-upgrade delivery task. After it merges, no board task
-is `in_progress`, `review`, or `blocked`; `task-012` remains next.
+Nothing claimed. No open task branches.
 
-- The repository still has no product workspace, build, runtime service,
-  credentials, deployment, or running server. That is expected at this phase.
-- 15 backlog tasks remain, all foundation or world-core work.
+Untracked only: `.tasks/review-packets/` (local cold-review scratch; leave
+uncommitted or delete locally if desired).
 
 ## Open questions for the human
 
-No operator decision blocks the next board task. `task-017` carries
-`needs:operator` for deferred product questions and does **not** block
-`task-012`. Check the operator queue with:
-
-```powershell
-node .claude/skills/task-tracker/scripts/task.mjs list --tag needs:operator
-```
+1. **`task-021`** — Add derived-oracle lens to cold-review standards.
+   Requires explicit operator approval (governance). Approve / reject /
+   rewrite?
+2. **Next milestone** — After the live-connection demo, what front should
+   `plan-milestone` target (shape grammar, terrain, identity, Postgres, …)?
+3. Optional: accept/delete retained Foundry upgrade backups under
+   `.agent-foundry-backups/` (still noted from earlier workflow sessions).
 
 ## Validation state
 
-For the 0.15.0 upgrade, use task-030's recorded command evidence and the
-delivery PR checks; do not reuse the historical pre-review test totals. The
-authoritative commands are:
-
-```text
-node scripts/check.mjs
-node .agent-foundry/run-checks.mjs
-node .agent-foundry/check-foundry-drift.mjs
-```
-
-The two POSIX-only Cursor tests **skip** on Windows; that is expected, not a
-failure. Task-029 also added Windows-executed link-traversal coverage for the
-seed reconciler.
-
-`process-gate` passed on GitHub Actions for PRs #9, #10, and #11 before each
-merge.
+Last session ran `node scripts/check.mjs` green on each completed task before
+PR; GitHub `process-gate` green on PRs #38–#41. Working tree currently has no
+product diffs to re-validate.
 
 ## Worktree and operational state
 
 - Public remote: `git@github.com:shiftynick/aigent-place.git`
-- Protected branch: `main`, ruleset `19976689`, strict `process-gate` required,
-  squash merges only, no bypass actors
-- Task-030 base commit on `main`: `0be1a0b`
-- **Checkouts: exactly one, `N:\aigent-place`; task-030 uses its own branch**
-- Open GitHub PRs: none
-- Services/deployments: none
-- Git hooks: clones should set `core.hooksPath=.githooks`
-- Installed workflow kit: Agent Foundry 0.15.0 from local source commit
-  `1cf45f9`, upstream checkout at `N:\agent-foundry`
-- The 0.10.0→0.15.0 rollback backup is retained at
-  `.agent-foundry-backups/20260804T145635517Z` pending operator acceptance
-- The 0.9.0→0.10.0 rollback backup is retained at
-  `.agent-foundry-backups/20260731T124533613Z` pending operator acceptance
-- The 0.6.0→0.9.0 upgrade backup under `.agent-foundry-backups/` was deleted
-  after operator acceptance
+- Branch: `main` (clean vs `origin/main`)
+- Protected `main`, ruleset requires `process-gate`, squash-only, no bypass
+- Single checkout: `N:\aigent-place`
+- Open PRs: none
+- Hooks: `git config core.hooksPath .githooks`
+- Agent Foundry 0.15.0 installed; Cursor cold-review stays operator-selected
+  (`CURSOR_AGENT_BIN` documented in `AGENTS.md`)
 
 ## Known blockers and risks
 
-No product-design blocker.
-
-The main project risk remains writing runtime code before the remaining Step 0
-contracts and the product quality gate exist. `task-012` and `task-013` are
-still foundation contracts; `task-003` scaffolds the product workspace.
-
-The prior operational risk — acting on stale board state from an old worktree —
-is now resolved by there being only one checkout. If you create worktrees for
-parallel agents again, note that `.tasks/` is versioned, so board state is
-per-worktree and a claim is invisible elsewhere until merged.
+- Board is exhausted of autonomous work until `task-021` is approved or a
+  new milestone is planned and filed.
+- Listen path still uses in-memory journal; wire `--listen` to
+  `async_sqlite` when durable demo restart matters.
+- SessionHub / transport still demo trusted-inject identity (loopback).
+- Do not treat untracked `.tasks/review-packets/` as deliverables.
 
 ## Recent commit history
 
 ```text
-b0f18d9 task-027: document CURSOR_AGENT_BIN for the cursor-cli skill (#11)
-f21a139 task-026: close out Foundry upgrade card (#10)
-9171ebe task-026: upgrade Agent Foundry 0.6.0 -> 0.9.0 (#9)
-3fbeb0b task-011: specify replay and persistence ordering contracts (#8)
-7b1ffdf task-025: accept durable replay and backpressure ADR (#7)
-0512cb7 task-010: specify deterministic world geometry contracts (#6)
-c50f017 task-024: accept terminal revision safety (#5)
-06f2d0a task-023: accept deterministic terrain semantics (#4)
-1adec35 task-022: accept world geometry semantics (#3)
-1a1db71 task-002: make protocol v1 behavior executable (#2)
-30531df task-019: establish protected GitHub PR delivery
-729f5a1 task-001: establish the dual-agent project workflow
+23b5c40 task-986341: harden task-ID namespace fallbacks (#41)
+0fceda5 task-919264: SessionHub feature version set intersection (#40)
+39adfe4 task-951113: SnapshotResyncRequest without reconnect (#39)
+ed08fe9 task-250444: async durable writer and durable-before-apply (#38)
+8f116b3 task-036: viewer spectates placeholder bodies from live snapshots (#37)
+4f2d68d task-035: scripted aigent move-lease path over WebSocket (#36)
+f46b5ea task-034: drain outbound observe traffic to WebSocket clients (#35)
+3bd1d90 task-033: WebSocket session handshake bridge (#34)
+27191b4 task-032: SQLite WAL durable journal (#33)
+a81102c task-031: ADR-0010 tokio+axum WebSocket stack (#32)
+2c23aa1 task-009: workload load harness for §1 targets (#31)
+5f7f6b8 task-016: interest management and AOI truncation (#30)
+7ad0bd0 docs: refresh AGENTS status and product-gate smoke list (#29)
+a8a1bc0 task-015: protocol conformance client (#28)
+2ec035b task-008: crash recovery and slow-client isolation (#27)
+cb15460 task-007: ruleset activation and ordered persistence (#26)
+0ed5e03 task-006: snapshot baselines and outbound queue pressure (#25)
+6dfec74 task-017: ADR-0009 v1 product open-question answers (#24)
+daa3139 task-018: connection sessions and authoritative command results (#23)
+f758817 task-005: deterministic fixed-tick world core skeleton (#22)
+07ef35e task-352658: bind replay recovery to COMMAND_OUTCOME protobuf (#21)
+ce78646 task-004: generate protocol types and binary conformance fixtures (#20)
+2a6f3cb task-014: wire unified product gate into CI and pre-commit (#19)
+bcb2f92 task-003: scaffold pinned product workspace and quality gate (#18)
+2a242fe task-012: ruleset schema and constitution boundary contract (#17)
 ```
 
 ## Frequently-needed commands
 
 ```powershell
-# Orientation. One checkout, already on main.
 Set-Location N:\aigent-place
-git status -sb
 git pull --ff-only
-
-# Board.
 node .claude/skills/task-tracker/scripts/task.mjs board
-node .claude/skills/task-tracker/scripts/task.mjs next
-node .claude/skills/task-tracker/scripts/task.mjs show task-012
-node .claude/skills/task-tracker/scripts/task.mjs list --tag needs:operator
+node .claude/skills/task-tracker/scripts/task.mjs show task-021
 
-# Authoritative repository gate.
+# Gate
 node scripts/check.mjs
+node scripts/product-check.mjs --fast
 
-# Focused foundation-contract suites.
-node --test scripts/protocol-contract.test.mjs
-node --test scripts/world-contract.test.mjs
-node --test scripts/replay-contract.test.mjs
+# Demo
+cargo run -p world-server -- --listen
+npm run aigent:scripted-move
+npm run viewer:dev
 
-# Installed workflow kit: gate, sync, and divergence report.
-node .agent-foundry/run-checks.mjs
+# Skill sync after editing mirrored skills
 node .agent-foundry/check-skill-sync.mjs
-node .agent-foundry/check-foundry-drift.mjs
 
-# Operator-selected Cursor call (read-only). Model must be named; auto is rejected.
-$env:CURSOR_AGENT_BIN = "$env:LOCALAPPDATA\cursor-agent\agent.cmd"
-node .claude/skills/cursor-cli/scripts/cursor-agent.mjs --list-models
-
-# Inspect remote PR/check state.
-gh pr list
-gh pr checks <number> --watch --interval 10
+# Cold review (Codex from Claude)
+node .agent-foundry/agent-headless/cli.js capabilities codex
 ```
 
 ## Common pitfalls
 
-- Cold reviewers must receive `git diff --binary HEAD` plus the complete
-  contents of every untracked file (`git ls-files --others --exclude-standard`).
-  A bare `git diff` is working-tree-versus-index and hides exactly the staged
-  contract/oracle files the review exists to check.
-- **Task IDs collide across branches.** The board mints the next free ID from
-  the *current branch's* `.tasks/`, so a card filed on a stale branch can
-  duplicate one `main` already used. This session hit it: the Foundry upgrade
-  was filed as task-024 while `main` had minted task-024 for an ADR, and
-  `task.mjs board` then failed with `ERROR: duplicate task id`. Cut task
-  branches from current `origin/main`.
-- **Check what a branch is based on before opening its PR.** The upgrade branch
-  was cut from a stale task-010 line and carried 4 superseded commits; a PR from
-  it would have reverted contracts `main` had already delivered. Verify with
-  `git log --oneline origin/main..HEAD` and rebuild by cherry-picking onto
-  current `main` if the base is wrong.
-- Do not put machine-specific absolute paths in shared docs or skills. Use
-  `$LOCALAPPDATA` / `$HOME`, or resolve with
-  `git rev-parse --show-toplevel`. This bit both `AGENTS.md` (nearly) and
-  `codex-in-cc/SKILL.md` (actually).
-- Cursor's `agent` shim is not on a non-interactive shell's `PATH`; the
-  `cursor-cli` wrapper fails with "agent was not found" until
-  `CURSOR_AGENT_BIN` names it. See `AGENTS.md` → "Cursor Agent binary".
-- Cursor is operator-selected only, and `auto` is rejected because Cursor routes
-  across model families. A Claude model through Cursor is only cold-review
-  rung 2 against a Claude implementer; pick a different family for rung 1.
-- `task.mjs archive` takes no task ID — it is `archive [--dry-run]` and sweeps
-  every `done` card. `task.mjs archive task-NNN` fails with
-  `ERROR: unknown flag`.
-- `gh pr merge --squash --delete-branch` can merge remotely and *then* exit
-  nonzero when it tries to switch to a `main` that is checked out elsewhere.
-  Query `gh pr view` after such an error before retrying; the remote operation
-  may already have succeeded.
-- The GitHub connector and local `gh` CLI can represent different accounts. The
-  connector failed PR creation with "must be a collaborator"; `gh auth status`
-  confirmed `shiftynick` and the CLI succeeded. The CLI is the verified path.
-- On Windows, launching the Claude wrapper through `Start-Process` can split a
-  multiword prompt into invalid arguments. Direct invocation with
-  `& node ... --prompt $prompt` is the verified path.
-- Do not simplify replay/persistence precedence casually. Availability,
-  structural validity, sequence replay, writer state, oversize classification,
-  idempotency, and domain rejection are intentionally ordered, and cold
-  recovery must reproduce the same outcome.
-- Editing a `mold` file without recording it in `.agent-foundry/LOCAL-CHANGES.md`
-  means the next Foundry upgrade silently reverts it. The task-019 SDLC section
-  survived this upgrade only because the drift report caught it.
-- Never report a planned or unavailable command as passing. Record executable
-  evidence through the task tracker.
+- **Long task IDs** (`task-250444…`) are branch-namespaced allocations, not
+  corruption. Prefer filing new tasks on `main` for compact `task-NNN` IDs.
+- **Do not commit** `.tasks/review-packets/`.
+- **PowerShell:** use `$msg = @"..."@` for commits; bash heredocs fail.
+- **Async writer:** `advance_tick` may wait; the 20 Hz loop must use
+  nonblocking submit/poll. Preserve commands enqueued during in-flight
+  commit when installing/discarding tentative state.
+- **Resync:** install full snapshot before clearing `hold_observe`; require
+  envelope metadata and reject duplicate `message_id` with
+  `INVALID_ENVELOPE`.
+- **Feature offers:** never collapse `supported_versions` to max before
+  `select_features`.
+- **Cold review:** answer-only reviewers cannot run the gate; record
+  `task.mjs run` evidence yourself before promoting.
+- Standing authority this session: attack-the-board through claimable work
+  with commit/push/PR/squash-merge when checks green; governance surfaces
+  and `needs:operator` still ask first.
