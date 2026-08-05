@@ -1,14 +1,12 @@
 ---
 id: task-038
 title: "Upgrade Agent Foundry 0.15.0 -> 0.16.0"
-status: in_progress
+status: done
 priority: p1
 tags: [area:process, phase:upgrade]
 blockedBy: []
 createdAt: "2026-08-05T02:01:43Z"
-updatedAt: "2026-08-05T02:19:31Z"
-claimedBy: "shift@Shiftor"
-claimedAt: "2026-08-05T02:19:31Z"
+updatedAt: "2026-08-05T02:30:50Z"
 ---
 
 <!-- task-tracker:description -->
@@ -157,3 +155,7 @@ claimedAt: "2026-08-05T02:19:31Z"
 - 2026-08-05T02:19:22Z — note: adjudication: accepted SPEC/STANDARDS findings on missing scripts/check.mjs evidence and CLAUDE.md missing 0.16 status/overview seed merge; recording gate + merging CLAUDE.md; low audit-trail note added
 - 2026-08-05T02:19:22Z — note: install audit: pre-upgrade git status clean except review-packets moved aside; bootstrap: node N:\agent-foundry\scripts\bootstrap-project.mjs --target-path N:\aigent-place --project-name 'Aigent Place' --project-description 'A repository for the Aigent Place architecture and implementation.' --force; backup .agent-foundry-backups/20260805T020201340Z
 - 2026-08-05T02:19:31Z — moved to in_progress (claimed by shift@Shiftor; forced)
+- 2026-08-05T02:19:55Z — moved to review
+- 2026-08-05T02:19:55Z — note: cold review round 2 (Codex) after CLAUDE.md + gate evidence fixes
+- 2026-08-05T02:30:50Z — note: cold review round 2 PASS SPEC+STANDARDS (Codex rung 1); prior med findings resolved
+- 2026-08-05T02:30:50Z — moved to done
