@@ -148,6 +148,8 @@ impl TransportState {
                     applied_commands: Vec::new(),
                     expired_leases: Vec::new(),
                     rng_draws: Vec::new(),
+                    entities: world.entities().snapshots(),
+                    next_entity_id: world.entities().next_entity_id(),
                 })
         };
 

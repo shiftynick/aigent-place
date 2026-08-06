@@ -1,5 +1,6 @@
 //! Fixed-tick world core: order, apply, expire leases, publish generation.
 
+use crate::entity::{EntityError, EntityStore, PositionRequest, ShapeSlot};
 use crate::generation::{AppliedCommand, ImmutableGeneration};
 use crate::lease::LeaseTable;
 use crate::order::{canonical_command_order, CommandKey};
@@ -43,6 +44,23 @@ pub enum CommandEffect {
     },
     /// Simple mutable counter used for same-build replay equivalence tests.
     BumpWorldValue { delta: i64 },
+    /// Create an authoritative entity at a requested metre position. An entity
+    /// ID is allocated only when this effect is accepted (ADR-0002).
+    CreateEntity {
+        position: PositionRequest,
+        shape: Option<ShapeSlot>,
+    },
+    /// Move an existing entity to a requested metre position.
+    SetEntityPosition {
+        entity_id: u64,
+        position: PositionRequest,
+    },
+    /// Replace an entity's opaque shape slot. Storage only: candidate
+    /// validation is task-047 and collider derivation is task-048.
+    SetEntityShape {
+        entity_id: u64,
+        shape: Option<ShapeSlot>,
+    },
 }
 
 /// Command waiting for its arrival tick.
@@ -64,10 +82,16 @@ impl QueuedCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorldError {
     DuplicateCommandTuple,
-    StaleArrivalTick { arrival_tick: u64, next_tick: u64 },
+    StaleArrivalTick {
+        arrival_tick: u64,
+        next_tick: u64,
+    },
     Ruleset(RulesetValidationError),
     Persistence(JournalError),
     Rng(RngError),
+    /// Entity-store failure outside a command (recovery of persisted state).
+    /// Domain rejections inside a tick are recorded results, not tick failures.
+    Entity(EntityError),
 }
 
 impl fmt::Display for WorldError {
@@ -84,6 +108,7 @@ impl fmt::Display for WorldError {
             Self::Ruleset(error) => write!(f, "ruleset validation failed: {error:?}"),
             Self::Persistence(error) => write!(f, "persistence error: {error}"),
             Self::Rng(error) => write!(f, "{error}"),
+            Self::Entity(error) => write!(f, "entity state error: {error}"),
         }
     }
 }
@@ -96,12 +121,19 @@ impl From<RngError> for WorldError {
     }
 }
 
+impl From<EntityError> for WorldError {
+    fn from(value: EntityError) -> Self {
+        Self::Entity(value)
+    }
+}
+
 /// Authoritative fixed-tick simulation skeleton.
 #[derive(Debug)]
 pub struct World {
     seed: [u8; 32],
     clock: TickClock,
     leases: LeaseTable,
+    entities: EntityStore,
     pending: Vec<QueuedCommand>,
     world_value: i64,
     published: Option<ImmutableGeneration>,
@@ -117,6 +149,7 @@ pub struct World {
 #[derive(Debug, Clone)]
 struct TentativeTick {
     leases: LeaseTable,
+    entities: EntityStore,
     world_value: i64,
     rulesets: RulesetStore,
     generation: ImmutableGeneration,
@@ -141,6 +174,7 @@ impl World {
             seed: config.world_seed,
             clock: TickClock::new(),
             leases: LeaseTable::new(lease_ttl),
+            entities: EntityStore::new(),
             pending: Vec::new(),
             world_value: 0,
             published: None,
@@ -154,6 +188,13 @@ impl World {
     #[must_use]
     pub fn rulesets(&self) -> &RulesetStore {
         &self.rulesets
+    }
+
+    /// Authoritative entity table. Mutations reach it only through an accepted
+    /// command in a durably committed tick.
+    #[must_use]
+    pub fn entities(&self) -> &EntityStore {
+        &self.entities
     }
 
     #[must_use]
@@ -209,6 +250,10 @@ impl World {
             for (body_id, lease) in last.active_leases {
                 world.leases.restore(body_id, lease);
             }
+            world
+                .entities
+                .restore(last.entities, last.next_entity_id)
+                .map_err(WorldError::Entity)?;
             while world.clock.last_completed() < last.generation {
                 let _ = world.clock.advance();
             }
@@ -320,6 +365,9 @@ impl World {
             };
 
         let mut leases = self.leases.clone();
+        // Draft copies: nothing here reaches authoritative state until the
+        // durable commit succeeds and `install_tentative` runs (ADR-0005).
+        let mut entities = self.entities.clone();
         let mut world_value = self.world_value;
         let mut rulesets = self.rulesets.clone();
         let keys: Vec<CommandKey> = due.iter().map(QueuedCommand::key).collect();
@@ -335,6 +383,7 @@ impl World {
                 canonical_index as u32,
                 command,
                 &mut leases,
+                &mut entities,
                 &mut world_value,
             ) {
                 Ok(summary) => summary,
@@ -371,6 +420,8 @@ impl World {
             pending_ruleset: rulesets.pending().cloned(),
             command_summaries,
             active_leases: leases.snapshots(),
+            entities: entities.snapshots(),
+            next_entity_id: entities.next_entity_id(),
             integrity_hex: String::new(),
         };
         let generation = ImmutableGeneration {
@@ -382,6 +433,8 @@ impl World {
             applied_commands: applied,
             expired_leases,
             rng_draws,
+            entities: entities.snapshots(),
+            next_entity_id: entities.next_entity_id(),
         };
 
         if self.journal.is_async() {
@@ -390,6 +443,7 @@ impl World {
                 Ok(()) => {
                     self.tentative = Some(TentativeTick {
                         leases,
+                        entities,
                         world_value,
                         rulesets,
                         generation,
@@ -414,6 +468,7 @@ impl World {
                     self.pending = remaining;
                     self.install_tentative(TentativeTick {
                         leases,
+                        entities,
                         world_value,
                         rulesets,
                         generation,
@@ -482,6 +537,7 @@ impl World {
     fn install_tentative(&mut self, tentative: TentativeTick) {
         let _ = self.clock.advance();
         self.leases = tentative.leases;
+        self.entities = tentative.entities;
         self.world_value = tentative.world_value;
         self.rulesets = tentative.rulesets;
         self.published = Some(tentative.generation);
@@ -510,12 +566,19 @@ pub enum TickAdvance {
     Busy,
 }
 
+/// Apply one canonically ordered command to the draft tick state.
+///
+/// An `Err` here aborts the whole tick and is reserved for infrastructure
+/// failures. An entity *domain* rejection is not a tick failure: it mutates
+/// nothing, allocates no ID or revision, and is published as a recorded
+/// rejection summary, exactly as `world/v1` section 1 requires.
 fn apply_effect(
     seed: &[u8; 32],
     tick: u64,
     canonical_index: u32,
     command: &QueuedCommand,
     leases: &mut LeaseTable,
+    entities: &mut EntityStore,
     world_value: &mut i64,
 ) -> Result<(String, Option<crate::rng::DrawResult>), WorldError> {
     match &command.effect {
@@ -565,6 +628,51 @@ fn apply_effect(
             *world_value = world_value.saturating_add(*delta);
             Ok((format!("bump:delta={delta}:value={}", *world_value), None))
         }
+        CommandEffect::CreateEntity { position, shape } => {
+            let summary = match entities.create(*position, shape.clone()) {
+                Ok(created) => format!(
+                    "create_entity:accepted:id={}:rev={}",
+                    created.entity_id, created.revision
+                ),
+                Err(error) => format!("create_entity:rejected={}", error.reason()),
+            };
+            Ok((summary, None))
+        }
+        CommandEffect::SetEntityPosition {
+            entity_id,
+            position,
+        } => Ok((
+            entity_mutation_summary(
+                "set_entity_position",
+                *entity_id,
+                entities.set_position(*entity_id, *position),
+            ),
+            None,
+        )),
+        CommandEffect::SetEntityShape { entity_id, shape } => Ok((
+            entity_mutation_summary(
+                "set_entity_shape",
+                *entity_id,
+                entities.set_shape_slot(*entity_id, shape.clone()),
+            ),
+            None,
+        )),
+    }
+}
+
+/// Published summary for an entity mutation attempt. Accepted, no-op, and
+/// rejected outcomes are distinguishable, so they produce distinct digests.
+fn entity_mutation_summary(
+    label: &str,
+    entity_id: u64,
+    outcome: Result<crate::entity::MutationOutcome, EntityError>,
+) -> String {
+    match outcome {
+        Ok(outcome) if outcome.applied() => {
+            format!("{label}:id={entity_id}:applied:rev={}", outcome.revision())
+        }
+        Ok(outcome) => format!("{label}:id={entity_id}:noop:rev={}", outcome.revision()),
+        Err(error) => format!("{label}:id={entity_id}:rejected={}", error.reason()),
     }
 }
 

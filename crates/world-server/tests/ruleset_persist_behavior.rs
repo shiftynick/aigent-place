@@ -266,6 +266,8 @@ fn restart_reconstructs_last_committed_generation() {
             pending_ruleset: None,
             command_summaries: vec!["should-discard".into()],
             active_leases: Default::default(),
+            entities: Default::default(),
+            next_entity_id: world_server::FIRST_ENTITY_ID,
             integrity_hex: String::new(),
         })
         .unwrap();

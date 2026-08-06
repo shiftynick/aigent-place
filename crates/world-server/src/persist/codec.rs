@@ -1,12 +1,18 @@
 //! Length-prefixed binary codec for committed generation packets.
 
 use super::{parameters_from_pairs, CommittedGeneration, JournalError};
+use crate::entity::{EntitySnapshot, Position, ShapeSlot};
 use crate::lease::LeaseSnapshot;
 use crate::ruleset::{PendingRuleset, RulesetGeneration};
 use std::collections::BTreeMap;
 
 const CODEC_MAGIC: &[u8] = b"AJG1";
-const CODEC_VERSION: u32 = 1;
+/// Version 2 added the authoritative entity table and ID allocator (task-046).
+/// Older payloads are rejected rather than silently reinterpreted.
+const CODEC_VERSION: u32 = 2;
+/// Smallest possible encoded entity: three `u64` headers, three `f64` position
+/// components, and a one-byte absent-shape flag.
+const MIN_ENTITY_BYTES: usize = 8 * 6 + 1;
 
 pub fn encode_generation(packet: &CommittedGeneration) -> Result<Vec<u8>, JournalError> {
     let mut out = Vec::new();
@@ -37,6 +43,23 @@ pub fn encode_generation(packet: &CommittedGeneration) -> Result<Vec<u8>, Journa
         write_u64(&mut out, lease.granted_tick);
         write_u64(&mut out, lease.expire_tick);
     }
+    write_u64(&mut out, packet.entities.len() as u64);
+    for (entity_id, entity) in &packet.entities {
+        write_u64(&mut out, *entity_id);
+        write_u64(&mut out, entity.entity_id);
+        write_u64(&mut out, entity.revision);
+        for bits in entity.position.to_bits() {
+            write_u64(&mut out, bits);
+        }
+        match &entity.shape {
+            Some(shape) => {
+                out.push(1);
+                write_bytes(&mut out, shape.as_bytes());
+            }
+            None => out.push(0),
+        }
+    }
+    write_u64(&mut out, packet.next_entity_id);
     write_bytes(&mut out, packet.integrity_hex.as_bytes());
     Ok(out)
 }
@@ -94,6 +117,37 @@ pub fn decode_generation(bytes: &[u8]) -> Result<CommittedGeneration, JournalErr
         };
         active_leases.insert(key, lease);
     }
+    let entity_len = read_u64(bytes, &mut cursor)? as usize;
+    ensure_count_fits(bytes, &cursor, entity_len, MIN_ENTITY_BYTES)?;
+    let mut entities = BTreeMap::new();
+    for _ in 0..entity_len {
+        let key = read_u64(bytes, &mut cursor)?;
+        let entity_id = read_u64(bytes, &mut cursor)?;
+        let revision = read_u64(bytes, &mut cursor)?;
+        let x = f64::from_bits(read_u64(bytes, &mut cursor)?);
+        let y = f64::from_bits(read_u64(bytes, &mut cursor)?);
+        let z = f64::from_bits(read_u64(bytes, &mut cursor)?);
+        // Fail closed: a persisted position outside the canonical space is
+        // corrupt state, never something to clamp back into the world.
+        let position = Position::new(x, y, z).map_err(|error| {
+            JournalError::Storage(format!("committed entity {entity_id} position: {error}"))
+        })?;
+        let shape = match read_u8(bytes, &mut cursor)? {
+            0 => None,
+            1 => Some(ShapeSlot::from_encoded(read_bytes(bytes, &mut cursor)?)),
+            _ => return Err(JournalError::Storage("invalid entity shape flag".into())),
+        };
+        entities.insert(
+            key,
+            EntitySnapshot {
+                entity_id,
+                revision,
+                position,
+                shape,
+            },
+        );
+    }
+    let next_entity_id = read_u64(bytes, &mut cursor)?;
     let integrity_raw = read_bytes(bytes, &mut cursor)?;
     let integrity_hex = String::from_utf8(integrity_raw)
         .map_err(|error| JournalError::Storage(format!("integrity utf8 error: {error}")))?;
@@ -109,6 +163,8 @@ pub fn decode_generation(bytes: &[u8]) -> Result<CommittedGeneration, JournalErr
         pending_ruleset,
         command_summaries,
         active_leases,
+        entities,
+        next_entity_id,
         integrity_hex,
     })
 }

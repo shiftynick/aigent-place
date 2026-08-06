@@ -7,6 +7,7 @@
 //! task-018); production authentication is deferred.
 
 mod aoi;
+mod entity;
 mod fanout;
 mod generation;
 mod lease;
@@ -27,6 +28,11 @@ pub use aoi::{
     InterestDiff, SpatialHash, AOI_HARD_CAP, VIEWER_AOI_CAPS,
 };
 
+pub use entity::{
+    EntityError, EntitySnapshot, EntityStore, MutationOutcome, Position, PositionRequest,
+    ShapeSlot, FIRST_ENTITY_ID, FIRST_REVISION, REVISION_EXHAUSTION_THRESHOLD, TERMINAL_REVISION,
+    WORLD_BOUND_METRES,
+};
 pub use fanout::{
     ConnectionOutbound, EventStreamCursor, PublicationMailbox, PublishOutcome, SnapshotFanout,
 };

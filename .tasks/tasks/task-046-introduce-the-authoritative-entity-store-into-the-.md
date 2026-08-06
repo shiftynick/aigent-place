@@ -1,12 +1,12 @@
 ---
 id: task-046
 title: Introduce the authoritative entity store into the world core
-status: ready
+status: done
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T13:24:48Z"
-updatedAt: "2026-08-06T14:37:13Z"
+updatedAt: "2026-08-06T23:34:23Z"
 ---
 
 <!-- task-tracker:description -->
@@ -19,3 +19,185 @@ The world core currently holds no spatial entity state: authoritative state is a
 
 - 2026-08-06T13:24:48Z — created (status: backlog)
 - 2026-08-06T14:37:13Z — moved to ready
+- 2026-08-06T14:47:07Z — note: rubric: (1) entity ids allocate 1,2,3.. only on authoritative accept; a rejected creation allocates nothing and leaves the allocator unchanged; published iteration is ascending unsigned id (2) revision starts at 1 and increments exactly once per accepted externally visible change; a semantic no-op (same position, same shape slot) and every rejection leave it unchanged; an external mutation at revision u64::MAX-1 rejects REVISION_EXHAUSTED without effect (ADR-0004) (3) non-finite or out-of-[-100000,+100000]-metre components reject at the store boundary with a typed reason and mutate nothing; -0.0 canonicalizes to 0.0 (4) entity table + allocator participate in ImmutableGeneration and change its digest, and are covered by the durable packet integrity digest and codec round-trip (5) with entity commands present the async tentative tick installs entity mutations only after durable success (invisible while tentative, unchanged on writer failure) and recovery restores entities + allocator (6) same-build replay of a log containing entity commands reproduces an identical generation digest; full product gate green
+- 2026-08-06T14:47:13Z — moved to in_progress (claimed by shift@Shiftor)
+- 2026-08-06T14:59:20Z — note: impl: new crates/world-server/src/entity.rs owns EntityStore (BTreeMap keyed by u64 id, ascending iteration), Position (private finite f64 fields, -0.0 canonicalized), PositionRequest (unvalidated wire-level metres), ShapeSlot, EntityError. Entity state threads through World -> TentativeTick -> ImmutableGeneration -> CommittedGeneration so ADR-0005 durable-before-apply covers it unchanged.
+- 2026-08-06T14:59:29Z — note: chose: shape storage is an opaque ShapeSlot(Vec<u8>) of already-encoded ShapeTree bytes rather than the generated prost ShapeTree. Two reasons: (a) task-046 owns storage only, so decoding here would pre-empt task-047 validation and task-048 collider derivation; (b) prost ShapeTree contains f64 quaternion components, so embedding it would force Eq off ImmutableGeneration and CommittedGeneration - a weakening of existing types the risk probe is supposed to avoid.
+- 2026-08-06T14:59:32Z — note: chose: Position and PositionRequest implement PartialEq bitwise on the IEEE-754 representation and therefore Eq. Bitwise equality is reflexive even for NaN, so Eq stays sound for the unvalidated request type; Position additionally canonicalizes -0.0 and rejects non-finite values, so bitwise equality coincides with numeric equality there. This keeps CommandEffect/QueuedCommand/ImmutableGeneration/CommittedGeneration Eq exactly as before.
+- 2026-08-06T14:59:42Z — note: chose: an entity domain rejection inside a tick is a recorded rejection summary, not a tick failure. world/v1 section 1 makes a domain-level rejection a recorded CommandResult, and ADR-0005 keeps the generation atomic; aborting the tick on a bad coordinate would let one caller stall every other command in the batch. apply_effect still returns Err only for infrastructure failures (RNG).
+- 2026-08-06T14:59:45Z — note: chose: durable generation codec version 1 -> 2 to carry the entity table and the id allocator. ADR-0005 requires every id/revision allocator change to share the mutation's transaction, and task-007 cold review already established the precedent that authoritative state omitted from the packet is a defect (leases). No committed journal fixture exists in-repo, and decode rejects an unknown version rather than reinterpreting old bytes, so the change fails closed.
+- 2026-08-06T15:00:35Z — note: docs: updated ARCHITECTURE.md section 2 with the EntityStore paragraph (identity, revision, canonical position bound, opaque shape slot, tentative-tick participation, digest coverage). world/v1/CONTRACT.md and the ADRs are normative Step 0 documents describing the target semantics and need no change. Filed task-2748472262000001 for the ADR-0004 terminal forced-sleep transition and recovery diagnostic, which needs the sleep lifecycle that does not exist yet.
+- 2026-08-06T15:00:57Z — run: node scripts/product-check.mjs --fast
+  started 2026-08-06T15:00:43Z, exit 0 in 13.5s
+  output tail (truncated to last 30 lines):
+  |     Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.19s
+  |    Compiling workload-harness v0.1.0 (N:\aigent-place\.claude\worktrees\wf_478f7fc6-df9-1\crates\workload-harness)
+  |    Compiling protocol-conformance v0.1.0 (N:\aigent-place\.claude\worktrees\wf_478f7fc6-df9-1\crates\protocol-conformance)
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.06s
+  |      Running unittests src\lib.rs (target\debug\deps\aigent_protocol-2be7322e8a1e4d5b.exe)
+  |      Running unittests src\lib.rs (target\debug\deps\protocol_conformance-3437ac2bd595267c.exe)
+  |      Running unittests src\main.rs (target\debug\deps\protocol_conformance-4ddea74bf07dca6d.exe)
+  |      Running unittests src\lib.rs (target\debug\deps\workload_harness-0593d857cdb62281.exe)
+  |      Running unittests src\main.rs (target\debug\deps\workload_harness-9222080f938c770c.exe)
+  |      Running unittests src\lib.rs (target\debug\deps\world_server-2d7c22779d6e15e7.exe)
+  |      Running unittests src\main.rs (target\debug\deps\world_server-9df5988638f82bfa.exe)
+  |      Running tests\aoi_behavior.rs (target\debug\deps\aoi_behavior-49d2af617aab8541.exe)
+  |      Running tests\async_writer_behavior.rs (target\debug\deps\async_writer_behavior-ecb874bd312ef40d.exe)
+  |      Running tests\core_behavior.rs (target\debug\deps\core_behavior-6198f984276ce85a.exe)
+  |      Running tests\entity_store_behavior.rs (target\debug\deps\entity_store_behavior-f10dfe0979eae66c.exe)
+  |      Running tests\feature_intersection_behavior.rs (target\debug\deps\feature_intersection_behavior-02eb438a23b9049c.exe)
+  |      Running tests\outbound_drain_behavior.rs (target\debug\deps\outbound_drain_behavior-dba27bd415f1fdef.exe)
+  |      Running tests\persist_sqlite_behavior.rs (target\debug\deps\persist_sqlite_behavior-c4d71245086ff896.exe)
+  |      Running tests\placeholder_payload_behavior.rs (target\debug\deps\placeholder_payload_behavior-5f159efe4496d0c4.exe)
+  |      Running tests\reliability_behavior.rs (target\debug\deps\reliability_behavior-7aed9c4b0ea57898.exe)
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+- 2026-08-06T15:01:13Z — moved to review
+- 2026-08-06T15:02:06Z — run: node scripts/check.mjs
+  started 2026-08-06T15:01:21Z, exit 0 in 44.8s
+  output tail (truncated to last 30 lines):
+  |      Running tests\persist_sqlite_behavior.rs (target\debug\deps\persist_sqlite_behavior-c4d71245086ff896.exe)
+  |      Running tests\placeholder_payload_behavior.rs (target\debug\deps\placeholder_payload_behavior-5f159efe4496d0c4.exe)
+  |      Running tests\reliability_behavior.rs (target\debug\deps\reliability_behavior-7aed9c4b0ea57898.exe)
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-06T15:04:05Z — note: red-capable check (derived-oracle lens): temporarily broke entity.rs twice and observed the expected failures before reverting. (1) allocating the id before position validation in create() -> entity::tests::ids_are_monotonic_and_only_accepted_creation_consumes_one, accepted_creations_allocate_ascending_ids_and_publish_them, and same_build_replay_reproduces_entity_state_and_digest all FAILED. (2) disabling the position no-op short circuit -> entity::tests::revision_increments_once_and_skips_no_ops, rejections_and_no_ops_leave_state_and_revision_unchanged, and same_build_replay_reproduces_entity_state_and_digest all FAILED. Both mutations were reverted and the suite is green again; the recorded gate runs are against the reverted code.
+- 2026-08-06T15:04:07Z — note: friction: the first commit attempt used a PowerShell here-string through the Bash tool, so the literal @ delimiters became the commit subject line. Fixed with git reset --soft HEAD~1 plus a fresh commit through the pre-commit hook (no --amend, no --no-verify, nothing pushed); the hook re-ran the fast product subset and passed. Recording it because the mistake is silent - the commit succeeds and only git log --oneline shows the damage.
+- 2026-08-06T15:25:51Z — note: cold-review adjudication (ladder rung: two independent cold reviews, SPEC axis and STANDARDS axis, run in a separate cold-context worktree per docs/SDLC.md; highest available rung used). Both axes CONFIRMED and FIXED: (A) SPEC-1 == STANDARDS-1, durable packet integrity digest coverage of the entity table and the id allocator was asserted by ARCHITECTURE.md but unproven. Reproduced live: deleting the whole entity+allocator block from CommittedGeneration::compute_integrity_hex left the suite green, because integrity_ok() recomputes with the same function that sealed the packet, so codec round-trip cannot see an omitted field. Fixed by tests/reliability_behavior.rs::entity_state_tamper_fails_integrity, which tampers one sealed field at a time (position, revision, shape present/absent, shape bytes, entity_id, whole table, next_entity_id) and requires !integrity_ok() for each - the same shape as the existing lease_identity_tamper_fails_integrity precedent. (B) SPEC-2 == STANDARDS-2, only entity position was actually inside a generation-digest oracle; the single sensitivity probe varied one position component. Reproduced live: removing next_entity_id from ImmutableGeneration::digest, and separately removing the revision and shape updates, both left the suite green. Fixed by tests/entity_store_behavior.rs::generation_digest_covers_every_entity_field_and_the_allocator, which varies one published field at a time against a baseline digest. (C) STANDARDS-3, the allocator_below_first_id guard in EntityStore::restore was unreachable (next_entity_id != 0 implies >= FIRST_ENTITY_ID == 1). Removed; the <= highest reuse check is the whole allocator invariant and now says so in a comment.
+- 2026-08-06T15:26:01Z — note: red-capable evidence for the review fixes (executed in this worktree, all mutations reverted, git diff confirmed clean afterwards): (1) deleted the entity+allocator block from compute_integrity_hex -> entity_state_tamper_fails_integrity FAILED at the position assertion; (2) deleted only 'hasher.update(self.next_entity_id.to_be_bytes())' from compute_integrity_hex -> the same test FAILED at the allocator assertion; (3) deleted only 'hasher.update(self.next_entity_id.to_be_bytes())' from ImmutableGeneration::digest -> generation_digest_covers_every_entity_field_and_the_allocator FAILED with two identical digests; (4) deleted the revision and shape updates from ImmutableGeneration::digest -> the same test FAILED at the revision assertion. Before these tests existed, every one of those four mutations left cargo test -p world-server fully green, which is exactly what the two cold reviews reported.
+- 2026-08-06T15:26:15Z — note: cold-review CHECKED sections were substantive, not thin: both axes independently traced rubric lines 1,2,3,5,6 to the ADR/CONTRACT text (ADR-0002 identity and coordinates, ADR-0004 terminal revision u64::MAX-1, ADR-0005 durable-before-apply and fail-closed unknown codec version), executed the gate, and both ran their own implementation mutations rather than reasoning by inspection. I re-verified the load-bearing claims myself: create() validates before reading the allocator (entity.rs), next_revision rejects at REVISION_EXHAUSTION_THRESHOLD = u64::MAX-1, check_axis rejects non-finite then out-of-closed-bound then canonicalizes -0.0 without clamping, install_tentative is the only assignment to World::entities, and decode_generation rejects an unknown codec version instead of reinterpreting (ADR-0005). Deliberately not changed: the digest domain separators still read '...generation.v1' while the durable codec is version 2 - the separator labels the digest input layout for a self-consistent in-memory recompute and changing it would be a gratuitous edit with no behavioral effect. Also unchanged: entity publication into StubSnapshotPayload and millimetre wire quantization, which are outside the task-046 rubric; and the ADR-0004 forced-sleep lifecycle, which stays filed as task-2748472262000001.
+- 2026-08-06T15:27:38Z — run: node scripts/check.mjs
+  started 2026-08-06T15:26:27Z, exit 0 in 70.9s
+  output tail (truncated to last 30 lines):
+  |      Running tests\persist_sqlite_behavior.rs (target\debug\deps\persist_sqlite_behavior-c4d71245086ff896.exe)
+  |      Running tests\placeholder_payload_behavior.rs (target\debug\deps\placeholder_payload_behavior-5f159efe4496d0c4.exe)
+  |      Running tests\reliability_behavior.rs (target\debug\deps\reliability_behavior-7aed9c4b0ea57898.exe)
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-06T15:28:04Z — moved to done
+- 2026-08-06T15:31:00Z — note: validation integrity: the pre-commit hook that ran during this task's commit resolved core.hooksPath to the main checkout (N:\aigent-place\.githooks) and therefore ran the fast product subset against main, not against this worktree - its output listed 12 reliability_behavior tests and no entity_store_behavior binary. That hook run is NOT evidence for this task. The recorded evidence is the tracker-run 'node scripts/check.mjs' from this worktree (exit 0), plus a direct 'node scripts/product-check.mjs --fast' from this worktree (exit 0, 'product-check: PASS (fast subset)') whose output contains 'test generation_digest_covers_every_entity_field_and_the_allocator ... ok' and 'test entity_state_tamper_fails_integrity ... ok'. The hook defect is filed as task-2748472262000002; it is out of scope here and touches an ask-first governance surface.
+- 2026-08-06T15:32:05Z — run: node scripts/check.mjs
+  started 2026-08-06T15:31:15Z, exit 0 in 49.8s
+  output tail (truncated to last 30 lines):
+  |      Running tests\persist_sqlite_behavior.rs (target\debug\deps\persist_sqlite_behavior-c4d71245086ff896.exe)
+  |      Running tests\placeholder_payload_behavior.rs (target\debug\deps\placeholder_payload_behavior-5f159efe4496d0c4.exe)
+  |      Running tests\reliability_behavior.rs (target\debug\deps\reliability_behavior-7aed9c4b0ea57898.exe)
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-06T23:33:41Z — note: rebase integration onto task-047 (merged as bfc9994): two conflicts that only existed once both branches were on one base. (1) entity.rs and shape.rs each defined an identical pub enum Axis{X,Y,Z}, so the crate-root re-exports collided (E0252). Resolved as one type rather than a rename: entity::Axis deleted, its as_str() moved onto shape::Axis, entity.rs imports crate::shape::Axis, lib.rs exports Axis once. Both named the same ADR-0002 right-handed axis, so two types was the actual defect. (2) task-044's live_aoi_behavior.rs builds ImmutableGeneration as a struct literal and did not compile once this task added entities + next_entity_id (E0063); fixture now passes an empty table and FIRST_ENTITY_ID, with a comment recording that AOI interest ranks from lease poses rather than the entity table. No behavioral change to reviewed logic; both fixes are compiler-verified.
+- 2026-08-06T23:34:23Z — run: node scripts/check.mjs
+  started 2026-08-06T23:33:41Z, exit 0 in 42.4s
+  output tail (truncated to last 30 lines):
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs

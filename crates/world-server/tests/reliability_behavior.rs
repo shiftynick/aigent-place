@@ -4,9 +4,9 @@ use aigent_protocol::ProtocolCloseReason;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use world_server::{
-    CommandEffect, CommittedGeneration, JournalError, ObserveOutcome, PublicationMailbox,
-    QueuedCommand, RulesetParameters, SnapshotFanout, World, WorldConfig, WorldError,
-    OVERFLOW_TICK_OBSERVATIONS, QUEUE_LIMIT_BYTES,
+    CommandEffect, CommittedGeneration, JournalError, ObserveOutcome, Position, PositionRequest,
+    PublicationMailbox, QueuedCommand, RulesetParameters, ShapeSlot, SnapshotFanout, World,
+    WorldConfig, WorldError, OVERFLOW_TICK_OBSERVATIONS, QUEUE_LIMIT_BYTES,
 };
 
 fn bump(arrival: u64, aigent: &[u8], sequence: u64, delta: i64) -> QueuedCommand {
@@ -42,6 +42,8 @@ fn forced_interrupt_recovers_last_committed_boundary() {
             pending_ruleset: None,
             command_summaries: vec!["uncommitted".into()],
             active_leases: Default::default(),
+            entities: Default::default(),
+            next_entity_id: world_server::FIRST_ENTITY_ID,
             integrity_hex: String::new(),
         })
         .unwrap();
@@ -87,6 +89,8 @@ fn incomplete_unsealed_committed_fails_closed() {
         pending_ruleset: None,
         command_summaries: vec![],
         active_leases: Default::default(),
+        entities: Default::default(),
+        next_entity_id: world_server::FIRST_ENTITY_ID,
         integrity_hex: String::new(),
     });
 
@@ -163,6 +167,86 @@ fn pending_parameter_tamper_fails_integrity() {
     assert!(!packet.integrity_ok());
 }
 
+/// Tampering any authoritative entity field or the ID allocator invalidates the
+/// sealed digest.
+///
+/// `integrity_ok()` recomputes with the same function that sealed the packet, so
+/// an encode/decode round trip cannot tell whether a field is inside the digest.
+/// Only tampering a sealed packet can: each block below alters exactly one
+/// authoritative value on disk and requires `verify_committed` to reject it, the
+/// same guarantee `lease_identity_tamper_fails_integrity` gives the lease table.
+#[test]
+fn entity_state_tamper_fails_integrity() {
+    let mut world = World::new(WorldConfig::default());
+    world
+        .enqueue(QueuedCommand {
+            arrival_tick: 1,
+            aigent_id: b"owner".to_vec(),
+            sequence: 1,
+            effect: CommandEffect::CreateEntity {
+                position: PositionRequest::new(1.5, -2.0, 3.25),
+                shape: Some(ShapeSlot::from_encoded(vec![7, 7])),
+            },
+        })
+        .unwrap();
+    world.advance_tick().unwrap();
+
+    let sealed = world.journal().last_committed().unwrap().clone();
+    assert!(sealed.integrity_ok());
+    assert_eq!(sealed.next_entity_id, 2);
+
+    let mut packet = sealed.clone();
+    packet.entities.get_mut(&1).expect("entity 1").position =
+        Position::new(1.5, -2.0, 3.251).expect("legal position");
+    assert!(
+        !packet.integrity_ok(),
+        "a moved entity position must break the durable digest"
+    );
+
+    let mut packet = sealed.clone();
+    packet.entities.get_mut(&1).expect("entity 1").revision = 9;
+    assert!(
+        !packet.integrity_ok(),
+        "a rewritten entity revision must break the durable digest"
+    );
+
+    let mut packet = sealed.clone();
+    packet.entities.get_mut(&1).expect("entity 1").shape = None;
+    assert!(
+        !packet.integrity_ok(),
+        "a dropped shape slot must break the durable digest"
+    );
+
+    let mut packet = sealed.clone();
+    packet.entities.get_mut(&1).expect("entity 1").shape =
+        Some(ShapeSlot::from_encoded(vec![7, 7, 7]));
+    assert!(
+        !packet.integrity_ok(),
+        "rewritten shape bytes must break the durable digest"
+    );
+
+    let mut packet = sealed.clone();
+    packet.entities.get_mut(&1).expect("entity 1").entity_id = 5;
+    assert!(
+        !packet.integrity_ok(),
+        "a re-identified entity must break the durable digest"
+    );
+
+    let mut packet = sealed.clone();
+    packet.entities.clear();
+    assert!(
+        !packet.integrity_ok(),
+        "a deleted entity table must break the durable digest"
+    );
+
+    let mut packet = sealed;
+    packet.next_entity_id = 9;
+    assert!(
+        !packet.integrity_ok(),
+        "ADR-0005 commits the ID allocator with the mutation, so the durable digest must cover it"
+    );
+}
+
 /// Generation gap in committed history fails closed.
 #[test]
 fn generation_gap_fails_closed() {
@@ -177,6 +261,8 @@ fn generation_gap_fails_closed() {
         pending_ruleset: None,
         command_summaries: vec![],
         active_leases: Default::default(),
+        entities: Default::default(),
+        next_entity_id: world_server::FIRST_ENTITY_ID,
         integrity_hex: String::new(),
     });
 

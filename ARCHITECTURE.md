@@ -115,6 +115,18 @@ remains `UNSUPPORTED_MESSAGE` until a typed payload exists), and generation
 digests for same-build replay checks. Event emission, collision, persistence,
 and sockets remain later tasks.
 
+Authoritative spatial state lives in the `EntityStore` (task-046): globally
+monotonic `u64` entity IDs allocated only on an accepted creation, non-zero
+`u64` revisions incremented exactly once per accepted externally visible
+change, canonical finite `f64` metre positions rejected outside the §6 world
+bound, and an opaque shape slot. Iteration and publication are by ascending
+unsigned entity ID. The store is part of the tentative tick, so entity
+mutations install only after the durable commit succeeds, and both the
+published generation digest and the durable packet's integrity digest cover
+the entity table and the ID allocator. Shape validation (`ShapeTree` budgets
+and grammar) and collider derivation are later tasks; the store never decodes
+the slot.
+
 Intent validation, application, and collision all read one frozen ruleset generation, so
 two commands in the same tick can never be judged by different rules.
 

@@ -9,6 +9,7 @@ pub use async_writer::{AsyncSqliteWriter, ASYNC_WRITER_QUEUE_CAP};
 pub use memory::InMemoryJournal;
 pub use sqlite::SqliteJournal;
 
+use crate::entity::EntitySnapshot;
 use crate::lease::LeaseSnapshot;
 use crate::ruleset::{PendingRuleset, RulesetGeneration, RulesetParameters};
 use std::collections::BTreeMap;
@@ -25,6 +26,11 @@ pub struct CommittedGeneration {
     pub command_summaries: Vec<String>,
     /// Active leases at commit time.
     pub active_leases: BTreeMap<u64, LeaseSnapshot>,
+    /// Authoritative entity table at commit time, ordered by unsigned ID.
+    pub entities: BTreeMap<u64, EntitySnapshot>,
+    /// Entity ID allocator state at commit time (ADR-0005 records allocator
+    /// changes in the same transaction as the mutations that caused them).
+    pub next_entity_id: u64,
     /// Integrity digest over the sealed packet fields.
     pub integrity_hex: String,
 }
@@ -72,6 +78,24 @@ impl CommittedGeneration {
             hasher.update(lease.granted_tick.to_be_bytes());
             hasher.update(lease.expire_tick.to_be_bytes());
         }
+        hasher.update((self.entities.len() as u64).to_be_bytes());
+        for (entity_id, entity) in &self.entities {
+            hasher.update(entity_id.to_be_bytes());
+            hasher.update(entity.entity_id.to_be_bytes());
+            hasher.update(entity.revision.to_be_bytes());
+            for bits in entity.position.to_bits() {
+                hasher.update(bits.to_be_bytes());
+            }
+            match &entity.shape {
+                Some(shape) => {
+                    hasher.update([1]);
+                    hasher.update((shape.len() as u64).to_be_bytes());
+                    hasher.update(shape.as_bytes());
+                }
+                None => hasher.update([0]),
+            }
+        }
+        hasher.update(self.next_entity_id.to_be_bytes());
         hex::encode(hasher.finalize())
     }
 
