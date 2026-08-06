@@ -1,12 +1,12 @@
 ---
 id: task-046
 title: Introduce the authoritative entity store into the world core
-status: backlog
+status: ready
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T13:24:48Z"
-updatedAt: "2026-08-06T13:24:48Z"
+updatedAt: "2026-08-06T14:37:13Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ The world core currently holds no spatial entity state: authoritative state is a
 ## Log
 
 - 2026-08-06T13:24:48Z — created (status: backlog)
+- 2026-08-06T14:37:13Z — moved to ready
