@@ -51,6 +51,8 @@ fn sqlite_commit_rejects_non_contiguous_generation() {
             pending_ruleset: None,
             command_summaries: vec!["skip".into()],
             active_leases: last.active_leases.clone(),
+            entities: Default::default(),
+            next_entity_id: world_server::FIRST_ENTITY_ID,
             integrity_hex: String::new(),
         })
         .and_then(|_| journal.commit().map(|_| ()))
@@ -109,6 +111,8 @@ fn sqlite_pending_discarded_on_recover_without_commit() {
                 pending_ruleset: None,
                 command_summaries: vec!["uncommitted".into()],
                 active_leases: last.active_leases.clone(),
+                entities: Default::default(),
+                next_entity_id: world_server::FIRST_ENTITY_ID,
                 integrity_hex: String::new(),
             })
             .unwrap();
@@ -204,6 +208,8 @@ fn sqlite_generation_gap_fails_closed() {
             pending_ruleset: None,
             command_summaries: vec!["gap".into()],
             active_leases: base.active_leases,
+            entities: Default::default(),
+            next_entity_id: world_server::FIRST_ENTITY_ID,
             integrity_hex: String::new(),
         })
         .unwrap();

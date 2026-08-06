@@ -218,6 +218,8 @@ async fn sustained_overflow_isolates_only_slow_connection() {
             active_leases: Default::default(),
             applied_commands: vec![],
             expired_leases: vec![],
+            entities: Default::default(),
+            next_entity_id: world_server::FIRST_ENTITY_ID,
             rng_draws: vec![],
         };
         state.publish_generation(gen);
@@ -259,6 +261,8 @@ async fn sustained_overflow_isolates_only_slow_connection() {
         active_leases: Default::default(),
         applied_commands: vec![],
         expired_leases: vec![],
+        entities: Default::default(),
+        next_entity_id: world_server::FIRST_ENTITY_ID,
         rng_draws: vec![],
     };
     state.publish_generation(gen);
@@ -303,6 +307,8 @@ async fn drain_does_not_block_logical_ticks() {
             active_leases: Default::default(),
             applied_commands: vec![],
             expired_leases: vec![],
+            entities: Default::default(),
+            next_entity_id: world_server::FIRST_ENTITY_ID,
             rng_draws: vec![],
         });
         let _ = state

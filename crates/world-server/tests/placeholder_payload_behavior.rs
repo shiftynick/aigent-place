@@ -44,6 +44,8 @@ fn stub_payload_from_generation_includes_active_leases() {
         active_leases: leases,
         applied_commands: vec![],
         expired_leases: vec![],
+        entities: Default::default(),
+        next_entity_id: world_server::FIRST_ENTITY_ID,
         rng_draws: vec![],
     };
     let payload = StubSnapshotPayload::from_generation(&generation);

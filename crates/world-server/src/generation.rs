@@ -1,5 +1,6 @@
 //! Immutable world generation published at each tick boundary.
 
+use crate::entity::EntitySnapshot;
 use crate::lease::LeaseSnapshot;
 use crate::rng::DrawResult;
 use sha2::{Digest, Sha256};
@@ -26,6 +27,10 @@ pub struct ImmutableGeneration {
     pub applied_commands: Vec<AppliedCommand>,
     pub expired_leases: Vec<u64>,
     pub rng_draws: Vec<(u32, DrawResult)>,
+    /// Authoritative entity table frozen at this tick, ordered by unsigned ID.
+    pub entities: BTreeMap<u64, EntitySnapshot>,
+    /// Global monotonic ID allocator state; `0` marks an exhausted space.
+    pub next_entity_id: u64,
 }
 
 impl ImmutableGeneration {
@@ -70,6 +75,24 @@ impl ImmutableGeneration {
             hasher.update((draw.candidate_index as u64).to_be_bytes());
             hasher.update(u64::from(draw.rejection_block).to_be_bytes());
         }
+        hasher.update((self.entities.len() as u64).to_be_bytes());
+        for (entity_id, entity) in &self.entities {
+            hasher.update(entity_id.to_be_bytes());
+            hasher.update(entity.entity_id.to_be_bytes());
+            hasher.update(entity.revision.to_be_bytes());
+            for bits in entity.position.to_bits() {
+                hasher.update(bits.to_be_bytes());
+            }
+            match &entity.shape {
+                Some(shape) => {
+                    hasher.update([1]);
+                    hasher.update((shape.len() as u64).to_be_bytes());
+                    hasher.update(shape.as_bytes());
+                }
+                None => hasher.update([0]),
+            }
+        }
+        hasher.update(self.next_entity_id.to_be_bytes());
         hasher.finalize().into()
     }
 }

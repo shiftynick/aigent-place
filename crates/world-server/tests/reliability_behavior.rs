@@ -42,6 +42,8 @@ fn forced_interrupt_recovers_last_committed_boundary() {
             pending_ruleset: None,
             command_summaries: vec!["uncommitted".into()],
             active_leases: Default::default(),
+            entities: Default::default(),
+            next_entity_id: world_server::FIRST_ENTITY_ID,
             integrity_hex: String::new(),
         })
         .unwrap();
@@ -87,6 +89,8 @@ fn incomplete_unsealed_committed_fails_closed() {
         pending_ruleset: None,
         command_summaries: vec![],
         active_leases: Default::default(),
+        entities: Default::default(),
+        next_entity_id: world_server::FIRST_ENTITY_ID,
         integrity_hex: String::new(),
     });
 
@@ -177,6 +181,8 @@ fn generation_gap_fails_closed() {
         pending_ruleset: None,
         command_summaries: vec![],
         active_leases: Default::default(),
+        entities: Default::default(),
+        next_entity_id: world_server::FIRST_ENTITY_ID,
         integrity_hex: String::new(),
     });
 
