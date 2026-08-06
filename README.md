@@ -34,8 +34,14 @@ marker by default; `world-server --listen [HOST:PORT]` serves
 `ws://HOST:PORT/ws` for local handshake demos (demo trusted-inject identity;
 default `127.0.0.1:7600`). Connected clients receive snapshot observe envelopes
 from the outbound fan-out drain (`TransportState::drain_fanout`); sustained
-outbound overflow isolates only the slow connection. `--listen` advances the
-world at 20 Hz and drains observe traffic. Against a listening server, run
+outbound overflow isolates only the slow connection. Every observe payload —
+full snapshots, deltas, and resync baselines alike — is truncated to the
+100-entity AOI hard cap, nearest-first from that connection's focus. An aigent
+focuses on its own body; viewers hold the world origin until protocol v1 carries
+a camera. Known limitation: the stub payload is a flat body list with no
+enter/leave records, so a body that merely left the interest set currently looks
+the same to a client as one whose lease ended. `--listen` advances the world at
+20 Hz and drains observe traffic. Against a listening server, run
 `npm run aigent:scripted-move` for a one-command scripted aigent that issues
 wire `MOVE` leases, prints authoritative results, and demonstrates idempotent
 replay. Open the viewer with `?ws=ws://127.0.0.1:7600/ws` (`npm run viewer:dev`
