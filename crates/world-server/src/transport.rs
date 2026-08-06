@@ -7,7 +7,9 @@
 //! overflow observation — the drain path never awaits a socket write.
 
 use crate::aoi::AoiError;
-use crate::fanout::{PublicationMailbox, PublishOutcome, SnapshotFanout};
+use crate::fanout::{
+    PublicationMailbox, PublishOutcome, SnapshotFanout, StateFrameShape, StateSizing,
+};
 use crate::generation::ImmutableGeneration;
 use crate::outbound::{ObserveOutcome, QUEUE_LIMIT_BYTES};
 use crate::session::{
@@ -188,6 +190,12 @@ impl TransportState {
     /// Never awaits I/O. Queue byte accounting clears only after the socket
     /// task reports a send via [`Self::note_frame_sent`], so healthy writers
     /// that clear between ticks stay under the overflow window.
+    ///
+    /// `encoded_bytes` is a fixture override that charges every state item a
+    /// fixed size. The production path passes `None`, and each item is then
+    /// charged the exact encoded length of the frame this pass writes for it,
+    /// so the 256 KiB coalesce threshold and the sustained-overflow disconnect
+    /// (ARCHITECTURE section 1) measure real socket bytes.
     pub async fn drain_fanout(&self, encoded_bytes: Option<usize>) -> DrainReport {
         // Observe first: pressure is from frames not yet written (and therefore
         // not yet cleared by note_frame_sent), not from this pass's enqueue.
@@ -205,23 +213,39 @@ impl TransportState {
                 continue;
             }
             self.flush_pending(&connection_id).await;
-            let provisional = encode_envelope(
-                &connection_id,
-                self.next_server_message_id(),
-                envelope::Body::FullSnapshot(FullSnapshot {
-                    baseline_id: 0,
-                    payload: generation.digest().to_vec(),
-                }),
-            );
-            let size = encoded_bytes.unwrap_or(provisional.len());
-            let outcome = {
+            // One message id per connection per pass: the id a frame is sized
+            // with is the id it is written with, so the bytes charged to the
+            // outbound queue are the bytes that reach the socket.
+            let message_id = self.next_server_message_id();
+            let measure = |shape: StateFrameShape<'_>| {
+                state_frame_encoded_len(&connection_id, message_id, shape)
+            };
+            let sizing = match encoded_bytes {
+                Some(bytes) => StateSizing::Fixed(bytes),
+                None => StateSizing::Frame(&measure),
+            };
+            // Publish and encode under one lock: a client resync arriving
+            // between them would replace this connection's payload, so the
+            // queue would be charged one frame while the socket received
+            // another. No await happens inside, so the drain still never
+            // blocks on I/O.
+            let (outcome, frames) = {
                 let mut fanout = self.fanout.lock().await;
                 // Live traffic is AOI-truncated: nearest-first under the role's
                 // cap against this connection's own focus.
-                fanout.publish_interest_to(&connection_id, &generation, Some(size))
-            };
-            let Some(outcome) = outcome else {
-                continue;
+                let Some(outcome) = fanout.publish_interest_to(&connection_id, &generation, sizing)
+                else {
+                    continue;
+                };
+                let frames = encode_publish_frames(
+                    &connection_id,
+                    message_id,
+                    &outcome,
+                    fanout
+                        .get(&connection_id)
+                        .and_then(|c| c.snapshot.last_payload()),
+                );
+                (outcome, frames)
             };
             if let PublishOutcome::InterestUnavailable { error } = outcome {
                 report
@@ -229,20 +253,6 @@ impl TransportState {
                     .push((connection_id.clone(), error));
                 continue;
             }
-            if matches!(outcome, PublishOutcome::ConnectionClosed) {
-                continue;
-            }
-            let frames = {
-                let fanout = self.fanout.lock().await;
-                encode_publish_frames(
-                    &connection_id,
-                    self.next_server_message_id(),
-                    &outcome,
-                    fanout
-                        .get(&connection_id)
-                        .and_then(|c| c.snapshot.last_payload()),
-                )
-            };
             for frame in frames {
                 if self.try_deliver(&connection_id, Bytes::from(frame)).await {
                     delivered += 1;
@@ -993,7 +1003,7 @@ fn encode_command_outcome(
     }
 }
 
-fn encode_envelope(connection_id: &[u8], message_id: u64, body: envelope::Body) -> Vec<u8> {
+fn server_envelope(connection_id: &[u8], message_id: u64, body: envelope::Body) -> Envelope {
     Envelope {
         protocol_major: 1,
         connection_id: connection_id.to_vec(),
@@ -1003,7 +1013,46 @@ fn encode_envelope(connection_id: &[u8], message_id: u64, body: envelope::Body) 
         }),
         body: Some(body),
     }
-    .encode_to_vec()
+}
+
+fn encode_envelope(connection_id: &[u8], message_id: u64, body: envelope::Body) -> Vec<u8> {
+    server_envelope(connection_id, message_id, body).encode_to_vec()
+}
+
+/// Encoded length of the state frame this drain will write for `shape`.
+///
+/// Built from the same envelope, payload encoding, and message id that
+/// [`encode_publish_frames`] goes on to write, and `prost` reports the length
+/// its encoder produces — so outbound pressure is charged the socket's bytes
+/// rather than a provisional stand-in.
+fn state_frame_encoded_len(
+    connection_id: &[u8],
+    message_id: u64,
+    shape: StateFrameShape<'_>,
+) -> usize {
+    let body = match shape {
+        StateFrameShape::Full {
+            baseline_id,
+            payload,
+        } => envelope::Body::FullSnapshot(FullSnapshot {
+            baseline_id,
+            payload: payload.encode_wire(),
+        }),
+        StateFrameShape::Delta {
+            baseline_id,
+            payload,
+        } => envelope::Body::SnapshotDelta(SnapshotDelta {
+            baseline_id,
+            payload: payload.encode_wire(),
+        }),
+        StateFrameShape::ResyncRequired { notice } => {
+            envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
+                reason: notice.reason as i32,
+                baseline_id: notice.requested_baseline_id,
+            })
+        }
+    };
+    server_envelope(connection_id, message_id, body).encoded_len()
 }
 
 fn wire_to_semantic_hello(
