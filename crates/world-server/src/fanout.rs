@@ -11,9 +11,26 @@ use crate::generation::ImmutableGeneration;
 use crate::outbound::{EnqueueStateOutcome, ObserveOutcome, OutboundQueue, StateKind};
 use crate::session::ConnectionRole;
 use crate::snapshot::{
-    SnapshotChannel, SnapshotResyncRequired, SnapshotStatus, StubSnapshotPayload,
+    placeholder_body_from_lease, SnapshotChannel, SnapshotResyncRequired, SnapshotStatus,
+    StubSnapshotPayload,
 };
 use std::collections::{HashMap, HashSet};
+
+/// AOI candidates for one generation: the placeholder body of every active lease.
+///
+/// `active_leases` is a `BTreeMap` keyed by `body_id`, so the candidate list is
+/// deterministic and free of duplicate ids by construction.
+fn aoi_candidates(generation: &ImmutableGeneration) -> Vec<AoiEntity> {
+    generation
+        .active_leases
+        .values()
+        .map(|lease| {
+            let body = placeholder_body_from_lease(lease);
+            let (x, y, z) = body.position_m();
+            AoiEntity::new(body.body_id, x, y, z)
+        })
+        .collect()
+}
 
 /// Hand-off from tick thread to serialization stage.
 ///
@@ -119,6 +136,11 @@ pub struct ConnectionOutbound {
     pub events: EventStreamCursor,
     /// Interest focus for AOI truncation (viewer camera / aigent body origin).
     pub focus: FocusPoint,
+    /// Body whose live pose drives [`Self::focus`] (an aigent's own body).
+    ///
+    /// `None` leaves the focus wherever it was last set. Protocol v1 carries no
+    /// viewer camera, so spectators keep the default origin focus.
+    pub focus_body_id: Option<u64>,
     pub role: ConnectionRole,
     /// Active viewer AOI policy cap (ignored for aigents).
     pub viewer_aoi_cap: u32,
@@ -138,6 +160,7 @@ impl Default for ConnectionOutbound {
             snapshot: SnapshotChannel::new(),
             events: EventStreamCursor::default(),
             focus: FocusPoint::origin(),
+            focus_body_id: None,
             role: ConnectionRole::Viewer,
             viewer_aoi_cap: AOI_HARD_CAP,
             interest: Vec::new(),
@@ -169,6 +192,22 @@ impl ConnectionOutbound {
         let diff = interest_diff(&self.interest, &next);
         self.interest = next.clone();
         Ok((next, diff))
+    }
+
+    /// Move the focus onto the tracked body's pose in this generation.
+    ///
+    /// A tracked body with no live lease (not yet granted, or expired) leaves
+    /// the previous focus in place rather than snapping the connection back to
+    /// the world origin mid-session.
+    fn track_focus(&mut self, generation: &ImmutableGeneration) {
+        let Some(body_id) = self.focus_body_id else {
+            return;
+        };
+        let Some(lease) = generation.active_leases.get(&body_id) else {
+            return;
+        };
+        let (x, y, z) = placeholder_body_from_lease(lease).position_m();
+        self.focus = FocusPoint::new(x, y, z);
     }
 }
 
@@ -216,7 +255,7 @@ impl SnapshotFanout {
         Some(self.get_mut(connection_id)?.refresh_interest(entities))
     }
 
-    /// Drain a mailbox generation into every attached connection.
+    /// Drain a mailbox generation into every attached connection, AOI-truncated.
     pub fn drain_mailbox(
         &mut self,
         mailbox: &PublicationMailbox,
@@ -228,15 +267,42 @@ impl SnapshotFanout {
         let ids: Vec<Vec<u8>> = self.by_conn.keys().cloned().collect();
         let mut outcomes = Vec::new();
         for id in ids {
-            if let Some(outcome) = self.publish_to(&id, &generation, encoded_bytes) {
+            if let Some(outcome) = self.publish_interest_to(&id, &generation, encoded_bytes) {
                 outcomes.push((id, outcome));
             }
         }
         outcomes
     }
 
-    /// Publish a stub full snapshot (or delta against live baseline) for one connection.
+    /// Publish every active lease to one connection, without AOI truncation.
+    ///
+    /// Retained for the workload harness and the protocol conformance oracles,
+    /// which drive interest from their own candidate catalog. Connection
+    /// fan-out must use [`Self::publish_interest_to`] so the AOI hard cap
+    /// applies to what actually reaches a socket.
     pub fn publish_to(
+        &mut self,
+        connection_id: &[u8],
+        generation: &ImmutableGeneration,
+        encoded_bytes: Option<usize>,
+    ) -> Option<PublishOutcome> {
+        let payload = StubSnapshotPayload::from_generation(generation);
+        self.publish_payload_to(connection_id, payload, encoded_bytes)
+    }
+
+    /// Fan-out publish: track the connection's focus body, truncate the
+    /// candidate set nearest-first under the role's AOI cap, and publish only
+    /// the surviving bodies in interest order.
+    ///
+    /// The refresh's [`InterestDiff`] is deliberately dropped here: the stub
+    /// payload is a flat body list with nowhere to carry enter/leave records.
+    /// Truncation therefore makes a body's absence ambiguous — it may have left
+    /// the interest set or lost its lease — which ARCHITECTURE "Message
+    /// families" forbids for delta percepts. Carrying those records needs a
+    /// payload-format revision on both the Rust and viewer sides and is tracked
+    /// as its own task; the cap is enforced here in the meantime because an
+    /// unbounded fan-out breaks a hard workload limit.
+    pub fn publish_interest_to(
         &mut self,
         connection_id: &[u8],
         generation: &ImmutableGeneration,
@@ -246,10 +312,36 @@ impl SnapshotFanout {
         if connection.queue.is_closed() {
             return Some(PublishOutcome::ConnectionClosed);
         }
+        // Checked before the refresh: a held connection delivers nothing, and
+        // recording an interest set it never received would hide the later
+        // enter diff for those bodies.
         if connection.hold_observe {
             return None;
         }
-        let payload = StubSnapshotPayload::from_generation(generation);
+        connection.track_focus(generation);
+        let interest = match connection.refresh_interest(&aoi_candidates(generation)) {
+            Ok((interest, _diff)) => interest,
+            Err(error) => return Some(PublishOutcome::InterestUnavailable { error }),
+        };
+        let payload = StubSnapshotPayload::from_generation_interest(generation, &interest);
+        self.publish_payload_to(connection_id, payload, encoded_bytes)
+    }
+
+    /// Queue one already-built payload as a full snapshot, or as a delta against
+    /// the connection's live baseline.
+    fn publish_payload_to(
+        &mut self,
+        connection_id: &[u8],
+        payload: StubSnapshotPayload,
+        encoded_bytes: Option<usize>,
+    ) -> Option<PublishOutcome> {
+        let connection = self.by_conn.get_mut(connection_id)?;
+        if connection.queue.is_closed() {
+            return Some(PublishOutcome::ConnectionClosed);
+        }
+        if connection.hold_observe {
+            return None;
+        }
         let full_size = encoded_bytes.unwrap_or_else(|| payload.encoded_bytes());
         let delta_size = encoded_bytes.unwrap_or(32).min(full_size);
 
@@ -292,6 +384,12 @@ impl SnapshotFanout {
     }
 
     /// Client/server full resync; enqueues through the outbound queue.
+    ///
+    /// The fresh baseline carries the same interest-truncated body set a normal
+    /// publish would deliver, so a resync cannot smuggle the whole world past
+    /// the AOI cap. Returns `None` when the connection is gone, its queue is
+    /// closed, or its AOI policy rejects the refresh; in every case no baseline
+    /// is allocated and nothing is queued.
     pub fn client_resync(
         &mut self,
         connection_id: &[u8],
@@ -307,15 +405,19 @@ impl SnapshotFanout {
         if connection.queue.is_closed() {
             return None;
         }
+        connection.track_focus(generation);
+        let (interest, _diff) = connection
+            .refresh_interest(&aoi_candidates(generation))
+            .ok()?;
         let events_before = connection.events.clone();
-        let payload = StubSnapshotPayload::from_generation(generation);
+        let payload = StubSnapshotPayload::from_generation_interest(generation, &interest);
         let full_size = encoded_bytes.unwrap_or_else(|| payload.encoded_bytes());
         let enqueue = connection
             .queue
             .enqueue_state(full_size, StateKind::Full, full_size)?;
         let baseline = connection.next_baseline;
         connection.next_baseline = connection.next_baseline.saturating_add(1);
-        let payload = connection.snapshot.request_resync(baseline, generation);
+        let payload = connection.snapshot.install_full(baseline, payload);
         assert_eq!(connection.events, events_before);
         Some((baseline, payload, connection.events.clone(), enqueue))
     }
@@ -346,4 +448,11 @@ pub enum PublishOutcome {
         enqueue: EnqueueStateOutcome,
     },
     ConnectionClosed,
+    /// AOI truncation could not run for this connection (typed policy error,
+    /// such as a zero viewer cap). Nothing is queued and no bodies are
+    /// delivered; publishing the untruncated payload instead would breach the
+    /// hard cap.
+    InterestUnavailable {
+        error: AoiError,
+    },
 }

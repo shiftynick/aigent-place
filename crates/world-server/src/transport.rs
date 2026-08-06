@@ -6,6 +6,7 @@
 //! channels. Slow clients fill those channels and are isolated via outbound
 //! overflow observation — the drain path never awaits a socket write.
 
+use crate::aoi::AoiError;
 use crate::fanout::{PublicationMailbox, PublishOutcome, SnapshotFanout};
 use crate::generation::ImmutableGeneration;
 use crate::outbound::{ObserveOutcome, QUEUE_LIMIT_BYTES};
@@ -202,23 +203,30 @@ impl TransportState {
                 continue;
             }
             self.flush_pending(&connection_id).await;
-            let payload = StubSnapshotPayload::from_generation(&generation);
             let provisional = encode_envelope(
                 &connection_id,
                 self.next_server_message_id(),
                 envelope::Body::FullSnapshot(FullSnapshot {
                     baseline_id: 0,
-                    payload: payload.digest.to_vec(),
+                    payload: generation.digest().to_vec(),
                 }),
             );
             let size = encoded_bytes.unwrap_or(provisional.len());
             let outcome = {
                 let mut fanout = self.fanout.lock().await;
-                fanout.publish_to(&connection_id, &generation, Some(size))
+                // Live traffic is AOI-truncated: nearest-first under the role's
+                // cap against this connection's own focus.
+                fanout.publish_interest_to(&connection_id, &generation, Some(size))
             };
             let Some(outcome) = outcome else {
                 continue;
             };
+            if let PublishOutcome::InterestUnavailable { error } = outcome {
+                report
+                    .interest_unavailable
+                    .push((connection_id.clone(), error));
+                continue;
+            }
             if matches!(outcome, PublishOutcome::ConnectionClosed) {
                 continue;
             }
@@ -262,6 +270,7 @@ impl TransportState {
         DrainReport {
             delivered: 0,
             closed,
+            interest_unavailable: Vec::new(),
         }
     }
 
@@ -346,6 +355,11 @@ impl TransportState {
 pub struct DrainReport {
     pub delivered: usize,
     pub closed: Vec<Vec<u8>>,
+    /// Connections whose AOI policy could not produce an interest set this
+    /// pass, with the typed reason. They were skipped rather than sent an
+    /// untruncated payload, so the drain reports them instead of leaving the
+    /// starvation silent.
+    pub interest_unavailable: Vec<(Vec<u8>, AoiError)>,
 }
 
 /// Bind `addr` and serve the WebSocket upgrade route forever.
@@ -481,6 +495,9 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
         }
     };
     let role = semantic.role;
+    // One mapping serves both lease application and AOI focus, so an aigent's
+    // interest set is centred on the body its own commands move.
+    let focus_body_id = semantic.aigent_id.as_deref().map(body_id_for_aigent);
 
     let outcome = {
         let mut hub = state.sessions.lock().await;
@@ -513,6 +530,9 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
                 fanout.attach(connection_id.clone());
                 if let Some(connection) = fanout.get_mut(&connection_id) {
                     connection.role = role;
+                    // Viewers have no camera on the wire in protocol v1, so they
+                    // keep the default origin focus.
+                    connection.focus_body_id = focus_body_id;
                 }
             }
             {
@@ -863,6 +883,7 @@ async fn apply_world_effect(
     }
 }
 
+/// Demo mapping from a trusted-inject `aigent_id` to its placeholder body id.
 fn body_id_for_aigent(aigent_id: &[u8]) -> u64 {
     let digest = Sha256::digest(aigent_id);
     u64::from_be_bytes(digest[..8].try_into().expect("sha256 prefix"))
@@ -909,7 +930,8 @@ fn encode_publish_frames(
                 baseline_id: required.requested_baseline_id,
             }),
         )],
-        PublishOutcome::ConnectionClosed => Vec::new(),
+        // Neither outcome queued anything, so nothing goes on the wire.
+        PublishOutcome::ConnectionClosed | PublishOutcome::InterestUnavailable { .. } => Vec::new(),
     }
 }
 

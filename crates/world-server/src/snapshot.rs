@@ -30,6 +30,18 @@ pub struct PlaceholderBody {
     pub z_mm: i64,
 }
 
+impl PlaceholderBody {
+    /// Pose in canonical world metres (`f64`); the wire encoding is millimetres.
+    #[must_use]
+    pub fn position_m(&self) -> (f64, f64, f64) {
+        (
+            self.x_mm as f64 / 1000.0,
+            self.y_mm as f64 / 1000.0,
+            self.z_mm as f64 / 1000.0,
+        )
+    }
+}
+
 /// Stub full-snapshot payload derived from an immutable world generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StubSnapshotPayload {
@@ -40,6 +52,12 @@ pub struct StubSnapshotPayload {
 }
 
 impl StubSnapshotPayload {
+    /// Every active lease, in ascending `body_id` order, with no AOI truncation.
+    ///
+    /// Used by the workload harness and the protocol conformance oracles, which
+    /// drive interest from their own candidate catalog. Live socket traffic uses
+    /// [`Self::from_generation_interest`] so the AOI hard cap bounds delivered
+    /// bytes.
     #[must_use]
     pub fn from_generation(generation: &ImmutableGeneration) -> Self {
         let bodies = generation
@@ -47,6 +65,25 @@ impl StubSnapshotPayload {
             .values()
             .map(placeholder_body_from_lease)
             .collect();
+        Self::with_bodies(generation, bodies)
+    }
+
+    /// Only the bodies named by `interest`, in that order (nearest focus first).
+    ///
+    /// `interest` is an ordered AOI survivor list. Ids without a live lease in
+    /// this generation are skipped, so a stale interest set cannot resurrect a
+    /// body whose lease has expired.
+    #[must_use]
+    pub fn from_generation_interest(generation: &ImmutableGeneration, interest: &[u64]) -> Self {
+        let bodies = interest
+            .iter()
+            .filter_map(|body_id| generation.active_leases.get(body_id))
+            .map(placeholder_body_from_lease)
+            .collect();
+        Self::with_bodies(generation, bodies)
+    }
+
+    fn with_bodies(generation: &ImmutableGeneration, bodies: Vec<PlaceholderBody>) -> Self {
         Self {
             generation: generation.generation,
             tick: generation.tick,
@@ -233,17 +270,5 @@ impl SnapshotChannel {
         }
         self.last_payload = Some(payload);
         Ok(())
-    }
-
-    /// Client- or server-initiated full resync after baseline failure.
-    pub fn request_resync(
-        &mut self,
-        new_baseline_id: u64,
-        generation: &ImmutableGeneration,
-    ) -> StubSnapshotPayload {
-        self.install_full(
-            new_baseline_id,
-            StubSnapshotPayload::from_generation(generation),
-        )
     }
 }
