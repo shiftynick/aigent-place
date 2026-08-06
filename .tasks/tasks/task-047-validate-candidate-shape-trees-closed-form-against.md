@@ -6,7 +6,7 @@ priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T13:24:48Z"
-updatedAt: "2026-08-06T15:44:44Z"
+updatedAt: "2026-08-06T15:48:05Z"
 ---
 
 <!-- task-tracker:description -->
@@ -258,3 +258,37 @@ The protocol schematizes ShapeTree, ShapeNode, and the six v1 primitives, but th
   | npm notice run node ./scripts/smoke.mjs
 - 2026-08-06T15:43:36Z — moved to done
 - 2026-08-06T15:44:44Z — note: DEFECT IN THE COMMIT MESSAGE, needs an operator decision. I passed the commit message using PowerShell here-string syntax (-m @'...'@) through the Bash tool, which does not understand it, so a literal '@' line was prepended. The commit subject is therefore '@' and the intended subject 'task-047: reject malformed candidate shapes before they reach the world' became the first body line; the rest of the message is intact. This is cosmetic and the branch is local and unpushed, and AGENTS.md mandates squash-only merges where the pull request title supplies the final subject, so it does not reach main on its own. I did NOT correct it because this task was given an explicit 'no --amend' constraint and git reset would be the same rewrite by another name; quietly deviating from a stated constraint is worse than surfacing it. Recommended fix, one command, at the operator's discretion: git commit --amend to drop the leading '@' line. Root cause for the retrospective: the Bash tool documents that PowerShell here-strings are not supported and that heredocs must be used instead; I used the wrong one on a Windows host where both shells are available.
+- 2026-08-06T15:47:57Z — run: node scripts/check.mjs
+  started 2026-08-06T15:47:05Z, exit 0 in 51.1s
+  output tail (truncated to last 30 lines):
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-06T15:48:05Z — note: post-review cleanup: removed the unused DimensionField::SegmentLength variant. It was dead because a capsule's cylindrical segment is the one dimension allowed to be zero, so its failure is NegativeSegmentLength rather than NonPositiveDimension; the doc comment now states that instead of leaving an unused variant to imply otherwise. Neither reviewer flagged it across three rounds. docs/ENGINEERING-STANDARDS.md: build extension points only when a current requirement justifies them. Full gate re-run after the change, exit 0.

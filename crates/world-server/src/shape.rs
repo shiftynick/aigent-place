@@ -86,7 +86,12 @@ impl ShapeClass {
     }
 }
 
-/// Which primitive dimension failed, for a typed rejection reason.
+/// Which strictly positive primitive dimension failed, for a typed rejection
+/// reason.
+///
+/// A capsule's cylindrical segment is deliberately absent: it is the one
+/// dimension allowed to be zero, so its failure is
+/// [`ShapeRejection::NegativeSegmentLength`] rather than a non-positive one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DimensionField {
     SizeX,
@@ -96,7 +101,6 @@ pub enum DimensionField {
     Height,
     Width,
     Thickness,
-    SegmentLength,
 }
 
 /// The axis a local extent was measured on.
