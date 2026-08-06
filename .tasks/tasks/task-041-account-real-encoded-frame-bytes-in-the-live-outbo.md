@@ -6,7 +6,7 @@ priority: p2
 tags: [area:network, phase:debt]
 blockedBy: []
 createdAt: "2026-08-06T13:17:20Z"
-updatedAt: "2026-08-06T16:28:56Z"
+updatedAt: "2026-08-06T23:50:28Z"
 ---
 
 <!-- task-tracker:description -->
@@ -202,3 +202,37 @@ Debt left by the live-connection-slice milestone. TransportState::drain_fanout s
 - 2026-08-06T16:28:49Z — note: DISTILL: added one lens to docs/REVIEW-STANDARDS.md - for a budget, quota, or backpressure guard, verify the charged quantity is derived from the same artifact the system releases, because a provisional or logical stand-in on the live path diverges silently while the accurate value is exactly what the test paths exercise. That is this defect verbatim, and task-044 was the same shape one task earlier (interest truncation existed but nothing on the live path called it), so the class recurs.
 - 2026-08-06T16:28:49Z — note: final state: the diff changed after round 3 (the notice-under-load test, the tick-budget pass count, one comment correction, and the distilled lens), which the protocol's three-round cap anticipates - remaining findings are logged and filed rather than re-reviewed. Follow-ups filed: task-7210989894000001 client-resync envelope overhead, task-7210989894000002 what can still trigger the sustained-overflow disconnect, task-7210989894000004 unreferenced drain_mailbox, task-7210989894000005 coalescing does not withdraw already-buffered socket frames, task-7210989894000006 control frames modelled as replaceable state, task-7210989894000007 drain cost against the tick budget at workload scale.
 - 2026-08-06T16:28:56Z — moved to done
+- 2026-08-06T23:49:42Z — note: rebase integration onto task-046 (merged as f4280e1): outbound_pressure_accounting.rs builds ImmutableGeneration as a struct literal and stopped compiling once the entity store added entities + next_entity_id (E0063). Fixture now passes an empty table and FIRST_ENTITY_ID, with a comment recording that frame bytes derive from the lease-backed placeholder payload rather than the entity table, so an empty table is correct rather than convenient. Compiler-verified; no change to the sizing logic under review.
+- 2026-08-06T23:50:28Z — run: node scripts/check.mjs
+  started 2026-08-06T23:49:42Z, exit 0 in 46.2s
+  output tail (truncated to last 30 lines):
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs

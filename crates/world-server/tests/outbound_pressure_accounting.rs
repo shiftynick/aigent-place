@@ -30,7 +30,7 @@ use prost::Message;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use world_server::{
     decode_placeholder_payload, serve_ephemeral, ImmutableGeneration, LeaseSnapshot, SessionHub,
-    TransportState, AOI_HARD_CAP, QUEUE_LIMIT_BYTES, TICK_MS,
+    TransportState, AOI_HARD_CAP, FIRST_ENTITY_ID, QUEUE_LIMIT_BYTES, TICK_MS,
 };
 
 type Socket =
@@ -103,6 +103,10 @@ fn crowd_generation(tick: u64) -> ImmutableGeneration {
         applied_commands: vec![],
         expired_leases: vec![],
         rng_draws: vec![],
+        // Frame bytes are derived from the lease-backed placeholder payload,
+        // not the entity table, so this fixture leaves the table empty.
+        entities: BTreeMap::new(),
+        next_entity_id: FIRST_ENTITY_ID,
     }
 }
 
