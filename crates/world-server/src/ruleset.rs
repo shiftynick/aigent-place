@@ -8,6 +8,62 @@ pub const DEFAULT_LEASE_TTL_MS: u32 = 10_000;
 /// Default ordinary soak delay in ticks.
 pub const DEFAULT_SOAK_DELAY_TICKS: u64 = 1;
 
+/// `shape.*` catalog entries: path, inclusive range, and default, transcribed
+/// from `ruleset/v1/CONTRACT.md` section 3.
+///
+/// Shape budgets are read from the live generation's parameter map rather than
+/// from constants at the point of use, so they must exist in every complete
+/// candidate. The two `shape.*` cross-field constraints from that section are
+/// enforced in [`validate_candidate`].
+const SHAPE_CATALOG: [(&str, i64, i64, i64); 5] = [
+    ("shape.body_max_parts", 1, 256, 32),
+    ("shape.body_max_joints", 0, 256, 32),
+    ("shape.object_max_parts", 1, 256, 64),
+    ("shape.object_max_joints", 0, 256, 64),
+    ("shape.max_extent_mm", 1, 100_000, 10_000),
+];
+
+/// Catalog paths that appear as cost-driving terms in the composite envelope
+/// formula of `ruleset/v1/CONTRACT.md` section 4.
+///
+/// The formula's only shape term is
+/// `(body_max_parts + object_max_parts) * objects_per_aigent`, and its ceiling
+/// **equals the formula's value on the default catalog**. Every other term of
+/// that formula is fixed for this server: it does not carry
+/// `budget.objects_per_aigent`, the `speech.*` pair, or
+/// `channel.post_rate_per_minute`, and a candidate naming any of them is
+/// rejected as an unknown path — so each of those terms holds its contract
+/// default and cancels between a candidate's cost and the ceiling. What
+/// remains is `(sum - default sum) * objects_per_aigent`, and
+/// `objects_per_aigent` defaults to a positive value, so the envelope reduces
+/// exactly to `sum <= default sum`. (`objects_per_aigent` may be voted to zero
+/// only once it becomes a parameter here, which would make the shape term
+/// vanish; this check would then be conservative rather than wrong, and the
+/// task that adds the full formula owns that case.)
+///
+/// Bounding the sum rather than each path individually is what preserves the
+/// compensating trades section 4 explicitly keeps legal — raising body parts
+/// while lowering object parts by as much scores identically and is admitted —
+/// while still refusing any candidate that would raise a server-enforced
+/// budget past the constitutional envelope. Replacing the surrounding skeleton
+/// cost model with the full section 4 formula is tracked as its own task.
+const ENVELOPE_COST_DRIVING_PATHS: [&str; 2] = ["shape.body_max_parts", "shape.object_max_parts"];
+
+/// The greatest legal sum of [`ENVELOPE_COST_DRIVING_PATHS`], derived from the
+/// catalog defaults so it cannot drift away from the ceiling it encodes.
+fn envelope_cost_driving_default_sum() -> i64 {
+    ENVELOPE_COST_DRIVING_PATHS
+        .iter()
+        .map(|path| {
+            SHAPE_CATALOG
+                .iter()
+                .find(|(candidate, _, _, _)| candidate == path)
+                .map(|(_, _, _, default)| *default)
+                .expect("cost-driving path is a shape catalog entry")
+        })
+        .sum()
+}
+
 /// Complete parameter map for one immutable ruleset generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RulesetParameters {
@@ -35,6 +91,9 @@ impl RulesetParameters {
         values.insert("governance.meta_soak_delay_ticks".into(), 2);
         values.insert("governance.cost_ceiling".into(), 100);
         values.insert("governance.candidate_cost".into(), 1);
+        for (path, _, _, default) in SHAPE_CATALOG {
+            values.insert(path.into(), default);
+        }
         Self { values }
     }
 
@@ -109,6 +168,11 @@ pub fn validate_candidate(parameters: &RulesetParameters) -> Result<(), RulesetV
         "governance.meta_soak_delay_ticks",
         "governance.cost_ceiling",
         "governance.candidate_cost",
+        "shape.body_max_parts",
+        "shape.body_max_joints",
+        "shape.object_max_parts",
+        "shape.object_max_joints",
+        "shape.max_extent_mm",
     ];
     for path in parameters.values.keys() {
         if !required.contains(&path.as_str()) {
@@ -119,6 +183,30 @@ pub fn validate_candidate(parameters: &RulesetParameters) -> Result<(), RulesetV
         if parameters.get(path).is_none() {
             return Err(RulesetValidationError::IncompleteCatalog);
         }
+    }
+    for (path, low, high, _) in SHAPE_CATALOG {
+        let value = parameters.get(path).expect("required path present");
+        if !(low..=high).contains(&value) {
+            return Err(RulesetValidationError::OutOfRange { path: path.into() });
+        }
+    }
+    for (joints, parts) in [
+        ("shape.body_max_joints", "shape.body_max_parts"),
+        ("shape.object_max_joints", "shape.object_max_parts"),
+    ] {
+        if parameters.get(joints).unwrap() > parameters.get(parts).unwrap() {
+            return Err(RulesetValidationError::CrossField);
+        }
+    }
+    // See `ENVELOPE_COST_DRIVING_PATHS`: the section 4 shape term is monotone
+    // in the sum of these paths, so bounding the sum enforces the envelope
+    // while leaving compensating trades between them legal.
+    let cost_driving_sum: i64 = ENVELOPE_COST_DRIVING_PATHS
+        .iter()
+        .map(|path| parameters.get(path).unwrap())
+        .sum();
+    if cost_driving_sum > envelope_cost_driving_default_sum() {
+        return Err(RulesetValidationError::CostExceeded);
     }
     let lease = parameters.get("movement.lease_ttl_ms").unwrap();
     if !(1_000..=60_000).contains(&lease) {

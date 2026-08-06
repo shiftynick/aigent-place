@@ -44,3 +44,14 @@ General engineering conventions live in `docs/ENGINEERING-STANDARDS.md`.
   the fixture supplies; an oracle that still passes when the implementation
   under test is deliberately broken is asserting nothing — demonstrated in
   `scripts/derived-oracle-lens.test.mjs`. (origin: task-002 cold review)
+- When a parameter is added to a runtime catalog, verify every validation its
+  contract requires actually covers it — not just the per-parameter range. A
+  composite, envelope, or cross-field check that is still a skeleton stand-in
+  silently makes the new parameter votable past the limit it was supposed to
+  respect. Either implement the missing check for that parameter or refuse the
+  values the check cannot score. (origin: task-047 cold review)
+- Where a contract states that input order is not semantic, verify the
+  reported reason is order-independent too, not only the accept/reject
+  outcome. Iterating an input array in supplied order makes which of several
+  defects gets named depend on ordering the contract says carries no meaning.
+  (origin: task-047)
