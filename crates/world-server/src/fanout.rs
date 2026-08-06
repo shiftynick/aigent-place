@@ -16,6 +16,120 @@ use crate::snapshot::{
 };
 use std::collections::{HashMap, HashSet};
 
+/// Logical delta size charged by the non-socket sizing modes.
+///
+/// The harness and the conformance oracles never encode a wire frame, so they
+/// model a delta as a small replaceable item. Socket traffic must not use this:
+/// the stub delta carries the whole payload on the wire.
+const LOGICAL_DELTA_BYTES: usize = 32;
+
+/// One frame a publish is about to charge, described in the terms the caller
+/// needs in order to encode it. Every variant names exactly what the socket
+/// will receive, including the notice that carries no payload at all.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum StateFrameShape<'a> {
+    /// A self-contained snapshot carrying `payload` under `baseline_id`.
+    Full {
+        baseline_id: u64,
+        payload: &'a StubSnapshotPayload,
+    },
+    /// A delta carrying `payload` against `baseline_id`.
+    Delta {
+        baseline_id: u64,
+        payload: &'a StubSnapshotPayload,
+    },
+    /// A resync-required notice. No snapshot payload reaches the socket.
+    ResyncRequired { notice: &'a SnapshotResyncRequired },
+}
+
+/// How one publish sizes the bytes it charges to a connection's outbound queue.
+///
+/// ARCHITECTURE section 1 caps a connection's outbound queue at 256 KiB of the
+/// bytes that reach its socket, so every path that owns a real socket must use
+/// [`StateSizing::Frame`] and measure the encoding it will actually write. The
+/// logical modes exist for the workload harness, the conformance oracles, and
+/// pressure fixtures, none of which put a frame on a wire.
+#[derive(Clone, Copy)]
+pub(crate) enum StateSizing<'a> {
+    /// Charge the payload's own logical encoded size.
+    Payload,
+    /// Charge one fixed size for every state item (pressure fixtures).
+    Fixed(usize),
+    /// Charge the real encoded frame length, measured by the caller that writes
+    /// it. `Sync` keeps the sizing usable from the async serialization stage,
+    /// where the drain future must stay `Send`.
+    Frame(&'a (dyn Fn(StateFrameShape<'_>) -> usize + Sync)),
+}
+
+impl std::fmt::Debug for StateSizing<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Payload => f.write_str("StateSizing::Payload"),
+            Self::Fixed(bytes) => write!(f, "StateSizing::Fixed({bytes})"),
+            Self::Frame(_) => f.write_str("StateSizing::Frame(..)"),
+        }
+    }
+}
+
+impl StateSizing<'_> {
+    /// The logical sizing an `Option<usize>` caller asks for: `None` measures
+    /// the payload, `Some(n)` charges `n` for every state item.
+    #[must_use]
+    pub(crate) fn logical(encoded_bytes: Option<usize>) -> Self {
+        match encoded_bytes {
+            Some(bytes) => Self::Fixed(bytes),
+            None => Self::Payload,
+        }
+    }
+
+    fn full_bytes(&self, payload: &StubSnapshotPayload, baseline_id: u64) -> usize {
+        match self {
+            Self::Payload => payload.encoded_bytes(),
+            Self::Fixed(bytes) => *bytes,
+            Self::Frame(measure) => measure(StateFrameShape::Full {
+                baseline_id,
+                payload,
+            }),
+        }
+    }
+
+    fn delta_bytes(
+        &self,
+        payload: &StubSnapshotPayload,
+        baseline_id: u64,
+        full_bytes: usize,
+    ) -> usize {
+        match self {
+            Self::Payload => LOGICAL_DELTA_BYTES.min(full_bytes),
+            Self::Fixed(bytes) => (*bytes).min(full_bytes),
+            Self::Frame(measure) => measure(StateFrameShape::Delta {
+                baseline_id,
+                payload,
+            }),
+        }
+    }
+
+    /// Bytes for a publish that will emit a resync notice instead of state.
+    ///
+    /// The logical modes keep charging what they charged for the delta this
+    /// notice replaces, so harness and oracle behaviour is unchanged; only a
+    /// frame-sizing caller measures the small notice it actually writes.
+    fn resync_bytes(
+        &self,
+        notice: &SnapshotResyncRequired,
+        payload: &StubSnapshotPayload,
+        baseline_id: u64,
+    ) -> usize {
+        match self {
+            Self::Payload | Self::Fixed(_) => {
+                let full_bytes = self.full_bytes(payload, baseline_id);
+                self.delta_bytes(payload, baseline_id, full_bytes)
+            }
+            Self::Frame(measure) => measure(StateFrameShape::ResyncRequired { notice }),
+        }
+    }
+}
+
 /// AOI candidates for one generation: the placeholder body of every active lease.
 ///
 /// `active_leases` is a `BTreeMap` keyed by `body_id`, so the candidate list is
@@ -256,6 +370,11 @@ impl SnapshotFanout {
     }
 
     /// Drain a mailbox generation into every attached connection, AOI-truncated.
+    ///
+    /// Logical sizing only. A frame measurer is bound to one connection's
+    /// envelope and message id, so it cannot size a fan-out across many
+    /// connections; a caller that owns sockets drives
+    /// [`Self::publish_interest_to`] per connection with [`StateSizing::Frame`].
     pub fn drain_mailbox(
         &mut self,
         mailbox: &PublicationMailbox,
@@ -266,8 +385,9 @@ impl SnapshotFanout {
         };
         let ids: Vec<Vec<u8>> = self.by_conn.keys().cloned().collect();
         let mut outcomes = Vec::new();
+        let sizing = StateSizing::logical(encoded_bytes);
         for id in ids {
-            if let Some(outcome) = self.publish_interest_to(&id, &generation, encoded_bytes) {
+            if let Some(outcome) = self.publish_interest_to(&id, &generation, sizing) {
                 outcomes.push((id, outcome));
             }
         }
@@ -287,7 +407,7 @@ impl SnapshotFanout {
         encoded_bytes: Option<usize>,
     ) -> Option<PublishOutcome> {
         let payload = StubSnapshotPayload::from_generation(generation);
-        self.publish_payload_to(connection_id, payload, encoded_bytes)
+        self.publish_payload_to(connection_id, payload, StateSizing::logical(encoded_bytes))
     }
 
     /// Fan-out publish: track the connection's focus body, truncate the
@@ -302,11 +422,15 @@ impl SnapshotFanout {
     /// payload-format revision on both the Rust and viewer sides and is tracked
     /// as its own task; the cap is enforced here in the meantime because an
     /// unbounded fan-out breaks a hard workload limit.
-    pub fn publish_interest_to(
+    ///
+    /// `sizing` decides what the queue is charged. A caller that owns a socket
+    /// passes [`StateSizing::Frame`] so the pressure guard sizes the frame it
+    /// is about to write rather than a stand-in.
+    pub(crate) fn publish_interest_to(
         &mut self,
         connection_id: &[u8],
         generation: &ImmutableGeneration,
-        encoded_bytes: Option<usize>,
+        sizing: StateSizing<'_>,
     ) -> Option<PublishOutcome> {
         let connection = self.by_conn.get_mut(connection_id)?;
         if connection.queue.is_closed() {
@@ -324,16 +448,19 @@ impl SnapshotFanout {
             Err(error) => return Some(PublishOutcome::InterestUnavailable { error }),
         };
         let payload = StubSnapshotPayload::from_generation_interest(generation, &interest);
-        self.publish_payload_to(connection_id, payload, encoded_bytes)
+        self.publish_payload_to(connection_id, payload, sizing)
     }
 
     /// Queue one already-built payload as a full snapshot, or as a delta against
     /// the connection's live baseline.
+    ///
+    /// Each item is sized against the baseline id the frame will actually carry,
+    /// so a frame-sizing caller charges exactly the bytes it goes on to write.
     fn publish_payload_to(
         &mut self,
         connection_id: &[u8],
         payload: StubSnapshotPayload,
-        encoded_bytes: Option<usize>,
+        sizing: StateSizing<'_>,
     ) -> Option<PublishOutcome> {
         let connection = self.by_conn.get_mut(connection_id)?;
         if connection.queue.is_closed() {
@@ -342,16 +469,15 @@ impl SnapshotFanout {
         if connection.hold_observe {
             return None;
         }
-        let full_size = encoded_bytes.unwrap_or_else(|| payload.encoded_bytes());
-        let delta_size = encoded_bytes.unwrap_or(32).min(full_size);
 
         let needs_full = connection.snapshot.baseline_id().is_none()
             || connection.snapshot.status() == SnapshotStatus::ResyncRequired;
         if needs_full {
+            let baseline = connection.next_baseline;
+            let full_size = sizing.full_bytes(&payload, baseline);
             let enqueue = connection
                 .queue
                 .enqueue_state(full_size, StateKind::Full, full_size)?;
-            let baseline = connection.next_baseline;
             connection.next_baseline = connection.next_baseline.saturating_add(1);
             connection.snapshot.install_full(baseline, payload);
             return Some(PublishOutcome::FullSnapshot {
@@ -361,16 +487,49 @@ impl SnapshotFanout {
         }
 
         let baseline = connection.snapshot.baseline_id().expect("live baseline");
+        // Decided before anything is charged: a delta this baseline cannot carry
+        // puts a small resync notice on the wire, not a state payload, so the
+        // queue must be charged the notice rather than the delta it replaces.
+        //
+        // This deliberately outranks the coalesce promotion below. An unusable
+        // baseline previously reached that promotion first and could answer an
+        // over-limit connection with a fresh full snapshot; answering with the
+        // notice instead pushes far fewer bytes into a queue that is already at
+        // its limit, at the cost of one tick of latency. The connection is left
+        // in `ResyncRequired`, so the next publish takes the `needs_full`
+        // branch. The two orderings differ only when adding a notice would
+        // itself cross the limit, which takes a queue within a few bytes of it.
+        if let Some(notice) = connection.snapshot.delta_rejection(Some(baseline)) {
+            let notice_size = sizing.resync_bytes(&notice, &payload, baseline);
+            // `StateKind::Delta` keeps the notice replaceable; the queue may
+            // relabel it `Full` when coalescing drops a queued snapshot, which
+            // charges the same bytes and cannot change what the socket receives.
+            let enqueue =
+                connection
+                    .queue
+                    .enqueue_state(notice_size, StateKind::Delta, notice_size)?;
+            connection.snapshot.require_resync();
+            return Some(PublishOutcome::ResyncRequired {
+                required: notice,
+                enqueue,
+            });
+        }
+
+        // A coalesce that drops the queued full snapshot promotes this item to a
+        // fresh baseline, so the promoted size is measured against the id that
+        // promotion would assign rather than the delta's current baseline.
+        let promoted_baseline = connection.next_baseline;
+        let full_size = sizing.full_bytes(&payload, promoted_baseline);
+        let delta_size = sizing.delta_bytes(&payload, baseline, full_size);
         let enqueue = connection
             .queue
             .enqueue_state(delta_size, StateKind::Delta, full_size)?;
         // If coalescing promoted the item to Full, install a fresh baseline.
         if enqueue.kind == StateKind::Full && enqueue.coalesced {
-            let new_baseline = connection.next_baseline;
             connection.next_baseline = connection.next_baseline.saturating_add(1);
-            connection.snapshot.install_full(new_baseline, payload);
+            connection.snapshot.install_full(promoted_baseline, payload);
             return Some(PublishOutcome::FullSnapshot {
-                baseline_id: new_baseline,
+                baseline_id: promoted_baseline,
                 enqueue,
             });
         }

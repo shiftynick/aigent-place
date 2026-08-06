@@ -247,26 +247,45 @@ impl SnapshotChannel {
         self.retained_baselines.remove(&baseline_id);
     }
 
+    /// Why a delta against `baseline_id` cannot be applied, if it cannot.
+    ///
+    /// Non-mutating, so a caller can learn which frame it is about to emit
+    /// before charging outbound bytes for it. [`Self::deliver_delta`] answers
+    /// the same question and records the outcome.
+    #[must_use]
+    pub(crate) fn delta_rejection(
+        &self,
+        baseline_id: Option<u64>,
+    ) -> Option<SnapshotResyncRequired> {
+        let retained_ok = baseline_id.is_some_and(|id| self.retained_baselines.contains(&id));
+        if self.baseline_id == baseline_id && retained_ok {
+            return None;
+        }
+        let reason = match baseline_id {
+            None => SnapshotResyncReason::BaselineMissing,
+            Some(id) if self.baseline_id != Some(id) => SnapshotResyncReason::BaselineMismatched,
+            Some(_) => SnapshotResyncReason::BaselineExpired,
+        };
+        Some(SnapshotResyncRequired {
+            reason,
+            requested_baseline_id: baseline_id,
+        })
+    }
+
+    /// Record that this channel needs a full snapshot before deltas resume.
+    pub(crate) fn require_resync(&mut self) {
+        self.status = SnapshotStatus::ResyncRequired;
+    }
+
     /// Attempt to deliver a delta against `baseline_id`, updating the last payload.
     pub fn deliver_delta(
         &mut self,
         baseline_id: Option<u64>,
         payload: StubSnapshotPayload,
     ) -> Result<(), SnapshotResyncRequired> {
-        let retained_ok = baseline_id.is_some_and(|id| self.retained_baselines.contains(&id));
-        if self.baseline_id != baseline_id || !retained_ok {
-            let reason = match baseline_id {
-                None => SnapshotResyncReason::BaselineMissing,
-                Some(id) if self.baseline_id != Some(id) => {
-                    SnapshotResyncReason::BaselineMismatched
-                }
-                Some(_) => SnapshotResyncReason::BaselineExpired,
-            };
-            self.status = SnapshotStatus::ResyncRequired;
-            return Err(SnapshotResyncRequired {
-                reason,
-                requested_baseline_id: baseline_id,
-            });
+        if let Some(required) = self.delta_rejection(baseline_id) {
+            self.require_resync();
+            return Err(required);
         }
         self.last_payload = Some(payload);
         Ok(())

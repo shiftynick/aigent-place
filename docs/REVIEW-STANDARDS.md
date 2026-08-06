@@ -39,6 +39,10 @@ General engineering conventions live in `docs/ENGINEERING-STANDARDS.md`.
   earlier items for each durable mapping it can affect; checking only the
   pre-batch durable state makes outcomes batch-dependent and can make the
   writer's own commit unrecoverable. (origin: task-011 cold review)
+- For a budget, quota, or backpressure guard, verify the quantity it charges is
+  derived from the same artifact the system releases. A provisional or logical
+  stand-in on the live path diverges silently, because the accurate value is
+  exactly what the test paths exercise. (origin: task-041 cold review)
 - For an executable example, verify the oracle derives its expected outcome
   from the inputs and authoritative state instead of echoing a classification
   the fixture supplies; an oracle that still passes when the implementation
