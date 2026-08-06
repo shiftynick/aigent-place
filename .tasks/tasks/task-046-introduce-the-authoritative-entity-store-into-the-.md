@@ -6,7 +6,7 @@ priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T13:24:48Z"
-updatedAt: "2026-08-06T15:28:04Z"
+updatedAt: "2026-08-06T15:32:05Z"
 ---
 
 <!-- task-tracker:description -->
@@ -133,3 +133,37 @@ The world core currently holds no spatial entity state: authoritative state is a
   | npm notice run @aigent-place/viewer@0.1.0 smoke
   | npm notice run node ./scripts/smoke.mjs
 - 2026-08-06T15:28:04Z — moved to done
+- 2026-08-06T15:31:00Z — note: validation integrity: the pre-commit hook that ran during this task's commit resolved core.hooksPath to the main checkout (N:\aigent-place\.githooks) and therefore ran the fast product subset against main, not against this worktree - its output listed 12 reliability_behavior tests and no entity_store_behavior binary. That hook run is NOT evidence for this task. The recorded evidence is the tracker-run 'node scripts/check.mjs' from this worktree (exit 0), plus a direct 'node scripts/product-check.mjs --fast' from this worktree (exit 0, 'product-check: PASS (fast subset)') whose output contains 'test generation_digest_covers_every_entity_field_and_the_allocator ... ok' and 'test entity_state_tamper_fails_integrity ... ok'. The hook defect is filed as task-2748472262000002; it is out of scope here and touches an ask-first governance surface.
+- 2026-08-06T15:32:05Z — run: node scripts/check.mjs
+  started 2026-08-06T15:31:15Z, exit 0 in 49.8s
+  output tail (truncated to last 30 lines):
+  |      Running tests\persist_sqlite_behavior.rs (target\debug\deps\persist_sqlite_behavior-c4d71245086ff896.exe)
+  |      Running tests\placeholder_payload_behavior.rs (target\debug\deps\placeholder_payload_behavior-5f159efe4496d0c4.exe)
+  |      Running tests\reliability_behavior.rs (target\debug\deps\reliability_behavior-7aed9c4b0ea57898.exe)
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
