@@ -89,6 +89,29 @@ effort produced or reviewed a given piece of work.
 6. Spend orchestrator tokens on the decision layer: compare results, resolve
    conflicts, choose the implementation path, review the final diff.
 
+## Waiting on external work
+
+CI runs, deploys, and delegated workers finish on their own clock. Waiting on
+them badly - a shell held open for the duration, or an output file read again
+and again - costs turns and tool slots without making the work finish sooner:
+
+- **Do not hold a shell open for a long external wait** when the harness
+  offers any non-blocking way to start the work and come back to it.
+  Harnesses differ, and some refuse long foreground waits inconsistently —
+  confirm what this one actually supports instead of assuming a sleep-and-
+  watch loop will run.
+- **Do not re-read an unchanged artifact.** A poll that returns nothing new
+  is a wasted round trip; repeatedly reading a log or output file that has
+  not moved is the observed failure, not a wait strategy.
+- **Scale the interval to what is being waited on.** Check on the cadence of
+  the pipeline, not on a short fixed tick.
+- **Fill the wait.** This is workflow step 5 applied to machines instead of
+  workers: take the next independent slice while the external work runs, and
+  return when there is a plausible reason for the result to exist.
+
+If nothing independent remains and the result gates the task, wait once,
+deliberately, and say so — rather than converting the wait into a poll loop.
+
 ## Handoff packets
 
 Write every delegated prompt as if the worker has seen nothing — because it

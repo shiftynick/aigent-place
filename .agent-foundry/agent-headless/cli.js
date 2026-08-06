@@ -39,18 +39,29 @@ function eventKind(provider, type, raw) {
     return "status";
   return "unknown";
 }
+var MAX_JSONL_WARNINGS = 5;
 function parseJsonLines(provider, stdout) {
   const events = [];
+  const warnings = [];
+  let skipped = 0;
   const lines = stdout.split(/\r?\n/u).filter((line) => line.trim());
   for (let index = 0;index < lines.length; index += 1) {
     const line = lines[index];
     try {
       events.push(parseJsonEvent(provider, line));
     } catch {
-      return { events, error: `invalid JSONL at line ${index + 1}` };
+      skipped += 1;
+      if (warnings.length < MAX_JSONL_WARNINGS)
+        warnings.push(`skipped unparseable JSONL at line ${index + 1}`);
     }
   }
-  return { events };
+  if (skipped > warnings.length) {
+    warnings.push(`skipped ${skipped} unparseable JSONL lines in total (${warnings.length} listed)`);
+  }
+  if (!events.length && skipped > 0) {
+    return { events, warnings, error: `invalid JSONL: no parseable lines in ${skipped} line(s) of provider output` };
+  }
+  return { events, warnings };
 }
 function parseJsonEvent(provider, line) {
   const raw = JSON.parse(line);
@@ -70,11 +81,31 @@ function numberValue(value) {
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+function foldEnvName(name) {
+  return process.platform === "win32" ? name.toLowerCase() : name;
+}
+function lastEnvMatch(env, name) {
+  const target = foldEnvName(name);
+  let matched = false;
+  let value;
+  for (const key of Object.keys(env)) {
+    if (foldEnvName(key) === target) {
+      matched = true;
+      value = env[key];
+    }
+  }
+  return { matched, value };
+}
+function envValue(env, name) {
+  if (process.platform !== "win32")
+    return env[name];
+  return lastEnvMatch(env, name).value;
+}
 function resolveOnWindows(command, env) {
   if (process.platform !== "win32" || path.isAbsolute(command) || /[\\/]/u.test(command))
     return command;
-  const pathValue = env.PATH ?? env.Path ?? env.path ?? "";
-  const extensions = (env.PATHEXT ?? env.Pathext ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
+  const pathValue = envValue(env, "PATH") ?? "";
+  const extensions = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
   for (const directory of pathValue.split(path.delimiter).filter(Boolean)) {
     for (const extension of extensions) {
       const candidate = path.join(directory, `${command}${extension}`);
@@ -83,6 +114,31 @@ function resolveOnWindows(command, env) {
     }
   }
   return command;
+}
+function effectiveEnv(overrides) {
+  const env = { ...process.env };
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    const existing = process.platform === "win32" ? Object.keys(env).find((candidate) => foldEnvName(candidate) === foldEnvName(key)) : key;
+    if (existing && existing !== key)
+      delete env[existing];
+    if (value === undefined)
+      delete env[key];
+    else
+      env[key] = value;
+  }
+  return env;
+}
+function resolveCommand(command, args, env) {
+  const resolved = resolveOnWindows(command, env);
+  if (process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(resolved)) {
+    const commandLine = `"${[resolved, ...args].map(quoteCmd).join(" ")}"`;
+    return {
+      command: envValue(env, "ComSpec") || "cmd.exe",
+      args: ["/d", "/s", "/c", commandLine],
+      windowsVerbatimArguments: true
+    };
+  }
+  return { command: resolved, args: [...args], windowsVerbatimArguments: false };
 }
 function quoteCmd(value) {
   if (/[\r\n%!]/u.test(value)) {
@@ -95,25 +151,8 @@ async function runInvocation(invocation, options) {
   if (options.signal?.aborted) {
     return { stdout: "", stderr: "", exitCode: null, durationMs: 0, timedOut: false, cancelled: true };
   }
-  const env = { ...process.env };
-  for (const [key, value] of Object.entries(options.env ?? {})) {
-    const existing = process.platform === "win32" ? Object.keys(env).find((candidate) => candidate.toLowerCase() === key.toLowerCase()) : key;
-    if (existing && existing !== key)
-      delete env[existing];
-    if (value === undefined)
-      delete env[key];
-    else
-      env[key] = value;
-  }
-  let command = resolveOnWindows(invocation.command, env);
-  let args = invocation.args;
-  let windowsVerbatimArguments = false;
-  if (process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(command)) {
-    const commandLine = `"${[command, ...args].map(quoteCmd).join(" ")}"`;
-    command = env.ComSpec || env.COMSPEC || "cmd.exe";
-    args = ["/d", "/s", "/c", commandLine];
-    windowsVerbatimArguments = true;
-  }
+  const env = effectiveEnv(options.env);
+  const { command, args, windowsVerbatimArguments } = resolveCommand(invocation.command, invocation.args, env);
   return await new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
@@ -239,10 +278,36 @@ async function probeExecutable(provider, command, cwd) {
 }
 
 // src/adapters/shared.ts
+var ERROR_TYPE = /^error(?:\.|$)/u;
+function isExplicitFailure(event, extraTypes = []) {
+  return ERROR_TYPE.test(event.type) || extraTypes.includes(event.type);
+}
+function findTerminalMarker(events, isSuccess, extraFailureTypes = []) {
+  for (let index = events.length - 1;index >= 0; index -= 1) {
+    const event = events[index];
+    if (isExplicitFailure(event, extraFailureTypes))
+      return { outcome: "failure", event };
+    if (isSuccess(event))
+      return { outcome: "success", event };
+  }
+  return;
+}
+function providerFailureMessage(label, event) {
+  const raw = asRecord(event.raw);
+  const candidates = [
+    asRecord(raw?.error)?.message,
+    raw?.message,
+    raw?.error,
+    raw?.reason,
+    asRecord(raw?.item)?.message
+  ];
+  const detail = candidates.find((value) => typeof value === "string" && value.trim());
+  return `${label} reported ${event.type}${typeof detail === "string" ? `: ${detail.trim()}` : ""}`;
+}
 function envExecutable(provider, requestEnv) {
   const key = provider === "claude" ? "CLAUDE_BIN" : provider === "codex" ? "CODEX_BIN" : "CURSOR_AGENT_BIN";
   const fallback = provider === "cursor" ? "agent" : provider;
-  return requestEnv?.[key] || process.env[key] || fallback;
+  return (requestEnv ? envValue(requestEnv, key) : undefined) || process.env[key] || fallback;
 }
 function assertAccess(request, allowed) {
   if (!allowed.includes(request.access)) {
@@ -337,26 +402,31 @@ class ClaudeAdapter {
       return textOutput(this.provider, stdout);
     const trimmed = stdout.trim();
     if (!trimmed)
-      return { events: [], protocolError: "Claude returned no structured output" };
+      return { events: [], protocolError: "Claude returned no structured output", unreadable: true };
     if (!trimmed.includes(`
 `)) {
       try {
         const raw = JSON.parse(trimmed);
         return this.parseRecords([{ provider: this.provider, type: String(raw.type ?? "result"), kind: raw.is_error === true ? "error" : "result", raw }]);
       } catch {
-        return { events: [], protocolError: "Claude returned invalid JSON" };
+        return { events: [], protocolError: "Claude returned invalid JSON", unreadable: true };
       }
     }
     const parsed = parseJsonLines(this.provider, stdout);
+    const warnings = parsed.warnings.length ? { warnings: parsed.warnings } : {};
     if (parsed.error)
-      return { events: parsed.events, protocolError: parsed.error };
-    return this.parseRecords(parsed.events);
+      return { events: parsed.events, protocolError: parsed.error, unreadable: true, ...warnings };
+    return { ...this.parseRecords(parsed.events), ...warnings };
   }
   parseRecords(events) {
-    const terminal = [...events].reverse().find((event) => asRecord(event.raw)?.type === "result");
-    const result = asRecord(terminal?.raw);
-    if (!result)
-      return { events, protocolError: "Claude stream did not contain a terminal result" };
+    const terminal = findTerminalMarker(events, (event) => asRecord(event.raw)?.type === "result");
+    if (terminal?.outcome === "failure") {
+      return { events, protocolError: providerFailureMessage("Claude", terminal.event) };
+    }
+    const result = asRecord(terminal?.event.raw);
+    if (!result) {
+      return { events, protocolError: "Claude stream did not contain a terminal result", unreadable: true };
+    }
     if (result.is_error === true)
       return { events, protocolError: String(result.result ?? "Claude reported an error") };
     const usageRaw = asRecord(result.usage);
@@ -387,6 +457,8 @@ class ClaudeAdapter {
 
 // src/adapters/codex.ts
 import path2 from "node:path";
+var CODEX_FAILURE_TYPES = ["turn.failed"];
+
 class CodexAdapter {
   provider = "codex";
   async capabilities(executable = envExecutable(this.provider)) {
@@ -463,13 +535,19 @@ class CodexAdapter {
     if (!structured)
       return textOutput(this.provider, stdout);
     const parsed = parseJsonLines(this.provider, stdout);
+    const warnings = parsed.warnings.length ? { warnings: parsed.warnings } : {};
     if (parsed.error)
-      return { events: parsed.events, protocolError: parsed.error };
+      return { events: parsed.events, protocolError: parsed.error, unreadable: true, ...warnings };
     const started = parsed.events.find((event) => event.type === "thread.started");
-    const completed = [...parsed.events].reverse().find((event) => event.type === "turn.completed");
     const messages = parsed.events.map((event) => asRecord(event.raw)).map((raw) => asRecord(raw?.item)).filter((item) => item?.type === "agent_message" && typeof item.text === "string");
-    if (!completed)
-      return { events: parsed.events, protocolError: "Codex stream did not contain turn.completed" };
+    const terminal = findTerminalMarker(parsed.events, (event) => event.type === "turn.completed", CODEX_FAILURE_TYPES);
+    if (terminal?.outcome === "failure") {
+      return { events: parsed.events, protocolError: providerFailureMessage("Codex", terminal.event), ...warnings };
+    }
+    const completed = terminal?.event;
+    if (!completed) {
+      return { events: parsed.events, protocolError: "Codex stream did not contain turn.completed", unreadable: true, ...warnings };
+    }
     const startRaw = asRecord(started?.raw);
     const completeRaw = asRecord(completed.raw);
     const rawUsage = asRecord(completeRaw?.usage);
@@ -491,12 +569,18 @@ class CodexAdapter {
       events: parsed.events,
       ...typeof lastMessage?.text === "string" ? { finalText: lastMessage.text } : {},
       ...typeof startRaw?.thread_id === "string" ? { sessionId: startRaw.thread_id } : {},
-      ...Object.keys(usage).length ? { usage } : {}
+      ...Object.keys(usage).length ? { usage } : {},
+      ...warnings
     };
   }
 }
 
 // src/adapters/cursor.ts
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { existsSync as existsSync2 } from "node:fs";
+import { homedir } from "node:os";
+import path3 from "node:path";
 function cursorModel(model, effort) {
   if (!effort)
     return model;
@@ -514,7 +598,117 @@ function cursorModel(model, effort) {
     return `${match[1]}[${parameters.replace(/(^|,)effort=[^,]+/u, `$1effort=${effort}`)}]`;
   return `${match[1]}[${parameters}${parameters ? "," : ""}effort=${effort}]`;
 }
+var CURSOR_DEFAULT_MODEL = "cursor-grok-4.5-medium";
+var WORKTREE_NAME_PREFIX = "agent-headless";
+function generateWorktreeName() {
+  return `${WORKTREE_NAME_PREFIX}-${Date.now().toString(36)}-${randomUUID().replace(/-/gu, "").slice(0, 12)}`;
+}
+function withDefaultWorktreeName(request, generate) {
+  if (request.access !== "edit-isolated")
+    return request;
+  const cursor = request.providerOptions?.cursor;
+  if (cursor?.worktreeName)
+    return request;
+  return {
+    ...request,
+    providerOptions: {
+      ...request.providerOptions,
+      cursor: { ...cursor, worktreeName: generate() }
+    }
+  };
+}
+var CURSOR_WORKTREES_ROOT_ENV = "CURSOR_WORKTREES_ROOT";
+var CURSOR_WORKTREE_NAME_PATTERN = /^[A-Za-z0-9._-]+$/u;
+function childEnvValue(name, env) {
+  const { matched, value } = lastEnvMatch(env ?? {}, name);
+  return matched ? value : process.env[name];
+}
+function cursorWorktreesRoot(env) {
+  const configured = childEnvValue(CURSOR_WORKTREES_ROOT_ENV, env);
+  if (configured !== undefined)
+    return configured;
+  try {
+    const home = homedir();
+    return home ? path3.join(home, ".cursor", "worktrees") : undefined;
+  } catch {
+    return;
+  }
+}
+function slugifyRepoName(name) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9._-]+/gu, "-").replace(/-+/gu, "-").replace(/^-+|-+$/gu, "");
+  return slug || "worktree";
+}
+function hasGitAncestor(start) {
+  let current = start;
+  for (;; ) {
+    if (existsSync2(path3.join(current, ".git")))
+      return true;
+    const parent = path3.dirname(current);
+    if (parent === current)
+      return false;
+    current = parent;
+  }
+}
+function gitToplevel(cwd, env) {
+  try {
+    const childEnv = effectiveEnv(env);
+    const resolved = resolveCommand("git", ["rev-parse", "--show-toplevel"], childEnv);
+    const result = spawnSync(resolved.command, resolved.args, {
+      cwd,
+      env: childEnv,
+      encoding: "utf8",
+      windowsHide: true,
+      windowsVerbatimArguments: resolved.windowsVerbatimArguments,
+      timeout: 1e4
+    });
+    if (result.error || result.status !== 0)
+      return;
+    const toplevel = result.stdout.trim();
+    return toplevel ? path3.resolve(toplevel) : undefined;
+  } catch {
+    return;
+  }
+}
+function envKeyPart(env) {
+  if (!env)
+    return null;
+  const names = [...new Set(Object.keys(env).map(foldEnvName))].sort();
+  return names.map((name) => {
+    const { value } = lastEnvMatch(env, name);
+    return value === undefined ? [name] : [name, value];
+  });
+}
+var repoSlugCache = new Map;
+function repoSlugKey(cwd, env) {
+  return JSON.stringify([cwd, envKeyPart(env)]);
+}
+function cursorRepoSlug(cwd, env) {
+  const start = path3.resolve(cwd);
+  const key = repoSlugKey(start, env);
+  const cached = repoSlugCache.get(key);
+  if (cached !== undefined || repoSlugCache.has(key))
+    return cached;
+  const toplevel = hasGitAncestor(start) ? gitToplevel(start, env) : undefined;
+  const slug = toplevel === undefined ? undefined : slugifyRepoName(path3.basename(toplevel));
+  repoSlugCache.set(key, slug);
+  return slug;
+}
+function cursorWorktreePath(request, cwd = request.cwd, env = request.env) {
+  if (request.provider !== "cursor" || request.access !== "edit-isolated")
+    return;
+  const name = request.providerOptions?.cursor?.worktreeName;
+  if (!name || !CURSOR_WORKTREE_NAME_PATTERN.test(name))
+    return;
+  const root = cursorWorktreesRoot(env);
+  const slug = cursorRepoSlug(cwd, env);
+  if (root === undefined || slug === undefined)
+    return;
+  return path3.resolve(cwd, root, slug, name);
+}
 var modelPromises = new Map;
+function modelListingKey(executable, env) {
+  return JSON.stringify([executable, envKeyPart(env)]);
+}
 function parseModels(stdout) {
   return stdout.split(/\r?\n/u).map((line) => line.match(/^([^\s]+)\s+-\s+/u)?.[1]).filter((model) => Boolean(model));
 }
@@ -544,46 +738,53 @@ class CursorAdapter {
       supportsModelListing: true
     };
   }
-  async listModels(executable = envExecutable(this.provider)) {
-    let modelsPromise = modelPromises.get(executable);
+  async listModels(options = {}) {
+    const executable = options.executable ?? envExecutable(this.provider, options.env);
+    const key = modelListingKey(executable, options.env);
+    let modelsPromise = modelPromises.get(key);
     if (!modelsPromise) {
       modelsPromise = (async () => {
-        const result = await runInvocation({ provider: this.provider, command: executable, args: ["models"], cwd: process.cwd(), stdin: "", structured: false }, { timeoutMs: 30000 });
+        const result = await runInvocation({ provider: this.provider, command: executable, args: ["models"], cwd: process.cwd(), stdin: "", structured: false }, { timeoutMs: 30000, ...options.env ? { env: options.env } : {} });
         if (result.exitCode !== 0)
           unsupported(`Cursor model listing failed: ${result.stderr.trim()}`);
         return parseModels(result.stdout);
       })();
-      modelPromises.set(executable, modelsPromise);
+      modelPromises.set(key, modelsPromise);
     }
     return await modelsPromise;
   }
-  async prepare(request) {
-    if (!request.effort || !request.model || request.model.includes("["))
-      return request;
-    const models = await this.listModels(envExecutable(this.provider, request.env));
-    const candidate = modelWithEffort(request.model, request.effort);
-    const xhighCandidate = request.effort === "xhigh" ? modelWithEffort(request.model, "high").replace(/-high(-fast)?$/u, "-extra-high$1") : undefined;
+  async prepare(request, options = {}) {
+    const model = request.model ?? CURSOR_DEFAULT_MODEL;
+    const withModel = request.model === undefined ? { ...request, model } : request;
+    const defaulted = withDefaultWorktreeName(withModel, options.generateWorktreeName ?? generateWorktreeName);
+    if (!request.effort || model.includes("["))
+      return defaulted;
+    const models = await this.listModels({
+      executable: envExecutable(this.provider, request.env),
+      ...request.env ? { env: request.env } : {}
+    });
+    const candidate = modelWithEffort(model, request.effort);
+    const xhighCandidate = request.effort === "xhigh" ? modelWithEffort(model, "high").replace(/-high(-fast)?$/u, "-extra-high$1") : undefined;
     const resolved = [candidate, xhighCandidate].find((value) => value && models.includes(value));
     if (resolved)
-      return { ...request, model: resolved };
-    if (models.includes(request.model)) {
-      unsupported(`Cursor model ${request.model} has no available ${request.effort} effort variant; choose an exact model ID`);
+      return { ...defaulted, model: resolved };
+    if (models.includes(model)) {
+      unsupported(`Cursor model ${model} has no available ${request.effort} effort variant; choose an exact model ID`);
     }
-    return request;
+    return defaulted;
   }
   build(request) {
     assertAccess(request, ["answer-only", "inspect", "edit-isolated"]);
     assertSession(request, ["persistent", "resume"]);
-    if (!request.model)
-      unsupported("Cursor requires an explicit model; use `agent models` to list choices");
-    if (request.model.toLowerCase() === "auto")
+    const model = request.model ?? CURSOR_DEFAULT_MODEL;
+    if (model.toLowerCase() === "auto")
       unsupported("Cursor model=auto is not allowed; name an exact model");
     if (request.schema)
       unsupported("Cursor does not support JSON Schema-constrained output");
     if (request.maxBudgetUsd !== undefined)
       unsupported("Cursor does not expose a per-run budget flag");
-    const args = ["--print", "--workspace", request.cwd, "--model", cursorModel(request.model, request.effort)];
-    const options = request.providerOptions?.cursor;
+    const args = ["--print", "--workspace", request.cwd, "--model", cursorModel(model, request.effort)];
+    const options = withDefaultWorktreeName(request, generateWorktreeName).providerOptions?.cursor;
     if (options?.trustWorkspace)
       args.push("--trust");
     if (request.output === "events") {
@@ -596,9 +797,7 @@ class CursorAdapter {
     if (request.access === "inspect")
       args.push("--mode", "plan");
     if (request.access === "edit-isolated") {
-      args.push("--worktree");
-      if (options?.worktreeName)
-        args.push(options.worktreeName);
+      args.push("--worktree", options.worktreeName);
       if (options?.worktreeBase)
         args.push("--worktree-base", options.worktreeBase);
       if (process.platform !== "win32")
@@ -624,14 +823,19 @@ class CursorAdapter {
     if (!structured)
       return textOutput(this.provider, stdout);
     const parsed = parseJsonLines(this.provider, stdout);
+    const warnings = parsed.warnings.length ? { warnings: parsed.warnings } : {};
     if (parsed.error)
-      return { events: parsed.events, protocolError: parsed.error };
-    const terminal = [...parsed.events].reverse().find((event) => event.type.startsWith("result"));
-    const result = asRecord(terminal?.raw);
-    if (!result)
-      return { events: parsed.events, protocolError: "Cursor stream did not contain a terminal result" };
+      return { events: parsed.events, protocolError: parsed.error, unreadable: true, ...warnings };
+    const terminal = findTerminalMarker(parsed.events, (event) => event.type.startsWith("result"));
+    if (terminal?.outcome === "failure") {
+      return { events: parsed.events, protocolError: providerFailureMessage("Cursor", terminal.event), ...warnings };
+    }
+    const result = asRecord(terminal?.event.raw);
+    if (!result) {
+      return { events: parsed.events, protocolError: "Cursor stream did not contain a terminal result", unreadable: true, ...warnings };
+    }
     if (result.is_error === true || result.subtype !== "success") {
-      return { events: parsed.events, protocolError: String(result.result ?? "Cursor reported an error") };
+      return { events: parsed.events, protocolError: String(result.result ?? "Cursor reported an error"), ...warnings };
     }
     const init = asRecord(parsed.events.find((event) => event.type.startsWith("system"))?.raw);
     const rawUsage = asRecord(result.usage);
@@ -650,7 +854,8 @@ class CursorAdapter {
       ...typeof result.result === "string" ? { finalText: result.result } : {},
       ...typeof result.session_id === "string" ? { sessionId: result.session_id } : typeof init?.session_id === "string" ? { sessionId: init.session_id } : {},
       ...typeof init?.model === "string" ? { modelObserved: init.model } : {},
-      ...Object.keys(usage).length ? { usage } : {}
+      ...Object.keys(usage).length ? { usage } : {},
+      ...warnings
     };
   }
 }
@@ -669,13 +874,13 @@ function getAdapter(provider) {
 }
 
 // src/validation.ts
-import { existsSync as existsSync2, realpathSync, statSync } from "node:fs";
+import { existsSync as existsSync3, realpathSync, statSync } from "node:fs";
 function normalizeRequest(request) {
   if (!request.prompt?.trim())
     invalid("prompt must be non-empty");
   if (!request.cwd)
     invalid("cwd is required");
-  if (!existsSync2(request.cwd) || !statSync(request.cwd).isDirectory()) {
+  if (!existsSync3(request.cwd) || !statSync(request.cwd).isDirectory()) {
     invalid(`cwd is not an existing directory: ${request.cwd}`);
   }
   if (request.timeoutMs !== undefined && (!Number.isFinite(request.timeoutMs) || request.timeoutMs <= 0)) {
@@ -687,7 +892,7 @@ function normalizeRequest(request) {
   if (request.model !== undefined && !request.model.trim())
     invalid("model must be non-empty");
   const additionalDirs = request.additionalDirs?.map((directory) => {
-    if (!existsSync2(directory) || !statSync(directory).isDirectory()) {
+    if (!existsSync3(directory) || !statSync(directory).isDirectory()) {
       invalid(`additional directory does not exist: ${directory}`);
     }
     return realpathSync(directory);
@@ -702,15 +907,119 @@ function normalizeRequest(request) {
     ...additionalDirs ? { additionalDirs } : {}
   };
 }
+
+// src/workspace.ts
+import path4 from "node:path";
+var WORKTREE_KEYS = ["worktree_path", "worktreePath", "worktree_dir", "worktreeDir", "worktree"];
+function samePath(left, right) {
+  const normalize = (value) => {
+    const resolved = path4.normalize(value).replace(/[\\/]+$/u, "");
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  return normalize(left) === normalize(right);
+}
+function worktreeFromEvents(events, cwd) {
+  for (const event of events) {
+    const raw = asRecord(event.raw);
+    if (!raw)
+      continue;
+    for (const scope of [raw, asRecord(raw.item), asRecord(raw.workspace), asRecord(raw.worktree)]) {
+      if (!scope)
+        continue;
+      for (const key of WORKTREE_KEYS) {
+        const value = scope[key];
+        if (typeof value === "string" && value.trim())
+          return value;
+      }
+    }
+    if (event.kind === "session" && typeof raw.cwd === "string" && raw.cwd.trim() && !samePath(raw.cwd, cwd)) {
+      return raw.cwd;
+    }
+  }
+  return;
+}
+function worktreeFromText(stdout, worktreeName) {
+  const keyed = stdout.match(/"worktree(?:_path|Path|_dir|Dir)?"\s*:\s*"((?:[^"\\]|\\.)*)"/u);
+  if (keyed?.[1]) {
+    try {
+      return JSON.parse(`"${keyed[1]}"`);
+    } catch {
+      return keyed[1];
+    }
+  }
+  if (!worktreeName)
+    return;
+  const escaped = worktreeName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const match = stdout.match(new RegExp(`(?:[A-Za-z]:[\\\\/]|/)[^\\s"']*[\\\\/]${escaped}(?![\\w.-])`, "u"));
+  if (!match)
+    return;
+  return match[0].includes("\\\\") ? match[0].replace(/\\\\/gu, "\\") : match[0];
+}
+function absoluteReported(disclosed, cwd) {
+  if (disclosed === undefined)
+    return;
+  const trimmed = disclosed.trim();
+  if (!trimmed)
+    return;
+  if (path4.isAbsolute(trimmed))
+    return trimmed;
+  const resolved = path4.resolve(cwd, trimmed);
+  return path4.isAbsolute(resolved) ? resolved : undefined;
+}
+function describeWorkspace(request, cwd, events, stdout) {
+  const isolated = request.access === "edit-isolated";
+  const cursor = request.providerOptions?.cursor;
+  const worktreeName = !isolated ? undefined : request.provider === "cursor" ? cursor?.worktreeName : request.provider === "claude" ? request.providerOptions?.claude?.worktreeName ?? "agent-headless" : undefined;
+  const worktreeBase = isolated && request.provider === "cursor" ? cursor?.worktreeBase : undefined;
+  const disclosed = isolated ? worktreeFromEvents(events, cwd) ?? worktreeFromText(stdout, worktreeName) : undefined;
+  const reported = absoluteReported(disclosed, cwd);
+  const derived = isolated && !reported ? cursorWorktreePath(request, cwd, request.env) : undefined;
+  const worktree = reported ?? derived;
+  return {
+    cwd,
+    access: request.access,
+    ...worktree ? { worktree, worktreeSource: reported ? "reported" : "derived" } : {},
+    ...derived ? { worktreeRoot: path4.dirname(derived) } : {},
+    ...worktreeName ? { worktreeName } : {},
+    ...worktreeBase ? { worktreeBase } : {}
+  };
+}
 // src/version.ts
-var VERSION = "0.2.0";
+var VERSION = "0.3.0";
 
 // src/index.ts
+var MODEL_REJECTION = /(?:unknown|unrecognized|unsupported|invalid|unavailable)\s+model|no\s+such\s+model|model\b[^\n]{0,80}?(?:not\s+(?:found|available|supported|recognized)|does\s+not\s+exist|is\s+invalid|is\s+no\s+longer)/iu;
+async function modelRejectionWarnings(request, modelDefaulted, text, options) {
+  if (request.provider !== "cursor" || !text || !MODEL_REJECTION.test(text))
+    return [];
+  const origin = modelDefaulted ? `${CURSOR_DEFAULT_MODEL} is this runner's built-in default and may be stale` : "this model was requested explicitly";
+  const warnings = [
+    `cursor rejected model "${request.model ?? "(none)"}" - ${origin}; run \`agent-headless models cursor\` for the live list`
+  ];
+  if (!modelDefaulted)
+    return warnings;
+  try {
+    const models = await (options.listModels ?? listModels)("cursor", {
+      executable: envExecutable("cursor", request.env),
+      ...request.env ? { env: request.env } : {}
+    });
+    if (models.length) {
+      const shown = models.slice(0, 40);
+      warnings.push(`available cursor models: ${shown.join(", ")}${models.length > shown.length ? `, ... (${models.length} total)` : ""}`);
+    }
+  } catch {}
+  return warnings;
+}
 async function runAgent(input, options = {}) {
   let request = normalizeRequest(input);
   const adapter = getAdapter(request.provider);
-  if (adapter.prepare)
-    request = await adapter.prepare(request);
+  const modelChosenByCaller = request.model !== undefined;
+  if (adapter.prepare) {
+    request = await adapter.prepare(request, {
+      ...options.generateWorktreeName ? { generateWorktreeName: options.generateWorktreeName } : {}
+    });
+  }
+  const modelDefaulted = !modelChosenByCaller && request.model !== undefined;
   const invocation = adapter.build(request);
   const streamWarnings = [];
   const processResult = await (options.execute ?? runInvocation)(invocation, {
@@ -733,8 +1042,10 @@ async function runAgent(input, options = {}) {
   const partialFinalText = textPartial?.finalText;
   const partialWarnings = [...new Set([
     ...streamWarnings,
+    ...structuredPartial?.warnings ?? [],
     ...structuredPartial?.error ? [structuredPartial.error] : []
   ])];
+  const partialWorkspace = describeWorkspace(request, invocation.cwd, partialEvents, processResult.stdout);
   if (processResult.timedOut || processResult.cancelled) {
     return {
       provider: request.provider,
@@ -743,12 +1054,16 @@ async function runAgent(input, options = {}) {
       events: partialEvents,
       exitCode: processResult.exitCode,
       ...request.model ? { modelRequested: request.model } : {},
+      ...modelDefaulted ? { modelDefaulted: true } : {},
       warnings: partialWarnings,
+      workspace: partialWorkspace,
       stderr: processResult.stderr,
       durationMs: processResult.durationMs
     };
   }
   if (processResult.exitCode !== 0) {
+    const rejection2 = await modelRejectionWarnings(request, modelDefaulted, `${processResult.stderr}
+${processResult.stdout}`, options);
     return {
       provider: request.provider,
       status: "failed",
@@ -756,7 +1071,9 @@ async function runAgent(input, options = {}) {
       events: partialEvents,
       exitCode: processResult.exitCode,
       ...request.model ? { modelRequested: request.model } : {},
-      warnings: partialWarnings,
+      ...modelDefaulted ? { modelDefaulted: true } : {},
+      warnings: [...new Set([...partialWarnings, ...rejection2])],
+      workspace: partialWorkspace,
       stderr: processResult.stderr,
       durationMs: processResult.durationMs
     };
@@ -765,18 +1082,27 @@ async function runAgent(input, options = {}) {
   if (!invocation.structured)
     for (const event of parsed.events)
       request.onEvent?.(event);
-  const warnings = [...new Set([...streamWarnings, ...parsed.protocolError ? [parsed.protocolError] : []])];
+  const rejection = parsed.protocolError ? await modelRejectionWarnings(request, modelDefaulted, `${parsed.protocolError}
+${processResult.stderr}`, options) : [];
+  const warnings = [...new Set([
+    ...streamWarnings,
+    ...parsed.warnings ?? [],
+    ...parsed.protocolError ? [parsed.protocolError] : [],
+    ...rejection
+  ])];
   return {
     provider: request.provider,
-    status: parsed.protocolError ? "failed" : "succeeded",
+    status: parsed.protocolError ? parsed.unreadable ? "unparsed" : "failed" : "succeeded",
     ...parsed.finalText !== undefined ? { finalText: parsed.finalText } : {},
     events: parsed.events,
     exitCode: processResult.exitCode,
     ...parsed.sessionId ? { sessionId: parsed.sessionId } : {},
     ...request.model ? { modelRequested: request.model } : {},
+    ...modelDefaulted ? { modelDefaulted: true } : {},
     ...parsed.modelObserved ? { modelObserved: parsed.modelObserved } : {},
     ...parsed.usage ? { usage: parsed.usage } : {},
     warnings,
+    workspace: describeWorkspace(request, invocation.cwd, parsed.events, processResult.stdout),
     stderr: processResult.stderr,
     durationMs: processResult.durationMs
   };
@@ -787,16 +1113,16 @@ async function getCapabilities(provider) {
 async function getAllCapabilities() {
   return await Promise.all(["claude", "codex", "cursor"].map(getCapabilities));
 }
-async function listModels(provider) {
+async function listModels(provider, options = {}) {
   const adapter = getAdapter(provider);
   if (!adapter.listModels) {
     throw new AgentHeadlessError("unsupported_capability", `${provider} does not expose model listing through its CLI`);
   }
-  return await adapter.listModels();
+  return await adapter.listModels(options);
 }
 function assertSucceeded(result) {
   if (result.status !== "succeeded") {
-    throw new AgentHeadlessError(result.warnings.length ? "invalid_provider_output" : "provider_failed", `${result.provider} ${result.status}${result.stderr ? `: ${result.stderr.trim()}` : ""}`);
+    throw new AgentHeadlessError(result.status === "unparsed" ? "invalid_provider_output" : "provider_failed", `${result.provider} ${result.status}${result.stderr ? `: ${result.stderr.trim()}` : ""}`);
   }
 }
 
@@ -815,7 +1141,9 @@ Run options:
   --prompt <text>                 Prompt text; omit to read stdin
   --prompt-file <path>            Read prompt from a UTF-8 file
   --cwd <path>                    Working directory (default: current directory)
-  --model <id>                    Provider model or alias (required for Cursor)
+  --model <id>                    Provider model or alias; when omitted, Cursor
+                                  falls back to cursor-grok-4.5-medium and the
+                                  result reports modelDefaulted: true
   --effort <level>                low, medium, high, xhigh, or max
   --access <mode>                 answer-only (default), inspect, edit-workspace, edit-isolated, inherit-session
   --session <mode>                ephemeral or persistent; use --resume for continuation
@@ -828,6 +1156,12 @@ Run options:
   --trust-workspace               Explicitly trust Cursor's workspace
   --json                          Print the normalized result as JSON
   --help                          Show help
+
+Exit codes:
+  0  succeeded
+  1  failed, timed out, cancelled, or a usage error
+  2  unparsed - the provider exited 0 but its output could not be read; the
+     work may have completed, so check the reported workspace before retrying
 `;
 function take(args, index, flag) {
   const value = args[index + 1];
@@ -1009,7 +1343,18 @@ async function main() {
 `);
   if (result.stderr && result.status !== "succeeded")
     process2.stderr.write(result.stderr);
-  if (result.status !== "succeeded")
+  if (result.status === "unparsed") {
+    for (const warning of result.warnings)
+      process2.stderr.write(`warning: ${warning}
+`);
+    const workspace = result.workspace;
+    if (workspace) {
+      const worktree = workspace.worktree ?? workspace.worktreeName;
+      process2.stderr.write(`workspace: ${workspace.cwd}${worktree ? ` (worktree: ${worktree})` : ""}
+`);
+    }
+    process2.exitCode = 2;
+  } else if (result.status !== "succeeded")
     process2.exitCode = 1;
 }
 main().catch((error) => {

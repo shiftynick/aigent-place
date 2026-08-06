@@ -1272,3 +1272,49 @@ describe("task rm", () => {
     }
   });
 });
+
+describe("task help", () => {
+  for (const arg of ["help", "--help", "-h"]) {
+    it(`prints usage and exits 0 for ${arg}`, async () => {
+      const repo = fixtureRepo();
+      try {
+        const res = await runAsync(repo, [arg]);
+        assert.equal(res.code, 0);
+        assert.match(res.stdout, /usage: task\.mjs <verb> \[args\.\.\.\]/);
+        assert.match(res.stdout, /verbs: board, list, show, next, add, archive, move, note, edit, rm, run, help/);
+        assert.match(res.stdout, /references\/cli-reference\.md/);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("prints usage and exits 0 with no arguments", async () => {
+    const repo = fixtureRepo();
+    try {
+      const res = await runAsync(repo, []);
+      assert.equal(res.code, 0);
+      assert.match(res.stdout, /usage: task\.mjs <verb> \[args\.\.\.\]/);
+      assert.match(res.stdout, /verbs: board, list, show, next, add, archive, move, note, edit, rm, run, help/);
+      assert.match(res.stdout, /references\/cli-reference\.md/);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("points at a reference file that exists in this tree", () => {
+    assert.ok(existsSync(resolve(HERE, "..", "references", "cli-reference.md")));
+  });
+
+  it("still rejects an unknown verb with exit 2", async () => {
+    const repo = fixtureRepo();
+    try {
+      const res = await runAsync(repo, ["halp"]);
+      assert.equal(res.code, 2);
+      assert.match(res.stderr, /ERROR: unknown verb: halp/);
+      assert.equal(res.stdout, "");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});

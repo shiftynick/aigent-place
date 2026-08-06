@@ -7,7 +7,9 @@ one a future upgrade will silently revert.
 Entries are live records, not history: an entry stays as long as its
 divergence does. When an upgrade retires a divergence — the local change is
 upstreamed, dropped, or its `On upgrade` condition is met — delete that entry
-in the same commit so this file always describes the tree as it is now.
+in the same commit so this file always describes the tree as it is now. (The
+project's journals are the append-only record of what happened; this one
+answers "what is different today".)
 
 Record a divergence here when the Foundry owns the file and would replace it:
 the skills, `docs/SDLC.md`, the ADR template, and the checks under
@@ -31,6 +33,15 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **On upgrade:** re-apply / re-evaluate / drop once <condition>.
 - **Upstream:** yes (generic — propose to Agent Foundry) | no (project-specific).
 ```
+
+## .agent-foundry/agent-headless/COMPATIBILITY.md
+
+- **Changed:** removes a stray `An` that truncated the transition between the
+  Windows worktree-safety limitation and Cursor's model-selection contract.
+- **Why:** `AGENTS.md` points operators to this file for authoritative Cursor
+  policy, so malformed safety guidance is not acceptable project documentation.
+- **On upgrade:** drop once stock Foundry carries the corrected sentence.
+- **Upstream:** yes (generic - compatibility documentation correction).
 
 ## .agents/skills/execute-task/references/cold-review.md
 

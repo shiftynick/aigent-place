@@ -57,6 +57,11 @@ claimable task; inspect `board` and blockers rather than inventing work.
   documentation change is needed, record that check.
 - Run focused checks while implementing. Do not call compilation alone
   behavioral validation.
+- Before requesting review, list the behaviors this change adds or alters. For
+  each, name a change that leaves the code compiling and running but removes
+  that behavior, and confirm a test fails on it. A behavior with no such test
+  is untested; a test that only fails when the code is deleted or no longer
+  compiles proves execution, not behavior.
 
 When the implementation, initial checks, and documentation are ready:
 

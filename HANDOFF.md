@@ -138,7 +138,7 @@ product diffs to re-validate.
 - Single checkout: `N:\aigent-place`
 - Open PRs: none
 - Hooks: `git config core.hooksPath .githooks`
-- Agent Foundry 0.15.0 installed; Cursor cold-review stays operator-selected
+- Agent Foundry 0.18.0 installed; Cursor cold-review stays operator-selected
   (`CURSOR_AGENT_BIN` documented in `AGENTS.md`)
 
 ## Known blockers and risks

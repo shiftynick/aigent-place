@@ -87,7 +87,9 @@ Failure is recorded and exits 1. The repository lock is released while the
 command runs. Use `note` only for evidence a command cannot express.
 
 The tracker records evidence; `execute-task` defines which validation and
-cold review are required before moving from `review` to `done`.
+cold review are required before moving from `review` to `done`. Recording a
+transition is not evidence that it happened: a lifecycle written after the
+work reads exactly like one written as the work proceeded.
 
 ## Durable board hygiene
 

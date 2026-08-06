@@ -879,8 +879,11 @@ const VERBS = {
 };
 function main() {
   const verb = argv[2];
-  if (!verb || verb === "-h" || verb === "--help") {
-    stdout.write("usage: task.mjs <verb> [args...]\nverbs: " + Object.keys(VERBS).join(", ") + "\n");
+  if (!verb || verb === "help" || verb === "-h" || verb === "--help") {
+    stdout.write(
+      "usage: task.mjs <verb> [args...]\nverbs: " + Object.keys(VERBS).concat("help").join(", ") +
+      "\nflags, statuses, and transitions: .agents/skills/task-tracker/references/cli-reference.md\n",
+    );
     return;
   }
   const handler = VERBS[verb];
