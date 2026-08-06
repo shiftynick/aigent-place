@@ -6,7 +6,7 @@ priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T13:24:48Z"
-updatedAt: "2026-08-06T15:43:36Z"
+updatedAt: "2026-08-06T15:44:44Z"
 ---
 
 <!-- task-tracker:description -->
@@ -257,3 +257,4 @@ The protocol schematizes ShapeTree, ShapeNode, and the six v1 primitives, but th
   | npm notice run @aigent-place/viewer@0.1.0 smoke
   | npm notice run node ./scripts/smoke.mjs
 - 2026-08-06T15:43:36Z — moved to done
+- 2026-08-06T15:44:44Z — note: DEFECT IN THE COMMIT MESSAGE, needs an operator decision. I passed the commit message using PowerShell here-string syntax (-m @'...'@) through the Bash tool, which does not understand it, so a literal '@' line was prepended. The commit subject is therefore '@' and the intended subject 'task-047: reject malformed candidate shapes before they reach the world' became the first body line; the rest of the message is intact. This is cosmetic and the branch is local and unpushed, and AGENTS.md mandates squash-only merges where the pull request title supplies the final subject, so it does not reach main on its own. I did NOT correct it because this task was given an explicit 'no --amend' constraint and git reset would be the same rewrite by another name; quietly deviating from a stated constraint is worse than surfacing it. Recommended fix, one command, at the operator's discretion: git commit --amend to drop the leading '@' line. Root cause for the retrospective: the Bash tool documents that PowerShell here-strings are not supported and that heredocs must be used instead; I used the wrong one on a Windows host where both shells are available.
