@@ -39,3 +39,8 @@ General engineering conventions live in `docs/ENGINEERING-STANDARDS.md`.
   earlier items for each durable mapping it can affect; checking only the
   pre-batch durable state makes outcomes batch-dependent and can make the
   writer's own commit unrecoverable. (origin: task-011 cold review)
+- For an executable example, verify the oracle derives its expected outcome
+  from the inputs and authoritative state instead of echoing a classification
+  the fixture supplies; an oracle that still passes when the implementation
+  under test is deliberately broken is asserting nothing — demonstrated in
+  `scripts/derived-oracle-lens.test.mjs`. (origin: task-002 cold review)
