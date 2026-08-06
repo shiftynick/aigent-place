@@ -134,6 +134,10 @@ The normal path is `backlog → ready → in_progress → review → done → ar
 `blocked` is reachable from any pre-`done` state and returns to any pre-`done`
 state. The CLI's transition table is the authority; this is a summary of it.
 
+A task in `review` that receives new implementation work returns to
+`in_progress` and takes a fresh pass before it can reach `done`; the pass that
+already ran reviewed a different change.
+
 The `task-tracker` skill owns board semantics. The `execute-task` skill owns
 the work between claim and completion. Skipping implementation or review
 requires an explicitly authorized, logged force override.

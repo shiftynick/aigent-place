@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.16.0",
-  "installedAt": "2026-08-05T02:02:01.340Z",
+  "foundryVersion": "0.18.0",
+  "installedAt": "2026-08-06T19:04:27.248Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "60b335bb1630620383f836d839565b7b64bcd218bc1fe38408448d39ebd04c61"
+      "sha256": "60d3f0277c84020e3972a728e36ee75d15e43d42ff23fd3fcbba3aced7a80a1c"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
-      "sha256": "ba721c957b844dd15286754dce3860bdf091dd68665b68d24792c8e610914aa5",
+      "sha256": "be8f2a866c09286cbc39ce88fbcd504d020be66ac4280ab7f349bf6be648a0fd",
       "preserveIfExists": true
     },
     ".agent-foundry/README.md": {
@@ -18,7 +18,7 @@
     },
     ".agent-foundry/agent-headless/COMPATIBILITY.md": {
       "tier": "mold",
-      "sha256": "2df6dcb52a1600ad5a45acc34cde1aebfc98cbae4e40fbe600df4596e80f1c1d"
+      "sha256": "9d0902580c770e57418adac6ac30ff2ecf7d4617c4a510977ed5dc85d7f02dfe"
     },
     ".agent-foundry/agent-headless/LICENSE": {
       "tier": "mold",
@@ -26,19 +26,19 @@
     },
     ".agent-foundry/agent-headless/PROVENANCE.md": {
       "tier": "mold",
-      "sha256": "5c4068d75f2f8d3d4f87be854a340cfc4d85c910b2196d14ccb3961c7e55d222"
+      "sha256": "34c0053c8be07547a3a2e8080572b107036ac800b78565494fb3d3ca3e66bc50"
     },
     ".agent-foundry/agent-headless/cli.js": {
       "tier": "mold",
-      "sha256": "859096bd6c8fd85440c1bae2c7a0892423ed614dd3dacdd00f7c648c152dc6bd"
+      "sha256": "47b16b6579bac22d01e3da4969d2df3746b0dc74ee8b3c810c9f5e3442bcd432"
     },
     ".agent-foundry/agent-headless/cli.test.mjs": {
       "tier": "mold",
-      "sha256": "71ec39bdf6ce41e3692f73294092f95c5274ae07966e742f677b5068d7b87e6c"
+      "sha256": "5dd8b70b3b69111fee7519272821360e1eff106099af4a2593d362ee5256350e"
     },
     ".agent-foundry/agent-headless/index.js": {
       "tier": "mold",
-      "sha256": "95680e5ffc6182dfe9e2de98edf8a03b72c97f701f148c8bb1ada454038735cc"
+      "sha256": "47239478b111a394bc96eb8107c6cc081442e2e56a67900765081e208dd03437"
     },
     ".agent-foundry/agent-headless/source/0001-feat-harden-unified-runner-for-Node-20-consumers.patch.b64": {
       "tier": "mold",
@@ -47,6 +47,42 @@
     ".agent-foundry/agent-headless/source/0002-fix-tighten-least-privilege-and-cancellation-contrac.patch.b64": {
       "tier": "mold",
       "sha256": "bd04083e8f3ea06f09edfd844b5fd8828160822a0b1cc31682330a2a4193f01e"
+    },
+    ".agent-foundry/agent-headless/source/0003-fix-separate-unreadable-output-from-provider-failure.patch.b64": {
+      "tier": "mold",
+      "sha256": "46a1fd2ce46a7ef6c2834bf37a8d016492f9d001d00857860c0f88766776e966"
+    },
+    ".agent-foundry/agent-headless/source/0004-fix-locate-an-isolated-worktree-by-construction-not-.patch.b64": {
+      "tier": "mold",
+      "sha256": "8b4e70415f140fed67133f54d603a0636c13a6e3aa50a4f535942874ba56e0f6"
+    },
+    ".agent-foundry/agent-headless/source/0005-fix-derive-worktree-paths-only-for-real-repositories.patch.b64": {
+      "tier": "mold",
+      "sha256": "bcfd3d4c4c48b0b0453efa5b597581b38f56edf6235fb8ef9fc036f4a563de0c"
+    },
+    ".agent-foundry/agent-headless/source/0006-fix-probe-git-with-the-run-s-own-environment.patch.b64": {
+      "tier": "mold",
+      "sha256": "15f05032dafa3e2c57617f62c4bcaba19c99316eed445239e65733003578c56e"
+    },
+    ".agent-foundry/agent-headless/source/0007-fix-key-environment-caches-by-effective-resolution-n.patch.b64": {
+      "tier": "mold",
+      "sha256": "336df876cf058b22f4fe2503a15c10a607651bedfe9060f7b96128ffe1b23409"
+    },
+    ".agent-foundry/agent-headless/source/0008-fix-read-environments-the-way-Windows-does-everywher.patch.b64": {
+      "tier": "mold",
+      "sha256": "a7bfb077cf65b958906f0918761f3a3bdb55d6545f3b9781cc15d6ab43ae3ec7"
+    },
+    ".agent-foundry/agent-headless/source/0009-fix-case-variant-duplicates-resolve-last-wins-in-eve.patch.b64": {
+      "tier": "mold",
+      "sha256": "b8d68f97e7984b1ae3a1d727877b17b987799a58f3874d46becadf463c525df8"
+    },
+    ".agent-foundry/agent-headless/source/0010-refactor-one-matcher-for-every-environment-read.patch.b64": {
+      "tier": "mold",
+      "sha256": "ff8bc3847fa06bdc777a75044f7c4fc0799896aba871a45d6527daa9b6360752"
+    },
+    ".agent-foundry/agent-headless/source/0011-refactor-single-source-the-environment-name-fold.patch.b64": {
+      "tier": "mold",
+      "sha256": "46c120d04030af4b7eba6f6cc156278c1feeae968c58c797a3602f1a973c0119"
     },
     ".agent-foundry/check-foundry-drift.mjs": {
       "tier": "mold",
@@ -110,7 +146,7 @@
     },
     ".agents/skills/agent-headless/SKILL.md": {
       "tier": "mold",
-      "sha256": "2df06572b651d1580a556e72b1a3d5d9729f377fab1c7ff68a1f872f62f55f5c"
+      "sha256": "ee40ac30435307a0479052e9daa0d4bef66d4b682bc931744e3d76e47ea7c16c"
     },
     ".agents/skills/attack-the-board/SKILL.md": {
       "tier": "mold",
@@ -162,11 +198,11 @@
     },
     ".agents/skills/efficient-orchestration/SKILL.md": {
       "tier": "mold",
-      "sha256": "762d6807b67a390c4da30f16c89c526b85e62cb437f5ab77d3b35f4f850f6bcd"
+      "sha256": "006c75bc33e495277b29d778014d7e426dd6b4d73690704b878630d383b3e25f"
     },
     ".agents/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "94505403901cbfd2b360f0f6887eb434775917fd99e4f5ac5665acb7be674a28"
+      "sha256": "570377a304464a7d927238212d6315bdbecec156056550c4f478afeb37f3d7da"
     },
     ".agents/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
@@ -206,7 +242,7 @@
     },
     ".agents/skills/task-tracker/SKILL.md": {
       "tier": "mold",
-      "sha256": "1c075ef30a690a5610e5c0d804b2cc5848ff400a62eeb3da657a8aa74dbfd7f4"
+      "sha256": "28ae7900b025867daa1daab38172db9515576b3af645bff822b7a20253c4a87b"
     },
     ".agents/skills/task-tracker/references/cli-reference.md": {
       "tier": "mold",
@@ -238,11 +274,11 @@
     },
     ".agents/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "4e79bd80e66e4befcabeca3cd9aa981e354095e4e4834d595067dad7022d5991"
+      "sha256": "ee2b5b16609bf416c2fddd9111f9e8aee7dc85e2029cba0b334eac6f22c19c64"
     },
     ".agents/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "d715497cca20365081c45f14a49909c62f42ff1fa3dfb5aa2784c4524ae8dd34"
+      "sha256": "f7796f3454fb1bbe684565052400e24c8d96b5a808d44c4b113dcc0b6c37fc7e"
     },
     ".agents/skills/the-fool/SKILL.md": {
       "tier": "mold",
@@ -266,7 +302,7 @@
     },
     ".claude/skills/agent-headless/SKILL.md": {
       "tier": "mold",
-      "sha256": "2df06572b651d1580a556e72b1a3d5d9729f377fab1c7ff68a1f872f62f55f5c"
+      "sha256": "ee40ac30435307a0479052e9daa0d4bef66d4b682bc931744e3d76e47ea7c16c"
     },
     ".claude/skills/attack-the-board/SKILL.md": {
       "tier": "mold",
@@ -310,11 +346,11 @@
     },
     ".claude/skills/efficient-orchestration/SKILL.md": {
       "tier": "mold",
-      "sha256": "762d6807b67a390c4da30f16c89c526b85e62cb437f5ab77d3b35f4f850f6bcd"
+      "sha256": "006c75bc33e495277b29d778014d7e426dd6b4d73690704b878630d383b3e25f"
     },
     ".claude/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "2dbae0a6a2d08c399f23590b4910c39f102ac93cc4ec7bb6bf95de49bb11d0a1"
+      "sha256": "4a0f94c648bfa7529bdf366f537becff4063f1d68b0ecc15664d03268d66bacf"
     },
     ".claude/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
@@ -354,7 +390,7 @@
     },
     ".claude/skills/task-tracker/SKILL.md": {
       "tier": "mold",
-      "sha256": "cee2a80d5f0c9efb1f7a14365654d724d43592799e3d02397f85f343d26964ff"
+      "sha256": "6b712bc75f5bfea56cde6e479ca3db4353cfc0f172d9fba468050923207b477a"
     },
     ".claude/skills/task-tracker/references/cli-reference.md": {
       "tier": "mold",
@@ -386,11 +422,11 @@
     },
     ".claude/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "4e79bd80e66e4befcabeca3cd9aa981e354095e4e4834d595067dad7022d5991"
+      "sha256": "314d6216fff228c8ad5d6c3eff3605a75bb58ea31005d2c3b849602c98d0880a"
     },
     ".claude/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "d715497cca20365081c45f14a49909c62f42ff1fa3dfb5aa2784c4524ae8dd34"
+      "sha256": "f7796f3454fb1bbe684565052400e24c8d96b5a808d44c4b113dcc0b6c37fc7e"
     },
     ".claude/skills/the-fool/SKILL.md": {
       "tier": "mold",
@@ -431,7 +467,7 @@
     },
     "PLANNING-JOURNAL.md": {
       "tier": "seed",
-      "sha256": "1f279cae4d9f82a6e7182809d1d54d479ee74626ff7de0089357f9c54d99074c",
+      "sha256": "aed3e35e12afc42b1c0b3f5a38cee33f13917e0a094be3f9c6f376d03657b03f",
       "preserveIfExists": true
     },
     "docs/ENGINEERING-STANDARDS.md": {
@@ -444,7 +480,7 @@
     },
     "docs/SDLC.md": {
       "tier": "mold",
-      "sha256": "cf2f9efb793666c59bef48c7f781961d730cf90cc0b743cdfdba9807e9593190"
+      "sha256": "35e6b1b0692235e9446f9b7d8188577162cbb7954b3ca8a3dc4514776814bd26"
     },
     "docs/adr/README.md": {
       "tier": "seed",
