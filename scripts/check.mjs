@@ -108,6 +108,7 @@ function main() {
     [
       "--test",
       "scripts/check.test.mjs",
+      "scripts/derived-oracle-lens.test.mjs",
       "scripts/protocol-contract.test.mjs",
       "scripts/product-check.test.mjs",
       "scripts/replay-contract.test.mjs",
