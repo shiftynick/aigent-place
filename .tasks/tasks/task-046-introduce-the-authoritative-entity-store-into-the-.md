@@ -6,7 +6,7 @@ priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T13:24:48Z"
-updatedAt: "2026-08-06T15:02:06Z"
+updatedAt: "2026-08-06T15:04:07Z"
 ---
 
 <!-- task-tracker:description -->
@@ -94,3 +94,5 @@ The world core currently holds no spatial entity state: authoritative state is a
   | npm notice run npm run smoke -w @aigent-place/viewer
   | npm notice run @aigent-place/viewer@0.1.0 smoke
   | npm notice run node ./scripts/smoke.mjs
+- 2026-08-06T15:04:05Z — note: red-capable check (derived-oracle lens): temporarily broke entity.rs twice and observed the expected failures before reverting. (1) allocating the id before position validation in create() -> entity::tests::ids_are_monotonic_and_only_accepted_creation_consumes_one, accepted_creations_allocate_ascending_ids_and_publish_them, and same_build_replay_reproduces_entity_state_and_digest all FAILED. (2) disabling the position no-op short circuit -> entity::tests::revision_increments_once_and_skips_no_ops, rejections_and_no_ops_leave_state_and_revision_unchanged, and same_build_replay_reproduces_entity_state_and_digest all FAILED. Both mutations were reverted and the suite is green again; the recorded gate runs are against the reverted code.
+- 2026-08-06T15:04:07Z — note: friction: the first commit attempt used a PowerShell here-string through the Bash tool, so the literal @ delimiters became the commit subject line. Fixed with git reset --soft HEAD~1 plus a fresh commit through the pre-commit hook (no --amend, no --no-verify, nothing pushed); the hook re-ran the fast product subset and passed. Recording it because the mistake is silent - the commit succeeds and only git log --oneline shows the damage.
