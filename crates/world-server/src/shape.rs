@@ -106,12 +106,27 @@ pub enum DimensionField {
     Thickness,
 }
 
-/// The axis a local extent was measured on.
+/// A world coordinate axis.
+///
+/// Shared by shape-extent rejections and entity position-boundary rejections:
+/// both name the same right-handed axis from ADR-0002 (`x`/`z` horizontal,
+/// `y` up), so they are one type rather than two identical ones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     X,
     Y,
     Z,
+}
+
+impl Axis {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::X => "x",
+            Self::Y => "y",
+            Self::Z => "z",
+        }
+    }
 }
 
 /// Closed set of reasons a complete candidate shape is rejected.

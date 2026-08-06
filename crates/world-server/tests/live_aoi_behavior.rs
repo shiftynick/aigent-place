@@ -25,7 +25,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use world_server::{
     decode_placeholder_payload, placeholder_body_from_lease, serve_ephemeral, AoiError,
     ImmutableGeneration, LeaseSnapshot, SessionHub, SnapshotFanout, TransportState, AOI_HARD_CAP,
-    VIEWER_AOI_CAPS,
+    FIRST_ENTITY_ID, VIEWER_AOI_CAPS,
 };
 
 type Socket =
@@ -140,6 +140,10 @@ fn generation_of(
         applied_commands: vec![],
         expired_leases: vec![],
         rng_draws: vec![],
+        // AOI interest ranks from lease poses, not the entity table, so this
+        // fixture leaves the table empty on purpose.
+        entities: BTreeMap::new(),
+        next_entity_id: FIRST_ENTITY_ID,
     }
 }
 

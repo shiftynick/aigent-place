@@ -18,6 +18,7 @@
 //!   protects that reserved increment *is* enforced here, because it is a
 //!   revision rule rather than a lifecycle rule.
 
+use crate::shape::Axis;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -36,25 +37,6 @@ pub const REVISION_EXHAUSTION_THRESHOLD: u64 = TERMINAL_REVISION - 1;
 
 /// Inclusive per-axis world bound in metres (`world/v1` section 3.1).
 pub const WORLD_BOUND_METRES: f64 = 100_000.0;
-
-/// Coordinate axis named by a boundary rejection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Axis {
-    X,
-    Y,
-    Z,
-}
-
-impl Axis {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::X => "x",
-            Self::Y => "y",
-            Self::Z => "z",
-        }
-    }
-}
 
 /// Typed entity-store failures. Every variant is a no-effect rejection: it
 /// allocates no ID, increments no revision, and mutates no stored state.

@@ -29,7 +29,7 @@ pub use aoi::{
 };
 
 pub use entity::{
-    Axis, EntityError, EntitySnapshot, EntityStore, MutationOutcome, Position, PositionRequest,
+    EntityError, EntitySnapshot, EntityStore, MutationOutcome, Position, PositionRequest,
     ShapeSlot, FIRST_ENTITY_ID, FIRST_REVISION, REVISION_EXHAUSTION_THRESHOLD, TERMINAL_REVISION,
     WORLD_BOUND_METRES,
 };
