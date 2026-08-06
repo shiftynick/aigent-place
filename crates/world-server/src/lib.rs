@@ -16,6 +16,7 @@ mod persist;
 mod rng;
 mod ruleset;
 mod session;
+mod shape;
 mod snapshot;
 mod tick;
 mod transport;
@@ -51,6 +52,11 @@ pub use session::{
     AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, CompatibilityRecord,
     ConnectionDisplaced, ConnectionMode, ConnectionRole, FeatureOffer, HandshakeOutcome,
     IdentityBinding, SessionHub,
+};
+pub use shape::{
+    is_valid_identifier, validate_shape_tree, validate_shape_tree_with_budgets, Axis,
+    DimensionField, ShapeBudgets, ShapeClass, ShapeRejection, MAX_IDENTIFIER_LEN,
+    QUATERNION_UNIT_TOLERANCE, WORLD_BOUND_MM,
 };
 pub use snapshot::{
     decode_placeholder_payload, encode_placeholder_payload, placeholder_body_from_lease,

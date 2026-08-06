@@ -68,6 +68,21 @@ The accepted world-geometry decision is
 define entity IDs, coordinate quantization, shape trees, collision, placement,
 sleep/wake recovery, and deterministic `unstick` behavior.
 
+The world server implements the shape-tree half of that contract closed-form
+in `world_server::validate_shape_tree`: a complete candidate `ShapeTree` is
+checked as one rooted acyclic tree with unique non-zero node IDs,
+unit-quaternion rotations, exactly one v1 primitive per node, unique joint
+names, and strictly positive primitive dimensions apart from a capsule's
+cylindrical segment. Part, joint, and per-primitive extent budgets are read
+from the live ruleset generation, and aigent bodies and placed objects are
+budgeted separately. Validation is all-or-nothing — a rejected candidate
+mutates nothing — and the part budget is checked before any per-node work, so
+an oversized candidate cannot make the server pay for its size. Two pieces of
+section 4.2 are still outstanding: no command path calls the validator yet, so
+nothing is rejected on a live request until `set_shape` and `place_object`
+land, and the aggregate bound over composed transforms needs the canonical AABB
+collider, which is not yet derived.
+
 The accepted durable replay decision is
 [ADR-0005](docs/adr/0005-durable-command-replay-and-backpressure.md). The
 [replay and persistence v1 contract](replay/v1/CONTRACT.md) defines canonical
