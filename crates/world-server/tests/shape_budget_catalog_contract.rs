@@ -15,6 +15,7 @@
 
 use world_server::{
     validate_candidate, RulesetParameters, RulesetValidationError, ShapeBudgets, ShapeClass,
+    ShapeRejection,
 };
 
 /// The normative contract, embedded so the assertions below cannot drift from
@@ -156,13 +157,36 @@ fn shape_budgets_accept_the_contract_boundaries() {
 
         // One step outside the contract range must be refused on the read side
         // as well, so a grandfathered generation cannot smuggle in an unbounded
-        // budget.
+        // budget. The *reason* is asserted, not merely the refusal: an
+        // out-of-catalog value is `InvalidBudgetParameter` naming the offending
+        // path and value, which is a materially different report from
+        // `MissingBudgetParameter` for a generation that omits the path
+        // entirely. An `is_err()` assertion here would let the two reject
+        // classes collapse into one without any test noticing.
         let mut beyond = RulesetParameters::catalog_defaults();
         beyond.set(parts_path, parts_high + 1);
-        assert!(
-            ShapeBudgets::from_ruleset(&beyond, class).is_err(),
-            "{parts_path}={} must be refused on the read side",
+        assert_eq!(
+            ShapeBudgets::from_ruleset(&beyond, class),
+            Err(ShapeRejection::InvalidBudgetParameter {
+                path: parts_path,
+                value: parts_high + 1,
+            }),
+            "{parts_path}={} must be refused on the read side by path and value",
             parts_high + 1
+        );
+
+        // The same class of defect on a different path must name that path, so
+        // the reported `path` tracks the parameter that actually failed rather
+        // than being fixed to whichever one `from_ruleset` reads first.
+        let extent_low = contract_row("shape.max_extent_mm").low;
+        let mut under = RulesetParameters::catalog_defaults();
+        under.set("shape.max_extent_mm", extent_low - 1);
+        assert_eq!(
+            ShapeBudgets::from_ruleset(&under, class),
+            Err(ShapeRejection::InvalidBudgetParameter {
+                path: "shape.max_extent_mm",
+                value: extent_low - 1,
+            })
         );
     }
 }

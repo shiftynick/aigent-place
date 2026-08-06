@@ -12,11 +12,14 @@
 //!   returns a value. It never rewrites, clamps, truncates, or partially
 //!   accepts a tree, so a rejected candidate mutates nothing anywhere.
 //! * **Bounded.** The part budget is checked before any per-node work, so an
-//!   oversized tree costs one comparison. The remainder is two linear node
-//!   passes plus two sorts, and every heap allocation is made in one block up
-//!   front — none per node. Reasons are reported in the canonical ascending
-//!   `node_id` order, so input array order cannot change either the outcome or
-//!   which defect is named.
+//!   oversized tree costs one comparison. The remainder is three linear node
+//!   passes — identity, the per-node rules, then the reachability walk — plus
+//!   two tree-wide sorts and one sort of each node's own tag list. Heap
+//!   allocation is fixed at five buffers, three taken before the per-node pass
+//!   and two by the reachability walk after it; each is sized from a quantity
+//!   already known when it is taken, and none is allocated per node. Reasons
+//!   are reported in the canonical ascending `node_id` order, so input array
+//!   order cannot change either the outcome or which defect is named.
 //! * **Live budgets.** Part, joint, and extent limits are read from the live
 //!   ruleset generation's parameter map, never from constants in this file. A
 //!   generation missing a `shape.*` path rejects the candidate rather than
@@ -306,11 +309,12 @@ pub fn validate_shape_tree_with_budgets(
         });
     }
 
-    // Every heap allocation this function makes is made here, before any
-    // per-node work, each sized from a quantity already known: the
-    // budget-checked node count, the class joint budget, and the widest
-    // material-tag list. Nothing below this block allocates, so allocation
-    // count is fixed rather than a function of tree size.
+    // Every buffer the per-node pass uses is taken here, before that pass
+    // begins, each sized from a quantity already known: the budget-checked node
+    // count, the class joint budget, and the widest material-tag list. The
+    // per-node pass itself allocates nothing; the only further allocation is
+    // the fixed pair `check_connected_acyclic` takes once that pass completes.
+    // Allocation count is therefore five, not a function of tree size.
     let widest_tag_list = nodes
         .iter()
         .map(|node| node.material_tags.len())
@@ -395,6 +399,12 @@ pub fn validate_shape_tree_with_budgets(
 /// the root must walk into a cycle. Detecting cycles therefore also proves the
 /// tree is connected. Nodes finalized by an earlier walk are not rewalked, so
 /// total work is linear in node count.
+///
+/// This is the last of the five allocation sites the module header counts: two
+/// buffers, both sized from the already-budget-checked node count, both taken
+/// once before the walk rather than per node. `path` cannot outgrow its
+/// capacity because a node is marked `ON_PATH` before it is pushed, so no walk
+/// pushes the same node twice.
 fn check_connected_acyclic(
     nodes: &[ShapeNode],
     index_by_id: &[(u32, u32)],
