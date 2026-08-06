@@ -1,12 +1,12 @@
 ---
 id: task-021
 title: Add derived-oracle lens to cold-review standards
-status: backlog
+status: ready
 priority: p3
 tags: [area:process, milestone:foundations]
 blockedBy: []
 createdAt: "2026-07-29T15:59:10Z"
-updatedAt: "2026-07-29T15:59:10Z"
+updatedAt: "2026-08-06T13:10:33Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,5 @@ Add a permanent review check that executable examples derive outcomes from input
 ## Log
 
 - 2026-07-29T15:59:10Z — created (status: backlog)
+- 2026-08-06T13:10:33Z — moved to ready
+- 2026-08-06T13:10:33Z — note: Operator approved the governance change on 2026-08-06. Cleared to claim.

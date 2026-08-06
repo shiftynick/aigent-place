@@ -48,3 +48,45 @@ accepted; shipped on `main` including follow-ups #38–#41.
   upgrade. Active ruleset `19976689` now protects `main`, requires strict
   `process-gate`, allows squash merges only, requires resolved conversations,
   and has no bypass actors.
+
+## 2026-08-06 — shape-collision-slice
+
+**Goal:** Give the world real spatial bodies — parametric shapes, derived
+colliders, and swept collision — so movement is physically meaningful.
+
+**Done when:** A scripted aigent with a multi-part body walks over non-flat
+terrain, stops at contact with a second body instead of passing through it,
+recovers via `unstick` when boxed in, and the viewer renders both as actual
+primitives, with the product gate green.
+
+Approved front:
+
+1. `task-046` — authoritative entity store in the world core (risk probe)
+2. `task-047` — closed-form shape-tree validation against ruleset budgets
+3. `task-048` — canonical AABB collider derived from a validated shape tree
+4. `task-049` — heightfield sampling and grounding
+5. `task-050` — uniform spatial-hash broadphase
+6. `task-051` — swept movement with a typed MOVE payload
+7. `task-052` — deterministic displacement for sleep, wake, restore, unstick
+8. `task-053` — `set_shape` with atomic candidate validation
+9. `task-054` — real bodies through snapshots and AOI
+10. `task-055` — shape trees and terrain rendered in the viewer
+
+Assumptions: ADR-0002 and ADR-0003 stand exactly as accepted and are not
+reopened mid-front; the existing tick and durability machinery can host an
+entity table without an ADR-level change (`task-046` tests this, and failure
+there triggers re-plan rather than a workaround); terrain is deterministic
+generation only, sufficient to ground bodies; default bodies are
+server-assigned, so `set_shape` is an upgrade path rather than a prerequisite
+for having a body.
+
+Out of scope: `place_object`, per-owner budgets, and chunk persistence (Step
+5); identity, accounts, and key rotation (Step 4) — trusted-inject demo
+identity persists through this front; comms; governance; Postgres; viewer
+relay extraction; pose animation against named joints (joints are validated
+and carried, not animated).
+
+Operator-approved attack order: `task-044` and `task-041` land before
+`task-054`, because real shape trees are far larger than the fixed-size
+placeholder body and would otherwise expose missing AOI truncation and
+undercounted outbound bytes inside a larger change. Status: accepted.
