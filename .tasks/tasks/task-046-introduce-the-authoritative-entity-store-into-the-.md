@@ -1,12 +1,12 @@
 ---
 id: task-046
 title: Introduce the authoritative entity store into the world core
-status: review
+status: done
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T13:24:48Z"
-updatedAt: "2026-08-06T15:04:07Z"
+updatedAt: "2026-08-06T15:28:04Z"
 ---
 
 <!-- task-tracker:description -->
@@ -96,3 +96,40 @@ The world core currently holds no spatial entity state: authoritative state is a
   | npm notice run node ./scripts/smoke.mjs
 - 2026-08-06T15:04:05Z — note: red-capable check (derived-oracle lens): temporarily broke entity.rs twice and observed the expected failures before reverting. (1) allocating the id before position validation in create() -> entity::tests::ids_are_monotonic_and_only_accepted_creation_consumes_one, accepted_creations_allocate_ascending_ids_and_publish_them, and same_build_replay_reproduces_entity_state_and_digest all FAILED. (2) disabling the position no-op short circuit -> entity::tests::revision_increments_once_and_skips_no_ops, rejections_and_no_ops_leave_state_and_revision_unchanged, and same_build_replay_reproduces_entity_state_and_digest all FAILED. Both mutations were reverted and the suite is green again; the recorded gate runs are against the reverted code.
 - 2026-08-06T15:04:07Z — note: friction: the first commit attempt used a PowerShell here-string through the Bash tool, so the literal @ delimiters became the commit subject line. Fixed with git reset --soft HEAD~1 plus a fresh commit through the pre-commit hook (no --amend, no --no-verify, nothing pushed); the hook re-ran the fast product subset and passed. Recording it because the mistake is silent - the commit succeeds and only git log --oneline shows the damage.
+- 2026-08-06T15:25:51Z — note: cold-review adjudication (ladder rung: two independent cold reviews, SPEC axis and STANDARDS axis, run in a separate cold-context worktree per docs/SDLC.md; highest available rung used). Both axes CONFIRMED and FIXED: (A) SPEC-1 == STANDARDS-1, durable packet integrity digest coverage of the entity table and the id allocator was asserted by ARCHITECTURE.md but unproven. Reproduced live: deleting the whole entity+allocator block from CommittedGeneration::compute_integrity_hex left the suite green, because integrity_ok() recomputes with the same function that sealed the packet, so codec round-trip cannot see an omitted field. Fixed by tests/reliability_behavior.rs::entity_state_tamper_fails_integrity, which tampers one sealed field at a time (position, revision, shape present/absent, shape bytes, entity_id, whole table, next_entity_id) and requires !integrity_ok() for each - the same shape as the existing lease_identity_tamper_fails_integrity precedent. (B) SPEC-2 == STANDARDS-2, only entity position was actually inside a generation-digest oracle; the single sensitivity probe varied one position component. Reproduced live: removing next_entity_id from ImmutableGeneration::digest, and separately removing the revision and shape updates, both left the suite green. Fixed by tests/entity_store_behavior.rs::generation_digest_covers_every_entity_field_and_the_allocator, which varies one published field at a time against a baseline digest. (C) STANDARDS-3, the allocator_below_first_id guard in EntityStore::restore was unreachable (next_entity_id != 0 implies >= FIRST_ENTITY_ID == 1). Removed; the <= highest reuse check is the whole allocator invariant and now says so in a comment.
+- 2026-08-06T15:26:01Z — note: red-capable evidence for the review fixes (executed in this worktree, all mutations reverted, git diff confirmed clean afterwards): (1) deleted the entity+allocator block from compute_integrity_hex -> entity_state_tamper_fails_integrity FAILED at the position assertion; (2) deleted only 'hasher.update(self.next_entity_id.to_be_bytes())' from compute_integrity_hex -> the same test FAILED at the allocator assertion; (3) deleted only 'hasher.update(self.next_entity_id.to_be_bytes())' from ImmutableGeneration::digest -> generation_digest_covers_every_entity_field_and_the_allocator FAILED with two identical digests; (4) deleted the revision and shape updates from ImmutableGeneration::digest -> the same test FAILED at the revision assertion. Before these tests existed, every one of those four mutations left cargo test -p world-server fully green, which is exactly what the two cold reviews reported.
+- 2026-08-06T15:26:15Z — note: cold-review CHECKED sections were substantive, not thin: both axes independently traced rubric lines 1,2,3,5,6 to the ADR/CONTRACT text (ADR-0002 identity and coordinates, ADR-0004 terminal revision u64::MAX-1, ADR-0005 durable-before-apply and fail-closed unknown codec version), executed the gate, and both ran their own implementation mutations rather than reasoning by inspection. I re-verified the load-bearing claims myself: create() validates before reading the allocator (entity.rs), next_revision rejects at REVISION_EXHAUSTION_THRESHOLD = u64::MAX-1, check_axis rejects non-finite then out-of-closed-bound then canonicalizes -0.0 without clamping, install_tentative is the only assignment to World::entities, and decode_generation rejects an unknown codec version instead of reinterpreting (ADR-0005). Deliberately not changed: the digest domain separators still read '...generation.v1' while the durable codec is version 2 - the separator labels the digest input layout for a self-consistent in-memory recompute and changing it would be a gratuitous edit with no behavioral effect. Also unchanged: entity publication into StubSnapshotPayload and millimetre wire quantization, which are outside the task-046 rubric; and the ADR-0004 forced-sleep lifecycle, which stays filed as task-2748472262000001.
+- 2026-08-06T15:27:38Z — run: node scripts/check.mjs
+  started 2026-08-06T15:26:27Z, exit 0 in 70.9s
+  output tail (truncated to last 30 lines):
+  |      Running tests\persist_sqlite_behavior.rs (target\debug\deps\persist_sqlite_behavior-c4d71245086ff896.exe)
+  |      Running tests\placeholder_payload_behavior.rs (target\debug\deps\placeholder_payload_behavior-5f159efe4496d0c4.exe)
+  |      Running tests\reliability_behavior.rs (target\debug\deps\reliability_behavior-7aed9c4b0ea57898.exe)
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-06T15:28:04Z — moved to done

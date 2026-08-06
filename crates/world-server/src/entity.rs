@@ -467,14 +467,11 @@ impl EntityStore {
             highest = highest.max(entity.entity_id);
         }
         // `0` is the exhausted allocator; otherwise IDs must still be unused.
+        // A non-zero allocator is necessarily at or above `FIRST_ENTITY_ID`, so
+        // this reuse check is the whole allocator invariant.
         if next_entity_id != 0 && next_entity_id <= highest {
             return Err(EntityError::CorruptEntityState {
                 reason: "allocator_would_reuse_id",
-            });
-        }
-        if next_entity_id != 0 && next_entity_id < FIRST_ENTITY_ID {
-            return Err(EntityError::CorruptEntityState {
-                reason: "allocator_below_first_id",
             });
         }
         self.entities = entities;

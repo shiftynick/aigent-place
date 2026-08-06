@@ -145,6 +145,94 @@ fn accepted_creations_allocate_ascending_ids_and_publish_them() {
     assert_ne!(shifted_generation.digest(), generation.digest());
 }
 
+/// Every authoritative entity field and the allocator change the generation digest.
+///
+/// Rubric line (4) claims the entity table *and* the ID allocator participate in
+/// `ImmutableGeneration` and change its digest. Two generations that differ only
+/// in revision, shape slot, entity identity, or allocator state are all reachable
+/// — through recovery, replay, or a divergent build — so each needs its own
+/// oracle. Varying one published field at a time is the only way to prove the
+/// digest is not silently ignoring it: replay equality and codec round trips both
+/// stay green when a field is omitted from the hash.
+#[test]
+fn generation_digest_covers_every_entity_field_and_the_allocator() {
+    let mut world = World::new(WorldConfig::default());
+    world
+        .enqueue(cmd(
+            1,
+            b"a",
+            1,
+            CommandEffect::CreateEntity {
+                position: PositionRequest::new(1.5, -2.0, 3.25),
+                shape: Some(ShapeSlot::from_encoded(vec![7, 7])),
+            },
+        ))
+        .unwrap();
+    let published = world.advance_tick().expect("tick 1").clone();
+    let baseline = published.digest();
+    // One accepted creation took ID 1, so the allocator stands at 2.
+    assert_eq!(published.next_entity_id, 2);
+
+    let mut varied = published.clone();
+    varied.entities.get_mut(&1).expect("entity 1").position =
+        Position::new(1.5, -2.0, 3.251).expect("legal position");
+    assert_ne!(
+        varied.digest(),
+        baseline,
+        "entity position must change the generation digest"
+    );
+
+    let mut varied = published.clone();
+    varied.entities.get_mut(&1).expect("entity 1").revision = 2;
+    assert_ne!(
+        varied.digest(),
+        baseline,
+        "entity revision must change the generation digest"
+    );
+
+    let mut varied = published.clone();
+    varied.entities.get_mut(&1).expect("entity 1").shape = None;
+    assert_ne!(
+        varied.digest(),
+        baseline,
+        "a dropped shape slot must change the generation digest"
+    );
+
+    let mut varied = published.clone();
+    varied.entities.get_mut(&1).expect("entity 1").shape =
+        Some(ShapeSlot::from_encoded(vec![7, 7, 7]));
+    assert_ne!(
+        varied.digest(),
+        baseline,
+        "rewritten shape bytes must change the generation digest"
+    );
+
+    let mut varied = published.clone();
+    varied.entities.get_mut(&1).expect("entity 1").entity_id = 5;
+    assert_ne!(
+        varied.digest(),
+        baseline,
+        "entity identity must change the generation digest"
+    );
+
+    let mut varied = published.clone();
+    varied.entities.clear();
+    assert_ne!(
+        varied.digest(),
+        baseline,
+        "an emptied entity table must change the generation digest"
+    );
+
+    let mut varied = published.clone();
+    varied.next_entity_id += 1;
+    assert_ne!(
+        varied.digest(),
+        baseline,
+        "ADR-0002 never reuses an ID, so two generations whose allocators disagree \
+         must not publish the same digest"
+    );
+}
+
 #[test]
 fn rejections_and_no_ops_leave_state_and_revision_unchanged() {
     let mut world = World::new(WorldConfig::default());
