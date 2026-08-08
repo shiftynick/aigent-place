@@ -96,6 +96,14 @@ view that answers "what is waiting on me?"; a decision recorded only in prose
 is a decision the operator never sees. Remove the tag as soon as the human
 answers, and log the answer on the task.
 
+## External facts
+
+Facts that live outside the repository but that an agent needs to know exist
+— environment variable names (never values), third-party dashboards, test
+accounts, webhook endpoints, payment or hosting setup — are recorded in
+`docs/external/` as they are discovered. A fact recorded only in chat or a
+task log is invisible to a future session; files on disk are free context.
+
 ## Work classification
 
 ### Conversational
@@ -146,7 +154,9 @@ state. The CLI's transition table is the authority; this is a summary of it.
 
 A task in `review` that receives new implementation work returns to
 `in_progress` and takes a fresh pass before it can reach `done`; the pass that
-already ran reviewed a different change.
+already ran reviewed a different change. Fixes for confirmed `low`-severity
+findings follow the delta-check rule in "Review" instead of a fresh full
+pass.
 
 The `task-tracker` skill owns board semantics. The `execute-task` skill owns
 the work between claim and completion. Skipping implementation or review
@@ -171,8 +181,18 @@ Every task receives two separately scoped cold-context passes:
 2. **STANDARDS:** Is it correct, safe, maintainable, tested, documented, and
    consistent with project invariants?
 
-Material fixes are reviewed again. Review output is evidence, not authority;
-verify findings against the live repository.
+Re-review is **severity-gated**. A confirmed `high` or `medium` finding,
+once fixed, sends the fresh diff through both cold axes again. Confirmed
+`low`-severity findings are fixed in the same pass and receive a **delta
+check** — one scoped cold call verifying only that those named fixes were
+applied correctly and touch nothing else — or are filed as follow-up tasks;
+they do not by themselves trigger a fresh full round. A `low`-severity,
+`low`-confidence finding never blocks promotion and never triggers a round.
+
+Review output is evidence, not authority; verify findings against the live
+repository. A finding that cites no rubric line, written standard, or
+project invariant is discarded at adjudication without a response — do not
+fix it, and do not re-enter review because of it.
 
 Dispatch the two axes concurrently when the harness supports independent
 calls. They remain separate calls and separate outputs; concurrency must not

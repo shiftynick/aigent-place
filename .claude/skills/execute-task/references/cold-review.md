@@ -75,12 +75,21 @@ Treat findings as hypotheses:
 
 - fix confirmed correctness, edge-case, objective, and standards defects;
 - ignore taste unless it maps to an actual project convention;
+- discard, without a response, any finding that cites no rubric line,
+  written standard, or project invariant — do not fix it and do not
+  re-enter review because of it;
 - file useful but out-of-scope ideas separately;
 - log substantive disagreement and its counter-evidence.
 
-After non-trivial fixes, repeat both cold axes on the fresh diff. Any
-task-scoped change after the latest review returns to review. This includes
-documentation or validation fixes. Stop after three total rounds. At the cap,
+Re-review is severity-gated; `docs/SDLC.md` → "Review" owns the rule. In
+short: fixes for confirmed `high` or `medium` findings send the fresh diff
+through both cold axes again. Fixes for confirmed `low`-severity findings
+get one scoped delta check — a single cold call that verifies only that the
+named fixes were applied correctly and touch nothing else — or become
+follow-up tasks. A `low`-severity, `low`-confidence finding never blocks
+promotion and never triggers a round.
+
+Stop after three total full rounds. At the cap,
 log remaining substantive findings. Fix must-fixes or file follow-ups. Surface
 the unresolved risk before promotion.
 
