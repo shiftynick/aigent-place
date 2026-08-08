@@ -42,6 +42,11 @@ the *milestone* (not per task): what works when this front is complete. If
 you cannot state the goal this way, the missing piece is a decision, not a
 plan. Use `grill-me` or surface a `needs:operator` task before planning.
 
+For a user-facing feature, also write a short announcement: 3-6 sentences
+that tell users what changed and why it helps them. If you cannot write the
+announcement, the feature itself is not clear yet — use `grill-me` before
+you plan. Carry the announcement into the step-4 proposal.
+
 ### 2. Gather evidence before decomposing
 
 Read the live state that constrains the plan: the board (`task.mjs board`,
@@ -64,6 +69,11 @@ Break the goal into tasks. Every card must satisfy the board's own rules:
   Parallel agents live on that property.
 - **Front-load the risk.** Put the task most likely to invalidate the plan
   first, in cheapest-probe form. Re-plan after task one, not task nine.
+- **Tracer bullet first when the goal spans layers.** If the milestone
+  touches storage, logic, and an interface, make task one a single thin
+  end-to-end path that runs, with mocked internals where needed. Do not
+  decompose by layer (all storage, then all logic, then all interface) —
+  that shape produces no working state until the end.
 
 Where the goal forks on an architecture choice, plan up to the fork. File
 the decision as a `proposed` ADR plus `needs:operator` task. Scope the
@@ -78,11 +88,15 @@ Present the plan as a compact review artifact:
 
 Goal: <one sentence> — done when <observable finish line>.
 
+Announcement (user-facing milestones only): <3-6 sentences to users>
+
 | # | Task | Depends on | Risk it retires |
 | - | ---- | ---------- | --------------- |
 | 1 | ...  | —          | ...             |
 
 Assumptions this plan stands on: <the load-bearing ones>
+Least confident decisions: <numbered — the calls most worth challenging
+now, while a change costs a sentence instead of a rewrite>
 Explicitly out of scope: <what a reasonable reader might expect but won't get>
 ```
 

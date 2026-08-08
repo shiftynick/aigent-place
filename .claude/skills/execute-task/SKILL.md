@@ -25,7 +25,10 @@ dependencies, and command behavior.
 
 2. If the objective conflicts with repository evidence or you cannot make it
    checkable, stop. Surface the concrete ambiguity.
-3. Write a 3-6 line rubric of observable outcomes **before claiming**:
+3. Write a 3-6 line rubric of observable outcomes **before claiming**. Write
+   each line so a cold reviewer can check it without interpretation. If you
+   cannot make a line observable, that line is a question for the operator,
+   not a rubric line — surface it before you claim:
 
    ```bash
    node .claude/skills/task-tracker/scripts/task.mjs note task-NNN "rubric: (1) ... (2) ..."
@@ -42,7 +45,17 @@ claimable task. Inspect `board` and blockers. Do not invent work.
 
 ## Implement
 
+- Read `docs/REVIEW-STANDARDS.md` and the applicable
+  `docs/ENGINEERING-STANDARDS.md` sections **before you write code**. The
+  STANDARDS review axis judges against them; meet them at the source instead
+  of discovering them as findings.
 - Keep the diff task-scoped. File out-of-scope discoveries as separate tasks.
+- When the task creates a new interface, public signature set, or module
+  boundary, outline the types and signatures first — no bodies. Log the
+  outline and the choices you are least confident about as a task note. A
+  reader must be able to say "right" or "wrong" from the outline in seconds.
+  Implement only after the outline is logged; a signature is cheap to change,
+  an implementation is not.
 - Record non-obvious choices and workflow waste as they occur:
 
   ```bash
@@ -62,6 +75,12 @@ claimable task. Inspect `board` and blockers. Do not invent work.
   removes that behavior. Confirm a test fails on it. A behavior with no such
   test is untested. A test that only fails when the code is deleted or no
   longer compiles proves execution, not behavior.
+
+Before you request review, run a **warm self-pass** over the frozen diff:
+read the diff line by line against the rubric, then a second time against
+the `docs/REVIEW-STANDARDS.md` lenses. Fix what you find. This pass does not
+replace cold review; it removes the mechanical findings that waste the first
+cold round.
 
 When the implementation, initial checks, and documentation are ready:
 

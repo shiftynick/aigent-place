@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.23.0",
-  "installedAt": "2026-08-08T16:13:37.565Z",
+  "foundryVersion": "0.24.0",
+  "installedAt": "2026-08-08T17:19:32.359Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "6f3b9ebf58d071a4e6369e2198f47992b35aed3116c66800dd6fb153a8bb14a7"
+      "sha256": "162ac5a30f482d6dbab94a8aea695a9f19be5aa568c776dfdd6864f2086b46ae"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
-      "sha256": "21553b91cde8558d2154942c50ed727453060580bbd922bc34e4ef58a6b7dee2",
+      "sha256": "4daa443b2faf573b1178c0467fa8d036ecf84df6fd1ad68bfaead630b85e6520",
       "preserveIfExists": true
     },
     ".agent-foundry/README.md": {
@@ -178,11 +178,11 @@
     },
     ".agents/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "7000f67808b46a04730e057b3659e4544c5f49692b9edd11e02f8bb185852d53"
+      "sha256": "f9359817c36b717fee4adb1cde971ec0390d34369300299545c5779d2cd344af"
     },
     ".agents/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "74c6c24c9bc0be40484c0f2687b6b9af73aec9267daa8748cc1c287da44d9d0f"
+      "sha256": "189353ecb4b0671410d7e64087ad68dd163274bc023891194b3d93f094463e30"
     },
     ".agents/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -198,7 +198,7 @@
     },
     ".agents/skills/plan-milestone/SKILL.md": {
       "tier": "mold",
-      "sha256": "9ee25ac98c323c1bdf3a9fc38ff6083d2a0253346a9082e14f5996309ab4e462"
+      "sha256": "3bf1be03b8e5085ba19858753cc2e4c66a4fee1ed3eb1a5009a285a9d547329f"
     },
     ".agents/skills/retrospective/SKILL.md": {
       "tier": "mold",
@@ -310,11 +310,11 @@
     },
     ".claude/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "355cb79abdead074f2ddab5a67d1f70cfa81c93f4393abf312d9540d06d0e9ba"
+      "sha256": "1ae41d86eb4217fe1eb3f2fbb1faf6d61e679c980cd9269568259545aa186bc1"
     },
     ".claude/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "74c6c24c9bc0be40484c0f2687b6b9af73aec9267daa8748cc1c287da44d9d0f"
+      "sha256": "189353ecb4b0671410d7e64087ad68dd163274bc023891194b3d93f094463e30"
     },
     ".claude/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -330,7 +330,7 @@
     },
     ".claude/skills/plan-milestone/SKILL.md": {
       "tier": "mold",
-      "sha256": "30ea80e7aff88a42919b6cbabb9cdbf83a502b34304737fbad9bef3cd3c94844"
+      "sha256": "196ce6e81fc984a6098cb76fec3036ac3af19d6df0162bb6c99a234895890c84"
     },
     ".claude/skills/retrospective/SKILL.md": {
       "tier": "mold",
@@ -440,7 +440,7 @@
     },
     "docs/SDLC.md": {
       "tier": "mold",
-      "sha256": "8ef29c18ae6330e1308a54307a9516eb3cfdb1b5f194a3e48a7b02de4942cb88"
+      "sha256": "4f9ce6881c8fc08ae3db9d73ae51cbab24bd5ba78fc163d5a275a7b226b653db"
     },
     "docs/adr/README.md": {
       "tier": "seed",
