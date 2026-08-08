@@ -20,10 +20,8 @@ agent workflows installed by Agent Foundry.
 | `the-fool` | Adversarial review of ideas and plans. |
 | `grill-me` | Deliberate one-question-at-a-time decision interview. |
 | `agent-headless` | Unified safe Claude, Codex, and operator-selected Cursor invocation. |
-| `cursor-cli` | Compatibility alias for operator-selected Cursor calls. |
 | `upgrade-agent-foundry` | Guided in-place upgrade of the installed workflow kit. |
 | `agent-foundry-feedback` | Package kit defects and upstream-worthy fixes into feedback packets. |
-| `claude-in-codex` | Compatibility alias for Claude calls from Codex. |
 
 ## Rules
 
@@ -38,7 +36,6 @@ agent workflows installed by Agent Foundry.
   whose verification contract is documented by `agent-headless`.
 - A skill change is reviewed like code: trigger accuracy, instructions,
   repository references, and a real invocation when scripts are involved.
-- Provider mechanics belong to `agent-headless`; the harness-specific bridge
-  name remains only as a temporary compatibility alias.
+- Provider mechanics belong exclusively to `agent-headless`.
 - Do not add orchestration or dashboard skills until a concrete project need
   justifies their maintenance cost.

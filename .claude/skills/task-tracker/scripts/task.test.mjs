@@ -127,13 +127,23 @@ describe("task run (recorded evidence)", () => {
     const repo = fixtureRepo();
     try {
       run(repo, ["add", "Alpha"]);
-      // The ST terminator is built with fromCharCode: a literal backslash in
-      // the command string is reduced differently by each platform shell.
-      run(repo, [
-        "run", "task-001", "--",
-        "node", "-e",
-        `"process.stdout.write('\\u001b[>0ca'+'\\u009b31mb'+'\\u009b0m'+'\\u001b]0;t\\u0007c'+'\\u001b]8;;u'+String.fromCharCode(27)+String.fromCharCode(92)+'d'+'\\u001b7e'+'\\n')"`,
-      ]);
+      // Write the mixed CSI/OSC/C1 payload to a file and run that file. Embedding
+      // the same sequences (or even fromCharCode spellings of them) in the
+      // CreateProcess command line makes some Windows hosts refuse the spawn
+      // with EPERM before the child writes; the sanitizer still sees identical
+      // stdout characters.
+      const fixture = join(repo, "escape-fixture.mjs");
+      writeFileSync(
+        fixture,
+        "process.stdout.write(" +
+          "String.fromCharCode(0x1b)+'[>0ca'+" +
+          "String.fromCharCode(0x9b)+'31mb'+" +
+          "String.fromCharCode(0x9b)+'0m'+" +
+          "String.fromCharCode(0x1b)+']0;t'+String.fromCharCode(0x07)+'c'+" +
+          "String.fromCharCode(0x1b)+']8;;u'+String.fromCharCode(0x1b,0x5c)+'d'+" +
+          "String.fromCharCode(0x1b)+'7e'+'\\n');\n",
+      );
+      run(repo, ["run", "task-001", "--", "node", fixture]);
       const file = readFileSync(
         join(repo, ".tasks", "tasks", "task-001-alpha.md"),
         "utf8",

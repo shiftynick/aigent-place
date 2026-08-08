@@ -101,8 +101,8 @@ halt the task — apply the reversibility test in `docs/SDLC.md`.
 ## Operator communication
 
 For human-facing questions, updates, explanations, and closeouts, follow
-`docs/SDLC.md` → "Operator communication". It keeps the conversation brief and
-understandable while detailed evidence stays in project records.
+`docs/SDLC.md` → "Operator communication" (ASD-STE100 Simplified Technical
+English).
 
 ## Commit authority
 
@@ -207,18 +207,14 @@ Never report a planned or unavailable command as passing.
 | `the-fool` | Pre-implementation adversarial review. |
 | `grill-me` | One-question-at-a-time decision clarification. |
 | `agent-headless` | Unified safe Claude, Codex, and operator-selected Cursor invocation. |
-| `cursor-cli` | Compatibility alias for operator-selected Cursor calls. |
 | `upgrade-agent-foundry` | Guided in-place upgrade of the installed workflow kit. |
 | `agent-foundry-feedback` | Package kit defects and upstream-worthy fixes into feedback packets. |
-| `claude-in-codex` | Compatibility alias for Claude calls from Codex. |
-| `codex-in-claude` | Compatibility alias for Codex calls from Claude Code. |
 | `codex-in-cc` | Legacy local Claude bridge retained from before Foundry; prefer `agent-headless` for the shared task lifecycle. |
 
-The sixteen shared workflows are mirrored between `.agents/skills/` and
-`.claude/skills/`; provider compatibility aliases remain harness-specific, and
-the unmanaged `codex-in-cc` bridge is a preserved local extension. Preserve
-shared workflow behavior while retaining harness-specific paths and temporary
-compatibility aliases. Edit both managed copies in the same commit and verify with
+The fifteen shared workflows are mirrored between `.agents/skills/` and
+`.claude/skills/`. The unmanaged `codex-in-cc` bridge is a preserved local
+extension. Preserve shared workflow behavior while retaining harness-specific
+paths. Edit both managed copies in the same commit and verify with
 `node .agent-foundry/check-skill-sync.mjs`.
 
 The dependency-free `agent-headless` runtime is vendored so both harnesses use

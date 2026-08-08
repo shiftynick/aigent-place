@@ -66,9 +66,14 @@ argument. So:
 1. **Make the change in both harness trees** when it touches a shared skill,
    and verify with `node .agent-foundry/check-skill-sync.mjs`.
 2. **Record it in `LOCAL-CHANGES.md`** — what changed, why, and whether it
-   should be upstreamed. One entry per divergence.
+   should be upstreamed. One entry per divergence. When `Upstream: yes`, keep
+   **Upstream status** and **Upstream ref** current (`unsent` → `packeted` →
+   `filed` → `landed`/`dropped`) via `agent-foundry-feedback`; do not invent
+   a second delivery tracker.
 3. **Upstream what is generic.** A change that would help any project belongs
-   in the Foundry itself, not in ten copies of it.
+   in the Foundry itself, not in ten copies of it. Package it with
+   `agent-foundry-feedback`. Retrospectives and upgrades surface unsent or
+   packeted entries; they do not replace that skill.
 
 ## Tiers
 

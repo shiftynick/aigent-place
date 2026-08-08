@@ -5,15 +5,25 @@ working from the same durable state.
 
 ## Operator communication
 
-Human-facing conversation is a translation of the work, not the evidence
-store. Lead with the outcome and practical effect, use everyday language, and
-define a technical term when it is genuinely needed. Be brief by default and
-expand when asked; send progress only for a material change, blocker, or
-decision. Keep raw command, review, and delegated-agent output in durable
-records, then summarize each material issue as the problem, practical effect,
-and recommendation. Questions present one concrete choice at a time with a
-recommended answer, what a wrong choice would affect, and whether it would be
-easy or hard to undo.
+Write operator chat in **ASD-STE100 Simplified Technical English (STE)**.
+Operator chat means questions, updates, explanations, review results,
+validation results, and closeouts to the human operator. Shared skill
+guidance (`SKILL.md` and skill `references/*.md`) also uses STE. Task logs,
+ADRs, CHANGELOG entries, and other durable project records stay in normal
+technical English unless a later task changes that rule.
+
+Operator chat is a translation of the work. It is not the evidence store.
+Start with the result and the practical effect. Use STE. Define a technical
+term only when you need it. Keep replies short. Give more detail only when
+the operator asks. Send progress only for a material change, a blocker, or a
+decision.
+
+Keep raw command output, review output, and delegated-agent output in durable
+records. For each material issue, tell the operator the problem, the practical
+effect, and the recommendation.
+
+Ask one concrete question at a time. Give a recommended answer. Say what a
+wrong choice would affect, and whether it is easy or hard to undo.
 
 ## Planning above the task
 
@@ -321,6 +331,58 @@ A task is done only when:
 - Out-of-scope discoveries are filed separately.
 - The change packet contains only task-scoped changes.
 - The task log contains validation evidence.
+- If the task carries `needs:deploy-acceptance`, deploy-acceptance evidence is
+  recorded per "Deploy-dependent acceptance" below.
+
+## Deploy-dependent acceptance
+
+Some work is not accepted until an authorized deployment proves the change in
+a real environment. Local validation and a merged branch are not that proof.
+
+### Identify early
+
+When acceptance needs a post-merge deploy, say so in the task description and
+in the pre-claim rubric. Tag the card `needs:deploy-acceptance`.
+
+### Deliver the change without closing acceptance
+
+Run the normal implement → review → validate path. Commit on the task branch.
+Push or merge only with the authorization in "Commit authority". Delivery of
+the branch is allowed and expected. Delivery is not `done`.
+
+After the change is delivered (merged or otherwise integrated as the project
+requires), move the task to `blocked` with a note that names:
+
+- what was delivered (merge commit, PR, or release candidate),
+- which environment must receive the deploy,
+- which observable check will count as acceptance.
+
+Do not leave the task in `review` or `in_progress` while waiting on deploy.
+Those states mean active agent work on the change.
+
+### Close only on acceptance evidence
+
+When the operator authorizes the deploy and it completes, record evidence in
+the task log (`task.mjs run` when a command can express it; otherwise a note
+with environment, version or URL, time, and the observed check). Then move
+`blocked` → `review` → `done`. The short `review` confirms the acceptance
+evidence; it does not reopen implementation unless the evidence fails.
+
+A card tagged `needs:deploy-acceptance` reaches `done` only when that evidence
+exists in addition to the ordinary definition of done.
+
+### Dependency safety
+
+If other tasks need only the *code* to land, do not make them `blockedBy` a
+card that is waiting on deploy. Split:
+
+1. **Implementation task** — `done` after merge or other required delivery of
+   the change (no deploy wait).
+2. **Acceptance task** — tagged `needs:deploy-acceptance`, `blockedBy` the
+   implementation task, closed only with deploy-acceptance evidence.
+
+Never mark the acceptance task `done` without that evidence. Never hold an
+implementation branch undeliverable solely because deploy has not run.
 
 ## Blockers
 
@@ -366,7 +428,9 @@ Both loops share one constraint: corrections land in existing documents at
 the point of use, never in a separate lessons file, and the corpus must grow
 in quality rather than length. Skill corrections that are generic rather than
 project-specific are flagged for upstreaming to the Foundry via
-`.agent-foundry/LOCAL-CHANGES.md`.
+`.agent-foundry/LOCAL-CHANGES.md` (`Upstream: yes` plus **Upstream status** /
+**Upstream ref**). Package and advance them with `agent-foundry-feedback`;
+retrospectives and upgrades only surface unsent or packeted entries.
 
 ## Session close
 

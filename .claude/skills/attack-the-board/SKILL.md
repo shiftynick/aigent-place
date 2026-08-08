@@ -2,22 +2,21 @@
 name: attack-the-board
 description: >-
   Interrogate the remaining backlog up front, then execute as much of it as
-  possible autonomously: scope the remaining work, plan the work path,
-  harvest every operator-only question in one batch, then run task after task
-  through the standard lifecycle, routing around real blockers until nothing
-  claimable remains. Use on
-  "attack the board", "burn down the backlog", "work through everything you
-  can", or "how far can you get without me". Distinct from plan-milestone
-  (which produces tasks) and execute-task (which runs one); this drives a
-  multi-task session across existing tasks.
+  possible autonomously: scope the work, plan the path, harvest every
+  operator-only question in one batch, then run task after task through the
+  standard lifecycle until nothing claimable remains. Use on "attack the
+  board", "burn down the backlog", "work through everything you can", or
+  "how far can you get without me". Distinct from plan-milestone (which
+  produces tasks) and execute-task (which runs one); this drives a multi-task
+  session across existing tasks.
 ---
 
 # Attack the Board
 
 Front-load every question, then run dark. The reactive default — hit an
 ambiguity mid-task, block, wait for the operator — wastes the operator's
-absence. This skill inverts it: sweep the whole selected front first, extract
-every decision only the operator can make, get answers in one batch, then
+absence. This skill inverts it. Sweep the whole selected front first. Extract
+every decision only the operator can make. Get answers in one batch. Then
 execute autonomously until something genuinely stops the run.
 
 This skill sequences and drives; it does not replace the lifecycle. Every
@@ -37,8 +36,8 @@ review ladder. Do not restate or shortcut either.
 2. The run's scope is every incomplete task matching the filter the operator
    gave (priority, tag, milestone, explicit task list) — not just what is
    claimable this minute. That includes tasks whose dependencies sit earlier
-   in the same scope: they are harvested and planned now and worked as the
-   path completes their blockers. Also sweep `blocked` tasks tagged
+   in the same scope: harvest and plan them now; work them as the path
+   completes their blockers. Also sweep `blocked` tasks tagged
    `needs:operator` that match the filter: their pending questions join the
    harvest batch, and an answer that resolves one puts the task back on the
    path.
@@ -66,12 +65,12 @@ only:
 - Does it require authority beyond the autonomous boundary (push, deploy,
   destructive action, external credentials)?
 
-Collect every hit into a single batch and present it to the operator
-**together with the run plan** — ordered path, questions per task,
-skipped/blocked tasks, and the stop conditions below — as one interaction,
-before any task is claimed. The operator's answers are the go-ahead; do not
-come back for a second approval unless an answer changes the path itself.
-Record each answer on the task it affects:
+Collect every hit into a single batch. Present it to the operator **together
+with the run plan** — ordered path, questions per task, skipped/blocked
+tasks, and the stop conditions below — as one interaction, before any task is
+claimed. The operator's answers are the go-ahead. Do not come back for a
+second approval unless an answer changes the path itself. Record each answer
+on the task it affects:
 
 ```bash
 node .claude/skills/task-tracker/scripts/task.mjs note task-NNN "operator: <decision>"
@@ -90,8 +89,8 @@ run routes around it. With the answers recorded, run dark.
 Work the path one task at a time. For each task, invoke `execute-task` and
 follow it completely. Between tasks:
 
-- Re-read `board` and the affected tasks' notes as the source of truth;
-  treat your own recollection of earlier tasks as stale.
+- Re-read `board` and the affected tasks' notes as the source of truth.
+  Treat your own recollection of earlier tasks as stale.
 - Reconcile: if the finished task invalidated a queued one, update or block
   the queued card before claiming the next. If it invalidated the premises
   behind an operator answer, stop — the plan the operator approved no longer
@@ -122,9 +121,9 @@ blocker, block the card with the exact question it is waiting on, tag it
 continue with the next unblocked task on the path. The run halts only when
 nothing claimable remains in scope.
 
-Never mark a harvested question answered by inference, and never quietly
-skip a hard task to keep the completion count moving — a blocked card with a
-sharp question is a better outcome than a guessed answer.
+Never mark a harvested question answered by inference. Never quietly skip a
+hard task to keep the completion count moving — a blocked card with a sharp
+question is a better outcome than a guessed answer.
 
 ## Phase 4 — Report
 

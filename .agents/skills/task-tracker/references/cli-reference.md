@@ -1,7 +1,7 @@
 # Task tracker CLI reference
 
-Read this file completely before using uncommon board operations or
-troubleshooting the CLI.
+Read this file completely before you use uncommon board operations or
+troubleshoot the CLI.
 
 ## Read commands
 
@@ -18,9 +18,9 @@ task.mjs next
 ```
 
 Archived tasks are hidden from normal reads. A normal archived `done` task
-satisfies dependencies; a soft-deleted task does not.
+satisfies dependencies. A soft-deleted task does not.
 `list --ready` uses the same claimable filter as `next`. `board` shows active
-owners in brackets, while `show` prints `claimedBy` and `claimedAt`.
+owners in brackets. `show` prints `claimedBy` and `claimedAt`.
 
 Generate the read-only HTML board with:
 
@@ -28,7 +28,7 @@ Generate the read-only HTML board with:
 node .agents/skills/task-tracker/scripts/board-html.mjs
 ```
 
-It writes the gitignored `.tasks/board.html`; `--out <path>` changes the
+It writes the gitignored `.tasks/board.html`. `--out <path>` changes the
 destination. Offer regeneration when the user asks to see the board.
 
 ## Write commands
@@ -44,36 +44,37 @@ task.mjs rm <id>
 task.mjs archive [--dry-run]
 ```
 
-Priorities are `p0`, `p1`, `p2`, `p3`; the default is `p2`. New tasks start
+Priorities are `p0`, `p1`, `p2`, `p3`. The default is `p2`. New tasks start
 in `backlog`. `rm` is a soft delete (`done` plus `deleted:true`).
 Every move out of `in_progress` clears `claimedBy` and `claimedAt`. An
 authorized `--force` transition is recorded in the task log.
 
 Free text may begin with dashes. Use a bare `--` before ambiguous positional
-text or the `--flag=value` form:
+text, or use the `--flag=value` form:
 
 ```bash
 task.mjs note task-007 -- "--force was considered"
 task.mjs add --title="--valid title"
 ```
 
-`## Description` is hand-editable; `## Log` is CLI-owned. Never edit or
-remove `<!-- task-tracker:... -->` markers because they delimit those sections.
+`## Description` is hand-editable. `## Log` is CLI-owned. Never edit or
+remove `<!-- task-tracker:... -->` markers. They delimit those sections.
 
 ## Tags
 
 Use `key:value`. Common tags include `area:core`, `area:architecture`,
-`area:tooling`, `area:process`, `milestone:<name>`, `phase:<name>`, and
-`needs:operator`.
+`area:tooling`, `area:process`, `milestone:<name>`, `phase:<name>`,
+`needs:operator`, and `needs:deploy-acceptance` (see `docs/SDLC.md` →
+"Deploy-dependent acceptance").
 
-`milestone:` identifies an operator-approved work front and is queried by
-`plan-milestone`. `phase:` describes kind or provenance, such as
-`phase:bootstrap` or `phase:audit`. They are not interchangeable; a card may
+`milestone:` identifies an operator-approved work front. `plan-milestone`
+queries it. `phase:` describes kind or provenance, such as
+`phase:bootstrap` or `phase:audit`. They are not interchangeable. A card may
 carry both.
 
 ## Archiving
 
-Preview before applying:
+Preview before you apply:
 
 ```bash
 task.mjs archive --dry-run
@@ -81,7 +82,7 @@ task.mjs archive
 ```
 
 Archive at session wrap, before a formal handoff, or when `done` crowds the
-board—not immediately after every completion.
+board. Do not archive immediately after every completion.
 
 ## Exit codes and locking
 
@@ -99,11 +100,11 @@ also check mtime.
 
 Exit 5 distinguishes:
 
-- `lock held by another process`: contention exceeded retries; inspect the
-  owning process rather than blindly looping.
+- `lock held by another process`: contention exceeded retries. Inspect the
+  owning process. Do not loop blindly.
 - `task file changed since read`: re-read current state, then reapply the
   intended update.
 
 `run` releases the lock during execution and reacquires it only to append
-evidence. Runs time out after 15 minutes; split longer gates or preserve their
-own logged output and note its location.
+evidence. Runs time out after 15 minutes. Split longer gates, or preserve
+their own logged output and note its location.

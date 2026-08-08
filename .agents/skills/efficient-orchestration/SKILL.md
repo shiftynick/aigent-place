@@ -7,15 +7,15 @@ description: >-
   orchestration", "save tokens on this big task", "use lesser models",
   "liberal use of subagents", or any codebase-heavy work where cost matters.
   Add "with <counterpart CLI>" to route work slices to the other model family
-  via this harness's bridge skill.
+  via `agent-headless`.
 ---
 
 # Efficient Orchestration
 
 Spend the expensive model where its marginal judgment matters. Push
 repeatable, bounded, or token-heavy work to cheaper, faster workers. The
-orchestrator's role — decompose, architect, synthesize, judge — never moves;
-only labor does.
+orchestrator role — decompose, architect, synthesize, judge — never moves.
+Only labor moves.
 
 ## Where the top tier earns its price
 
@@ -28,7 +28,7 @@ Reserve the orchestrating model for:
 - Final review, risk assessment, and user-facing synthesis.
 
 If a task is tiny, or the validation itself needs delicate judgment, keep it
-with the orchestrator — delegation has overhead, and a workhorse verifying
+with the orchestrator. Delegation has overhead. A workhorse verifying
 subtlety buys risk, not savings.
 
 ## Delegation backends
@@ -42,17 +42,17 @@ The worker a slice runs on is a dial, not an identity:
   Code, or "with claude" from Codex), route the **work/implementation
   slices** through the shared `agent-headless` skill (provider `codex` from
   Claude Code; provider `claude` from Codex), which owns the invocation contract,
-  sandbox rules, and prompt discipline. A different family is the point: it
+  sandbox rules, and prompt discipline. A different family is the point. It
   does not share the orchestrator's blind spots on a slice.
 
 Either way, the judgment/synthesis/final-review layer is **never** delegated.
-Run independent slices in parallel; keep blocking or tightly coupled work
+Run independent slices in parallel. Keep blocking or tightly coupled work
 local. Everything below applies to both backends — where it says "worker",
 read "subagent or counterpart-CLI run".
 
 ## The two dials: model and effort
 
-Model is not the only knob. Workers also take an effort level, and effort
+Model is not the only knob. Workers also take an effort level. Effort
 controls how much a worker reads, verifies, and pushes through before
 reporting — not just how long it thinks.
 
@@ -92,8 +92,8 @@ effort produced or reviewed a given piece of work.
 ## Waiting on external work
 
 CI runs, deploys, and delegated workers finish on their own clock. Waiting on
-them badly - a shell held open for the duration, or an output file read again
-and again - costs turns and tool slots without making the work finish sooner:
+them badly — a shell held open for the duration, or an output file read again
+and again — costs turns and tool slots without making the work finish sooner:
 
 - **Do not hold a shell open for a long external wait** when the harness
   offers any non-blocking way to start the work and come back to it.
@@ -101,7 +101,7 @@ and again - costs turns and tool slots without making the work finish sooner:
   confirm what this one actually supports instead of assuming a sleep-and-
   watch loop will run.
 - **Do not re-read an unchanged artifact.** A poll that returns nothing new
-  is a wasted round trip; repeatedly reading a log or output file that has
+  is a wasted round trip. Repeatedly reading a log or output file that has
   not moved is the observed failure, not a wait strategy.
 - **Scale the interval to what is being waited on.** Check on the cadence of
   the pipeline, not on a short fixed tick.
@@ -115,7 +115,7 @@ deliberately, and say so — rather than converting the wait into a poll loop.
 ## Handoff packets
 
 Write every delegated prompt as if the worker has seen nothing — because it
-hasn't. Apply `docs/SDLC.md` → "Agent boundaries": capability does not imply
+has not. Apply `docs/SDLC.md` → "Agent boundaries": capability does not imply
 assignment, and every packet names its objective, mutation ceiling, and scope.
 Include:
 
@@ -135,17 +135,17 @@ Include:
 A worker report is a **lead, not a fact**. Before acting on a high-impact
 finding, opening a PR, or telling the user the work is done: reopen the
 important cited files, confirm the line refs and failures, and review the
-final `git diff` against the task. Let lighter agents gather signal; keep
+final `git diff` against the task. Let lighter agents gather signal. Keep
 truth-judgment with the orchestrator. When workers disagree, the orchestrator
 resolves it — never by majority vote among workers.
 
 Do not repeat a worker's broad scan locally unless its evidence is missing,
-contradictory, or high-risk — re-scanning everything yourself forfeits the
+contradictory, or high-risk. Re-scanning everything yourself forfeits the
 savings the delegation bought.
 
 ## When a result disappoints: context, then effort, then model
 
-Diagnose in this order; the knobs fix different failures:
+Diagnose in this order. The knobs fix different failures:
 
 1. **Fix the context first.** Most bad results are upstream: a vague packet,
    missing scope, no verification command, wrong files in view. Re-read the
@@ -160,10 +160,10 @@ Diagnose in this order; the knobs fix different failures:
    back to the orchestrator. No effort setting fixes a capability gap.
 
 The inverse also holds: when a cheap worker has been handling its slices
-cleanly, don't reflexively escalate — routine work on a bigger model buys
-verification you didn't need at a higher per-token price. Under the
-counterpart-CLI backend the same ladder applies with that CLI's dials; the
-bridge skill names them.
+cleanly, do not reflexively escalate. Routine work on a bigger model buys
+verification you did not need at a higher per-token price. Under the
+counterpart-CLI backend the same ladder applies with that CLI's dials;
+`agent-headless` names them.
 
 ## Common scenarios
 
@@ -204,7 +204,7 @@ Delegation changes who does the labor, not what the lifecycle requires:
 - Do not forward worker conclusions unvetted when the risk is high.
 - Do not claim universal savings — the pattern pays when research,
   implementation, or testing slices genuinely parallelize, and costs when
-  they don't.
+  they do not.
 
 ## Related
 

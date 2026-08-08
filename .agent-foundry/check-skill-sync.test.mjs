@@ -87,10 +87,10 @@ test("a shared skill pointing at the opposite tree is drift", () => {
   });
 });
 
-test("bridge skills present in only one tree are skipped", () => {
+test("one-tree-only skills are skipped as bridges", () => {
   withRepo((root) => {
-    writeSkill(root, ".agents", "claude-in-codex", { "SKILL.md": "codex side\n" });
-    writeSkill(root, ".claude", "codex-in-claude", { "SKILL.md": "claude side\n" });
+    writeSkill(root, ".agents", "example-bridge-a", { "SKILL.md": "codex side\n" });
+    writeSkill(root, ".claude", "example-bridge-b", { "SKILL.md": "claude side\n" });
     const result = checkSkillSync(root);
     assert.deepEqual(result.problems, []);
     assert.deepEqual(result.shared, []);

@@ -12,33 +12,49 @@ description: >-
 
 # Upgrade Agent Foundry
 
-An upgrade replaces the mold this project's workflow was cast from without
-destroying what the project has done to its own workflow since installation.
-The procedure that protects that is maintained in the foundry itself as
-`UPGRADING.md`, versioned with the release being installed. This skill gets
-you safely to that document and does not restate it: acquire the new
-foundry, verify it, then follow its `UPGRADING.md` from top to bottom.
+An upgrade replaces the mold this project's workflow was cast from. It must
+not destroy what the project has done to its own workflow since installation.
+
+The procedure that protects that is in the foundry itself as `UPGRADING.md`,
+versioned with the release being installed. This skill gets you safely to that
+document. It does not restate it. Acquire the new foundry, verify it, then
+follow its `UPGRADING.md` from top to bottom.
 
 ## Establish what is installed
 
 Read the installed version and identity from `.agent-foundry.json` at the
-project root. If that file is missing, stop and report: without it there is
-no installed version to compare against and no project identity to reinstall
-with, and this skill cannot verify a safe upgrade. A present
-`.agent-foundry.json` but missing `.agent-foundry/manifest.json` means the
-install predates manifests — say so explicitly; `UPGRADING.md` defines the
-extra care that case needs.
+project root.
+
+If that file is missing, stop and report. Without it there is no installed
+version to compare against and no project identity to reinstall with. This
+skill cannot verify a safe upgrade.
+
+A present `.agent-foundry.json` but missing `.agent-foundry/manifest.json`
+means the install predates manifests. Say so explicitly. `UPGRADING.md`
+defines the extra care that case needs.
+
+## Surface unsent upstream before changing mold
+
+Before acquiring a new foundry, read `.agent-foundry/LOCAL-CHANGES.md` for
+`Upstream: yes` entries with **Upstream status** `unsent` or `packeted`, or
+with status missing (treat missing as `unsent`). Report them to the operator
+(path, status, ref).
+
+An upgrade may overwrite the mold those entries protect. Unsent generic fixes
+should go through `agent-foundry-feedback` first when the operator wants them
+proposed upstream. Do not create a parallel delivery tracker. Status and ref
+live on the LOCAL-CHANGES entry.
 
 ## Acquire the new foundry
 
-The operator names the source; if none was given, ask rather than guessing:
+The operator names the source. If none was given, ask. Do not guess.
 
 - **Local checkout** — an Agent Foundry working copy already on disk. Use
   its path directly.
 - **Git URL** — confirm with the operator before any network fetch, then
   clone to a temporary directory *outside* this project. Ask for the URL if
-  the operator has not supplied one; the project records no upstream today,
-  and a fork's projects must not silently upgrade from a different source.
+  the operator has not supplied one. The project records no upstream today.
+  A fork's projects must not silently upgrade from a different source.
 
 Then verify the source is actually a foundry before trusting it:
 
@@ -46,8 +62,8 @@ Then verify the source is actually a foundry before trusting it:
    `scripts/bootstrap-project.mjs`, and the `starter/` payload directory at
    its root.
 2. Its `VERSION` is newer than the installed version. Same or older: stop
-   and report both numbers — "upgrading" sideways or backwards is a
-   downgrade with extra steps, and needs an explicit operator decision.
+   and report both numbers. "Upgrading" sideways or backwards is a downgrade
+   with extra steps. It needs an explicit operator decision.
 3. Report the source path, installed version, and target version to the
    operator before changing anything.
 
@@ -55,20 +71,22 @@ Then verify the source is actually a foundry before trusting it:
 
 Read the acquired foundry's `UPGRADING.md` **completely and follow it as the
 single authority for the upgrade procedure**, from its first step through
-close-out. This skill ships with the version being upgraded *from*; the
-procedure comes from the version being upgraded *to* — where anything in
-*this skill* and that document disagree about the procedure, the acquired
-`UPGRADING.md` wins. Its stop rules gate irreversible loss of the project's
-own workflow history: honor them as written, and do not improvise around a
-step that fails.
+close-out.
+
+This skill ships with the version being upgraded *from*. The procedure comes
+from the version being upgraded *to*. Where anything in *this skill* and that
+document disagree about the procedure, the acquired `UPGRADING.md` wins.
+
+Its stop rules gate irreversible loss of the project's own workflow history.
+Honor them as written. Do not improvise around a step that fails.
 
 `UPGRADING.md` owns the upgrade procedure — including its documented task
 entry, which reconstructs the rubric after claiming — but not the rest of
-the task lifecycle: the upgrade task's review, recorded validation, and
+the task lifecycle. The upgrade task's review, recorded validation, and
 completion still follow `execute-task` before the card moves to `done`.
 
 If the foundry was cloned to a temporary directory, remove that clone only
-after close-out — it is the reference for every reconciliation question.
+after close-out. It is the reference for every reconciliation question.
 
 ## Related
 
