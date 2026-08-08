@@ -32,6 +32,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Why:** the project-specific reason. "Cleaner" is not a reason.
 - **On upgrade:** re-apply / re-evaluate / drop once <condition>.
 - **Upstream:** yes (generic — propose to Agent Foundry) | no (project-specific).
+- **Upstream status:** unsent | packeted | filed | landed | dropped (required for `Upstream: yes`).
+- **Upstream ref:** packet path, issue, PR, foundry commit/task, or `none` (required for `Upstream: yes`).
 ```
 
 ## .agent-foundry/agent-headless/COMPATIBILITY.md
@@ -42,6 +44,8 @@ diverged, then make sure every `mold` entry it reports appears below.
   policy, so malformed safety guidance is not acceptable project documentation.
 - **On upgrade:** drop once stock Foundry carries the corrected sentence.
 - **Upstream:** yes (generic - compatibility documentation correction).
+- **Upstream status:** packeted.
+- **Upstream ref:** `.agent-foundry/feedback/2026-08-06-cursor-compatibility-stray-token.md`.
 
 ## .agents/skills/execute-task/references/cold-review.md
 
@@ -52,6 +56,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **On upgrade:** drop once the stock prompt template includes an equivalent
   boundary.
 - **Upstream:** yes (generic — cold-review prompt safety).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .claude/skills/execute-task/references/cold-review.md
 
@@ -59,6 +65,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Why:** both harnesses must dispatch cold review under the same trust rule.
 - **On upgrade:** drop together with the `.agents` copy once stock includes it.
 - **Upstream:** yes (generic — cold-review prompt safety).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .agents/skills/task-tracker/scripts/task.mjs
 
@@ -69,6 +77,8 @@ diverged, then make sure every `mold` entry it reports appears below.
   default-branch ambiguity minted colliding or surprising IDs.
 - **On upgrade:** drop once stock includes equivalent allocation hardenings.
 - **Upstream:** yes (generic — task-ID namespace safety).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .claude/skills/task-tracker/scripts/task.mjs
 
@@ -76,6 +86,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Why:** shared workflow behavior must remain synchronized.
 - **On upgrade:** drop together with the `.agents` copy once stock covers it.
 - **Upstream:** yes (generic — task-ID namespace safety).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .agents/skills/task-tracker/references/concurrency.md
 
@@ -84,6 +96,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Why:** operators and agents need the allocation contract beside the CLI.
 - **On upgrade:** drop with `task.mjs` once stock documents the same rules.
 - **Upstream:** yes (generic — task-ID namespace docs).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .claude/skills/task-tracker/references/concurrency.md
 
@@ -91,6 +105,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Why:** shared workflow documentation must remain synchronized.
 - **On upgrade:** drop together with the `.agents` copy once stock covers it.
 - **Upstream:** yes (generic — task-ID namespace docs).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .agents/skills/task-tracker/scripts/task.test.mjs
 
@@ -99,6 +115,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Why:** these branches change durable task IDs and need direct CLI coverage.
 - **On upgrade:** drop once equivalent stock tests exist.
 - **Upstream:** yes (generic — task allocation coverage).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .claude/skills/task-tracker/scripts/task.test.mjs
 
@@ -107,6 +125,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **Why:** shared workflow behavior and tests must remain synchronized.
 - **On upgrade:** drop together with the `.agents` copy once stock covers it.
 - **Upstream:** yes (generic — task allocation coverage).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .agent-foundry/reconcile-seeds.mjs
 
@@ -118,6 +138,8 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **On upgrade:** drop once stock Foundry performs preflight validation before
   mutation and rejects symbolic-link traversal for seed destinations.
 - **Upstream:** yes (generic — safe reconciliation behavior).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.
 
 ## .agent-foundry/reconcile-seeds.test.mjs
 
@@ -127,3 +149,5 @@ diverged, then make sure every `mold` entry it reports appears below.
 - **On upgrade:** drop with the implementation divergence once equivalent
   stock tests exist.
 - **Upstream:** yes (generic — safe reconciliation coverage).
+- **Upstream status:** unsent.
+- **Upstream ref:** none.

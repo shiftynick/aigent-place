@@ -10,8 +10,8 @@ description: >-
 
 # Task Tracker
 
-This skill is the board and CLI authority. State is stored in
-`.tasks/tasks/`; completed tasks can move to `.tasks/archive/`. The bundled
+This skill is the authority for the board and the CLI. State is stored in
+`.tasks/tasks/`. Completed tasks can move to `.tasks/archive/`. The bundled
 zero-dependency Node CLI serializes writes through a repository lock and uses
 Windows-safe replacement. `execute-task` owns the implementation, review,
 validation, and commit lifecycle.
@@ -38,22 +38,22 @@ task.mjs archive --dry-run
 task.mjs archive
 ```
 
-Use the harness-local full `task.mjs` prefix shown above in actual commands. Read
-`references/cli-reference.md` completely before using less common flags,
-editing or deleting cards, diagnosing exit codes/locks, or generating HTML.
+Use the harness-local full `task.mjs` prefix shown above in actual commands.
+Read `references/cli-reference.md` completely before you use less common
+flags, edit or delete cards, diagnose exit codes or locks, or generate HTML.
 
 ## Selecting and claiming
 
-Both unblocked `backlog` and `ready` tasks are claimable. `ready` is an
-intentional queue signal and wins only as a same-priority tiebreaker. If
-`next` returns no output with exit code 0, run `board` and `list --blocked`;
-all remaining work is blocked, active, under review, or complete.
+Unblocked `backlog` and `ready` tasks are claimable. `ready` is an intentional
+queue signal. It wins only as a same-priority tiebreaker. If `next` returns no
+output with exit code 0, run `board` and `list --blocked`. All remaining work
+is blocked, active, under review, or complete.
 
-Before `in_progress`, follow `execute-task`'s rubric requirement.
+Before `in_progress`, follow the rubric requirement in `execute-task`.
 Dependency guards reject claims while blockers are incomplete. Never use
 `--force` without explicit user authorization.
 
-When several agents work in parallel, the operator assigns tasks; agents do
+When several agents work in parallel, the operator assigns tasks. Agents do
 not self-select. Before parallel work, takeover of a claim, or worktree setup,
 read `references/concurrency.md` completely.
 
@@ -65,17 +65,17 @@ Normal states are:
 
 `blocked` is for an external condition the agent cannot resolve. The CLI
 enforces legal transitions and dependencies. `--blocked-by task-NNN` adds a
-dependency, rejects cycles and unknown/deleted IDs, and prevents movement into
-`in_progress`, `review`, or `done` until every blocker is a live or archived
-`done` task.
+dependency, rejects cycles and unknown or deleted IDs, and prevents movement
+into `in_progress`, `review`, or `done` until every blocker is a live or
+archived `done` task.
 
-Moving to `in_progress` records `claimedBy` and `claimedAt`; the owner comes
-from `FOUNDRY_AGENT` when set, otherwise `user@host`. Claims are advisory, not
-cross-worktree locks.
+A move to `in_progress` records `claimedBy` and `claimedAt`. The owner comes
+from `FOUNDRY_AGENT` when set, otherwise `user@host`. Claims are advisory.
+They are not cross-worktree locks.
 
 ## Recorded evidence
 
-Validation expressible as a command must use:
+Validation that a command can express must use:
 
 ```bash
 node .agents/skills/task-tracker/scripts/task.mjs run task-007 -- npm test
@@ -86,28 +86,28 @@ code, duration, and bounded output tail. Output still streams to the console.
 Failure is recorded and exits 1. The repository lock is released while the
 command runs. Use `note` only for evidence a command cannot express.
 
-The tracker records evidence; `execute-task` defines which validation and
-cold review are required before moving from `review` to `done`. Recording a
-transition is not evidence that it happened: a lifecycle written after the
-work reads exactly like one written as the work proceeded.
+The tracker records evidence. `execute-task` defines which validation and
+cold review are required before a move from `review` to `done`. A recorded
+transition is not evidence that the work happened: a lifecycle written after
+the work reads the same as one written as the work proceeded.
 
 ## Durable board hygiene
 
 - Log meaningful choices and direction changes.
 - Prefix workflow waste exactly with `friction:` for retrospective mining.
-- File out-of-scope follow-ups instead of expanding the active task.
-- Anything awaiting a human is a task tagged `needs:operator`, usually
-  `blocked`; remove the tag when answered.
-- Leave recent completions visible in `done`, then archive in a session-close
+- File out-of-scope follow-ups. Do not expand the active task.
+- Anything that waits for a human is a task tagged `needs:operator`, usually
+  `blocked`. Remove the tag when answered.
+- Leave recent completions visible in `done`. Archive in a session-close
   sweep.
-- Do not hand-edit `## Log`; the CLI owns it.
+- Do not hand-edit `## Log`. The CLI owns it.
 
-Before filing work that will not be claimed immediately, read
+Before you file work that will not be claimed immediately, read
 `references/task-authoring.md` completely.
 
 ## Safety
 
-- Never auto-promote `review` to `done`; follow `execute-task`.
+- Never auto-promote `review` to `done`. Follow `execute-task`.
 - Never bypass dependency guards casually.
 - Never let an empty `next` result become invented work.
 - Do not use two agents in one working directory.
