@@ -17,6 +17,6 @@ capabilities. Unsupported combinations fail before provider invocation.
 | Model listing | unavailable | unavailable | yes |
 
 Cursor's worktree does not sandbox arbitrary shell effects on Windows.
-Cursor rejects `auto`; when no model is named it falls back to a documented
+Cursor rejects `auto`; when no model is named, it falls back to a documented
 default and reports `modelDefaulted`, so a caller can tell whether the operator
 chose the model. Name one explicitly for cold review.

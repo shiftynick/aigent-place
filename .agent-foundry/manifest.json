@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.26.0",
-  "installedAt": "2026-08-09T02:06:50.307Z",
+  "foundryVersion": "0.27.0",
+  "installedAt": "2026-08-09T03:09:43.298Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "db37fa2042f209b6294591f581c5ae9630e6fa670560961aab3ab70a35864be3"
+      "sha256": "98ec4bd6a026166e26510b171d06e2f223591ceedb38150d902083711b840d4b"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
-      "sha256": "4daa443b2faf573b1178c0467fa8d036ecf84df6fd1ad68bfaead630b85e6520",
+      "sha256": "371fc86a436b82fd02cc674b46851c332f391dec4a7a7d50f96222e7281c37ce",
       "preserveIfExists": true
     },
     ".agent-foundry/README.md": {
@@ -18,7 +18,7 @@
     },
     ".agent-foundry/agent-headless/COMPATIBILITY.md": {
       "tier": "mold",
-      "sha256": "9d0902580c770e57418adac6ac30ff2ecf7d4617c4a510977ed5dc85d7f02dfe"
+      "sha256": "72d8bf3f7de830f1c9b57a636e059985915fa261f2debecb12410b848b87b8a6"
     },
     ".agent-foundry/agent-headless/LICENSE": {
       "tier": "mold",
@@ -182,7 +182,7 @@
     },
     ".agents/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "0a5285c0a690514770ee331e46f075e7893671a4455ece77b70b44a5c136a36d"
+      "sha256": "8b610cd994ad7c53fe12c0f177358206148a3e50e7de93d854d3dc38e5ff0506"
     },
     ".agents/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -314,7 +314,7 @@
     },
     ".claude/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "0a5285c0a690514770ee331e46f075e7893671a4455ece77b70b44a5c136a36d"
+      "sha256": "8b610cd994ad7c53fe12c0f177358206148a3e50e7de93d854d3dc38e5ff0506"
     },
     ".claude/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
