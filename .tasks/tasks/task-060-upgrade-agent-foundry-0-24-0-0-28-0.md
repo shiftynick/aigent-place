@@ -1,14 +1,12 @@
 ---
 id: task-060
 title: "Upgrade Agent Foundry 0.24.0 -> 0.28.0"
-status: in_progress
+status: done
 priority: p1
 tags: [area:process, phase:upgrade]
 blockedBy: []
 createdAt: "2026-08-09T23:16:25Z"
-updatedAt: "2026-08-09T23:18:48Z"
-claimedBy: "shift@Shiftor"
-claimedAt: "2026-08-09T23:16:25Z"
+updatedAt: "2026-08-09T23:19:18Z"
 ---
 
 <!-- task-tracker:description -->
@@ -87,3 +85,5 @@ claimedAt: "2026-08-09T23:16:25Z"
   | # duration_ms 26279.5874
   |
   | run-checks: PASS (skill-sync + 17 suites)
+- 2026-08-09T23:19:18Z — moved to review
+- 2026-08-09T23:19:18Z — moved to done
