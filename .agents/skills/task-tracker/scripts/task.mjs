@@ -268,15 +268,32 @@ function gitText(root, args) {
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
+// A subset of git-check-ref-format sufficient to reject a configured value
+// that can never name a real branch. A value that passes here is still only
+// compared against the actual branch name, so a false accept is harmless.
+function isUsableBranchName(name) {
+  if (/[\s~^:?*[\\]/u.test(name)) return false;
+  if (/[\u0000-\u001f\u007f]/u.test(name)) return false;
+  if (name === "" || name === "@") return false;
+  if (name.includes("..") || name.includes("@{")) return false;
+  if (name.startsWith("/") || name.endsWith("/") || name.endsWith(".")) return false;
+  // The component rules are per slash-separated part, not per whole string:
+  // `foo.lock/bar` and `feature/.hidden` are both invalid refs.
+  return name.split("/").every(
+    (part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"),
+  );
+}
+
 function currentBranchNamespace(root) {
   const branch = gitText(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
   if (!branch) {
     const head = gitText(root, ["rev-parse", "--verify", "HEAD"]);
     if (head) {
-      // Include the absolute worktree root so concurrent detached worktrees at
-      // the same commit cannot mint colliding durable IDs. Lowercase only on
-      // Windows, where paths are case-insensitive.
-      let worktreeKey = resolve(root).replace(/\\/gu, "/");
+      // The commit is not a worktree identity. Two worktrees detached at the
+      // same commit — the ordinary shape of parallel agent work — would
+      // otherwise share one namespace and mint colliding durable IDs. The path
+      // is hashed into the namespace, never written to a card or printed.
+      let worktreeKey = resolve(root).replaceAll("\\", "/");
       if (platform === "win32") worktreeKey = worktreeKey.toLowerCase();
       return branchTaskNamespace(`detached:${head}:${worktreeKey}`);
     }
@@ -285,7 +302,9 @@ function currentBranchNamespace(root) {
   // An unborn repository is necessarily creating its first/default branch;
   // preserve the compact sequence used by bootstrap projects.
   if (!gitText(root, ["rev-parse", "--verify", "HEAD"])) return null;
-
+  // Classify why the default branch is unknown. Falling back to a namespaced
+  // ID is the safe direction — it cannot collide — but doing it silently
+  // changes the whole board's ID shape with nothing to point the operator at.
   let defaultBranchIssue = null;
   const foundryMetadata = join(root, ".agent-foundry.json");
   if (!existsSync(foundryMetadata)) {
@@ -293,23 +312,22 @@ function currentBranchNamespace(root) {
   } else {
     try {
       const raw = JSON.parse(readFileSync(foundryMetadata, "utf8")).defaultBranch;
-      if (typeof raw !== "string") {
+      // Not trimmed. A padded value cannot name a Git branch, so it is
+      // unusable configuration; normalizing it would let a value that names
+      // a task branch classify that branch as the default and mint compact
+      // IDs on it. The warning tells the operator exactly what to fix.
+      const configured = typeof raw === "string" ? raw : "";
+      if (configured.trim() === "") {
         defaultBranchIssue = "missing or invalid defaultBranch in .agent-foundry.json";
-      } else {
-        const configured = raw.trim();
-        if (configured === "") {
-          defaultBranchIssue = "missing or invalid defaultBranch in .agent-foundry.json";
-        } else if (/\s/u.test(configured) || configured.includes("..")) {
-          defaultBranchIssue = "invalid defaultBranch in .agent-foundry.json";
-        } else if (branch === configured) {
-          return null;
-        }
+      } else if (!isUsableBranchName(configured)) {
+        defaultBranchIssue = "invalid defaultBranch in .agent-foundry.json";
+      } else if (branch === configured) {
+        return null;
       }
     } catch {
       defaultBranchIssue = "malformed .agent-foundry.json";
     }
   }
-
   const remoteHead = gitText(
     root,
     ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
@@ -317,7 +335,8 @@ function currentBranchNamespace(root) {
   if (remoteHead && branch === remoteHead.replace(/^[^/]+\//u, "")) return null;
   if (!remoteHead && defaultBranchIssue) {
     stderr.write(
-      `task-tracker: warning: cannot identify default branch (${defaultBranchIssue}; refs/remotes/origin/HEAD missing); using namespaced task IDs on branch '${branch}'\n`,
+      `task-tracker: warning: cannot identify default branch (${defaultBranchIssue};`
+      + ` refs/remotes/origin/HEAD missing); using namespaced task IDs on branch '${branch}'\n`,
     );
   }
   return branchTaskNamespace(branch);

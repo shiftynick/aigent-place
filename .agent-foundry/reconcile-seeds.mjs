@@ -3,15 +3,8 @@
 
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import {
-  isAbsolute,
-  join,
-  normalize,
-  relative as relativePath,
-  resolve,
-  sep,
-} from "node:path";
-import { argv, cwd, exit, stderr, stdout } from "node:process";
+import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
+import { argv, cwd, exit, platform, stderr, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 import { hashManagedFile } from "./check-foundry-drift.mjs";
 
@@ -54,32 +47,46 @@ function trackedAtHead(repoRoot, relative) {
   return result.stdout.split("\0").includes(relative);
 }
 
-function assertConfinedRegularPath(repoRoot, relative) {
-  const root = realpathSync(repoRoot);
-  let cursor = root;
-  for (const segment of relative.split("/")) {
-    cursor = join(cursor, segment);
-    if (lstatSync(cursor).isSymbolicLink()) {
-      throw new Error(`seed path traverses a symbolic link: ${relative}`);
-    }
+function samePath(left, right) {
+  const normalizeCase = (value) => (platform === "win32" ? value.toLowerCase() : value);
+  return normalizeCase(resolve(left)) === normalizeCase(resolve(right));
+}
+
+// A seed path must name a file inside the working tree itself. If any
+// component of its directory chain is a symlink or junction, or the file is
+// one, `git checkout` would write through the link to a target the manifest
+// never described.
+function assertNoLinkTraversal(repoRoot, relative) {
+  const rootReal = realpathSync(repoRoot);
+  const target = join(rootReal, relative);
+  let parentReal;
+  try {
+    parentReal = realpathSync(dirname(target));
+  } catch (error) {
+    throw new Error(`cannot resolve seed directory: ${relative} (${error.message})`);
   }
-  const resolved = realpathSync(cursor);
-  const fromRoot = relativePath(root, resolved);
-  if (
-    fromRoot === ""
-    || fromRoot === ".."
-    || fromRoot.startsWith(`..${sep}`)
-    || isAbsolute(fromRoot)
-  ) {
-    throw new Error(`seed path escapes repository root: ${relative}`);
+  if (!samePath(parentReal, join(rootReal, dirname(relative)))) {
+    throw new Error(`seed path traverses a link; refusing to restore: ${relative}`);
+  }
+  let entry;
+  try {
+    entry = lstatSync(target);
+  } catch (error) {
+    throw new Error(`cannot read seed file: ${relative} (${error.message})`);
+  }
+  if (entry.isSymbolicLink()) {
+    throw new Error(`seed path traverses a link; refusing to restore: ${relative}`);
   }
 }
 
 export function restoreSeedsFromHead(repoRoot, paths, records) {
-  const restored = [];
+  // Preflight every path before mutating any of them. Validating and
+  // checking out in one loop meant a late mismatch threw "refusing to
+  // overwrite" after earlier seeds had already been overwritten.
+  const restorable = [];
   const newSeeds = [];
   for (const relative of paths) {
-    assertConfinedRegularPath(repoRoot, relative);
+    assertNoLinkTraversal(repoRoot, relative);
     const expected = records?.[relative]?.sha256;
     if (
       typeof expected !== "string"
@@ -89,20 +96,18 @@ export function restoreSeedsFromHead(repoRoot, paths, records) {
         `seed changed after installation; refusing to overwrite: ${relative}`,
       );
     }
-    if (!trackedAtHead(repoRoot, relative)) {
-      newSeeds.push(relative);
-      continue;
-    }
-    restored.push(relative);
+    if (trackedAtHead(repoRoot, relative)) restorable.push(relative);
+    else newSeeds.push(relative);
   }
-  if (restored.length > 0) {
-    const result = runGit(repoRoot, ["checkout", "HEAD", "--", ...restored]);
+
+  if (restorable.length > 0) {
+    const result = runGit(repoRoot, ["checkout", "HEAD", "--", ...restorable]);
     if (result.error) throw result.error;
     if (result.status !== 0) {
-      throw new Error(result.stderr.trim() || "git checkout failed for project seeds");
+      throw new Error(result.stderr.trim() || `git checkout failed for ${restorable.join(", ")}`);
     }
   }
-  return { restored, newSeeds };
+  return { restored: restorable, newSeeds };
 }
 
 function findRepoRoot(start = cwd()) {
