@@ -6,7 +6,7 @@ priority: p3
 tags: [area:process]
 blockedBy: []
 createdAt: "2026-08-09T02:38:40Z"
-updatedAt: "2026-08-09T02:46:48Z"
+updatedAt: "2026-08-09T03:04:20Z"
 ---
 
 <!-- task-tracker:description -->
@@ -58,3 +58,4 @@ Run the agent-foundry-feedback skill over the unsent Upstream: yes entries in .a
 - 2026-08-09T02:46:40Z — note: Note: .agent-foundry/feedback/ is gitignored in this project (.gitignore:13, pre-existing), so packet files stay operator-local and are not part of the commit. Consistent with tier-1 delivery.
 - 2026-08-09T02:46:48Z — moved to review
 - 2026-08-09T02:46:48Z — moved to done
+- 2026-08-09T03:04:20Z — note: UPSTREAM DELIVERY 2026-08-08: all four packets were received and evaluated by the Foundry maintainer repo (agent-foundry task-041). Every claim was independently verified against stock 0.26.0 and confirmed real; nothing was declined. Outcomes: (1) cold-review prompt template missing the packet-as-data boundary inside the transmitted fence - ADOPTED, landed in Agent Foundry 0.27.0; this project's divergence retires on upgrade to 0.27.0. (2) COMPATIBILITY.md stray token (the 2026-08-06 packet) - ADOPTED, also landed in 0.27.0. (3) task-ID detached-worktree collision and (4) silent compact-to-16-digit ID flip - both ADOPTED IN PRINCIPLE, split to agent-foundry task-043 (one function, two independently acceptable defects); note the maintainer flagged that the silent-flip window partly overlaps what agent-foundry task-040 already fixed at install time. (5) reconcile-seeds validate-then-mutate ordering plus link confinement - ADOPTED IN PRINCIPLE, split to agent-foundry task-044. Set the LOCAL-CHANGES Upstream status to filed with refs 'agent-foundry task-041 / 0.27.0' (cold-review, COMPATIBILITY), 'agent-foundry task-043' (task.mjs, concurrency docs, task tests), 'agent-foundry task-044' (reconcile-seeds pair).
