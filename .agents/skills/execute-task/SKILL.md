@@ -75,6 +75,11 @@ claimable task. Inspect `board` and blockers. Do not invent work.
   removes that behavior. Confirm a test fails on it. A behavior with no such
   test is untested. A test that only fails when the code is deleted or no
   longer compiles proves execution, not behavior.
+- When the change adds gates, probes, or checks, record one run per new
+  check where that check rejects a seeded defect (`task.mjs run`). A check
+  you cannot make fail — for example, a pattern match over a serialized
+  artifact — is unsound by construction: say so in the review packet instead
+  of hardening it for another round.
 
 Before you request review, run a **warm self-pass** over the frozen diff:
 read the diff line by line against the rubric, then a second time against
@@ -121,6 +126,14 @@ node .agents/skills/task-tracker/scripts/task.mjs run task-NNN -- <exact command
 Use `task.mjs note` only for evidence a command cannot express, such as a
 browser observation. A hand-written claim that a runnable check passed is not
 validation.
+
+When a recorded command needs quoting or shell metacharacters, write it to
+a temporary script file and record the run of that file, because inline
+one-liners with metacharacters fail or truncate at shell boundaries.
+
+Evidence follows the edit. After the last edit of any round, re-record the
+applicable gates on the final tree before you request or re-enter review.
+Evidence recorded before that edit does not count.
 
 ### Report validation results
 

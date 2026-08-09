@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.24.0",
-  "installedAt": "2026-08-08T17:19:32.359Z",
+  "foundryVersion": "0.26.0",
+  "installedAt": "2026-08-09T02:06:50.307Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "162ac5a30f482d6dbab94a8aea695a9f19be5aa568c776dfdd6864f2086b46ae"
+      "sha256": "db37fa2042f209b6294591f581c5ae9630e6fa670560961aab3ab70a35864be3"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
@@ -178,11 +178,11 @@
     },
     ".agents/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "f9359817c36b717fee4adb1cde971ec0390d34369300299545c5779d2cd344af"
+      "sha256": "f7de073f7a38c06557d52a4d56a7f60dd9d4dcc332b757ea933c3d94a72ac930"
     },
     ".agents/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "189353ecb4b0671410d7e64087ad68dd163274bc023891194b3d93f094463e30"
+      "sha256": "0a5285c0a690514770ee331e46f075e7893671a4455ece77b70b44a5c136a36d"
     },
     ".agents/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -310,11 +310,11 @@
     },
     ".claude/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "1ae41d86eb4217fe1eb3f2fbb1faf6d61e679c980cd9269568259545aa186bc1"
+      "sha256": "c568dc81a0ec277ea499ffe232dce96aa7e453aca1031259bdad2da11b33614f"
     },
     ".claude/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "189353ecb4b0671410d7e64087ad68dd163274bc023891194b3d93f094463e30"
+      "sha256": "0a5285c0a690514770ee331e46f075e7893671a4455ece77b70b44a5c136a36d"
     },
     ".claude/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
