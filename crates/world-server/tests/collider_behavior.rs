@@ -422,6 +422,9 @@ fn parent_orientation_rotates_child_translation_before_addition() {
         z: 0.0,
         w: (std::f64::consts::FRAC_PI_2 / 2.0).cos(),
     };
+    // Asymmetric child: a cube AABB is rotation-invariant, so parent*child vs
+    // child-only composition would not change expected bounds.
+    let child_half = [10.0, 20.0, 30.0];
     let shape = ShapeTree {
         nodes: vec![
             ShapeNode {
@@ -430,7 +433,7 @@ fn parent_orientation_rotates_child_translation_before_addition() {
             },
             ShapeNode {
                 transform: transform(100, 0, 0, child_rotation),
-                ..node(2, 1, 0, 0, 0, box_primitive(10, 10, 10))
+                ..node(2, 1, 0, 0, 0, box_primitive(20, 40, 60))
             },
         ],
     };
@@ -449,8 +452,12 @@ fn parent_orientation_rotates_child_translation_before_addition() {
 
     let (parent_min, parent_max) =
         oracle_oriented_aabb(parent_center, [10.0, 20.0, 30.0], parent_q);
-    let (child_min, child_max) =
-        oracle_oriented_aabb(child_center, [5.0, 5.0, 5.0], composed_child_q);
+    let (child_min, child_max) = oracle_oriented_aabb(child_center, child_half, composed_child_q);
+    let (child_only_min, child_only_max) = oracle_oriented_aabb(child_center, child_half, child_q);
+    assert!(
+        child_min != child_only_min || child_max != child_only_max,
+        "asymmetric child must make composed orientation distinct from child-only"
+    );
 
     let collider = derive_collider(&shape, WorldPointMm::origin()).expect("composed");
     assert_eq!(collider.parts()[0].node_id(), 1);
@@ -467,14 +474,14 @@ fn parent_orientation_rotates_child_translation_before_addition() {
     assert_corners_inside(
         collider.parts()[1].bounds(),
         child_center,
-        [5.0, 5.0, 5.0],
+        child_half,
         composed_child_q,
     );
     // Independent CONTRACT §5 abs(R)*h formula.
     let (parent_abs_min, parent_abs_max) =
         oracle_aabb_from_abs_r(parent_center, [10.0, 20.0, 30.0], parent_q);
     let (child_abs_min, child_abs_max) =
-        oracle_aabb_from_abs_r(child_center, [5.0, 5.0, 5.0], composed_child_q);
+        oracle_aabb_from_abs_r(child_center, child_half, composed_child_q);
     assert_aabb_matches(collider.parts()[0].bounds(), parent_abs_min, parent_abs_max);
     assert_aabb_matches(collider.parts()[1].bounds(), child_abs_min, child_abs_max);
 

@@ -6,7 +6,7 @@ priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-047]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T01:31:18Z"
+updatedAt: "2026-08-10T01:34:45Z"
 claimedBy: codex-attack-collision-core
 claimedAt: "2026-08-10T01:01:07Z"
 ---
@@ -348,3 +348,78 @@ Nothing derives collision geometry from a shape. Implement the canonical collide
   |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
   | error: test failed, to rerun pass `-p world-server --test collider_behavior`
 - 2026-08-10T01:31:18Z — note: mutation check: inclusive overlap made the exact-face test fail; reversing parts made the node-order test fail; replacing aggregate union with the first part made the aggregate test fail. Removing child quaternion composition did NOT fail the parent/child test because its child primitive was a cube. Confirmed coverage gap: make that child asymmetric and assert its composed bounds before review.
+- 2026-08-10T01:33:30Z — run: node .agent-foundry/agent-headless/cli.js run --provider cursor --cwd N:\aigent-place --model cursor-grok-4.5-high --effort high --access edit-isolated --prompt-file C:\Users\shift\AppData\Local\Temp\codex-task-048-cursor-test-hardening.md --timeout-ms 600000 --trust-workspace --output text --json
+  started 2026-08-10T01:32:01Z, exit 0 in 88.4s
+  output tail (truncated to last 30 lines):
+  | be: independent oracle bounds for `composed_child_q` vs `child_q` must differ.\n\nTolerances are unchanged (`1e-6` / `1e-9`).\n\n### Why it catches the mutation\nA cube’s AABB is the same under any rotation (`abs(R)·[h,h,h]`), so replacing `multiply_quaternion(parent.rotation, local_rotation)` with `local_rotation` still matched the composed oracle.\n\nWith an asymmetric box, composed orientation and child-only orientation produce different AABBs. If production drops parent×child composition, child bounds no longer match the independent composed oracle, and the test fails. The new assert documents that this fixture’s composed vs child-only expectations are actually distinct.",
+  |   "events": [
+  |     {
+  |       "provider": "cursor",
+  |       "type": "result",
+  |       "kind": "result",
+  |       "raw": "Using worktree: C:\\Users\\shift\\.cursor\\worktrees\\aigent-place\\agent-headless-msmk3dyt-6418a6b90e36\n**Shell access is blocked** in this worktree — `cargo fmt` and `cargo test` could not be run. Only `crates/world-server/tests/collider_behavior.rs` was edited.\n\n### Change\nIn `parent_orientation_rotates_child_translation_before_addition`:\n\n1. **Child primitive** `10×10×10` → **`20×40×60`** with half extents `child_half = [10.0, 20.0, 30.0]`.\n2. All child oracles (`oracle_oriented_aabb`, `assert_corners_inside`, `oracle_aabb_from_abs_r`) now use `child_half` and still expect **`composed_child_q = multiply_quat(parent_q, child_q)`**.\n3. Added an explicit probe: independent oracle bounds for `composed_child_q` vs `child_q` must differ.\n\nTolerances are unchanged (`1e-6` / `1e-9`).\n\n### Why it catches the mutation\nA cube’s AABB is the same under any rotation (`abs(R)·[h,h,h]`), so replacing `multiply_quaternion(parent.rotation, local_rotation)` with `local_rotation` still matched the composed oracle.\n\nWith an asymmetric box, composed orientation and child-only orientation produce different AABBs. If production drops parent×child composition, child bounds no longer match the independent composed oracle, and the test fails. The new assert documents that this fixture’s composed vs child-only expectations are actually distinct.\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "cursor-grok-4.5-high",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "edit-isolated",
+  |     "worktree": "C:\\Users\\shift\\.cursor\\worktrees\\aigent-place\\agent-headless-msmk3dyt-6418a6b90e36",
+  |     "worktreeSource": "reported",
+  |     "worktreeName": "agent-headless-msmk3dyt-6418a6b90e36"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 87402
+  | }
+  | (node:54860) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T01:33:56Z — run: cargo test -p world-server --test collider_behavior parent_orientation_rotates_child_translation_before_addition
+  started 2026-08-10T01:33:55Z, exit 0 in 1.2s
+  output:
+  |
+  | running 1 test
+  | test parent_orientation_rotates_child_translation_before_addition ... ok
+  |
+  | test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+  |
+  |    Compiling world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.83s
+  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
+- 2026-08-10T01:34:10Z — run: cargo test -p world-server --test collider_behavior parent_orientation_rotates_child_translation_before_addition
+  started 2026-08-10T01:34:08Z, exit 101 in 2.0s
+  output tail (truncated to last 30 lines):
+  | running 1 test
+  | test parent_orientation_rotates_child_translation_before_addition ... FAILED
+  |
+  | failures:
+  |
+  | ---- parent_orientation_rotates_child_translation_before_addition stdout ----
+  |
+  | thread 'parent_orientation_rotates_child_translation_before_addition' panicked at crates\world-server\tests\collider_behavior.rs:67:5:
+  | min.x: actual=-0.000000000000021316282072803006 expected=-10.000000000000021 delta=10 tol=0.000001
+  | note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  |
+  |
+  | failures:
+  |     parent_orientation_rotates_child_translation_before_addition
+  |
+  | test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+  |
+  |    Compiling world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  | warning: function `multiply_quaternion` is never used
+  |    --> crates\world-server\src\collider.rs:582:4
+  |     |
+  | 582 | fn multiply_quaternion(a: UnitQuat, b: UnitQuat) -> Result<UnitQuat, ColliderDerivationError> {
+  |     |    ^^^^^^^^^^^^^^^^^^^
+  |     |
+  |     = note: `#[warn(dead_code)]` on by default
+  |
+  | warning: `world-server` (lib) generated 1 warning
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.66s
+  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
+  | error: test failed, to rerun pass `-p world-server --test collider_behavior`
+- 2026-08-10T01:34:45Z — note: mutation check repaired: after changing the child to an asymmetric 20x40x60 box, replacing parent*child rotation composition with child-only rotation made parent_orientation_rotates_child_translation_before_addition fail by 10 mm. The restored implementation is mutation-sensitive for all four rubric behaviors.
