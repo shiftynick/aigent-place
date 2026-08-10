@@ -138,7 +138,15 @@ cell: horizontal bounds are the cell bounds, the lower `y` bound is the
 negative world limit, and the upper bound is the greatest of the four corner
 samples. Cells are half-open on positive `x` and `z` edges, except at the
 positive world boundary. A footprint selects every cell with strictly
-positive horizontal intersection.
+positive horizontal intersection. Candidate cells enumerate in ascending
+`(cell_x, cell_z)` order.
+
+Procedural sample generation (domain separator, generator version, amplitude
+range, and the implementation safety cap on selected-cell count) lives in the
+`world-server` heightfield module as versioned private implementation
+constants while chunk persistence and height edits remain out of scope for
+that surface. Those constants do not alter the lattice, ownership, column,
+or grounding rules above.
 
 ## 4. Shape tree
 
@@ -225,7 +233,9 @@ narrowphase results.
 Grounding translates an entity vertically until its aggregate lower face
 equals the greatest terrain-column top beneath cells having positive-area
 intersection with its aggregate horizontal footprint. Horizontal coordinates
-do not change. Terrain columns participate in overlap, wake, restore, and
+do not change. If no in-world server `f64` translation re-derives that exact
+equality, grounding fails closed with typed `exact_grounding_unreachable`; it
+MUST NOT accept an epsilon or approximate contact. Terrain columns participate in overlap, wake, restore, and
 continuous movement using the same legal-contact rule as entity AABBs.
 
 ## 6. Movement

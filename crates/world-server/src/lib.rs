@@ -11,6 +11,7 @@ mod collider;
 mod entity;
 mod fanout;
 mod generation;
+mod heightfield;
 mod lease;
 mod order;
 mod outbound;
@@ -31,6 +32,12 @@ pub use aoi::{
 pub use collider::{
     derive_collider, Aabb, Collider, ColliderDerivationError, HorizontalFootprint, NodeAabb,
     WorldPointMm,
+};
+pub use heightfield::{
+    sample_height_mm, CellCoord, ChunkSampleView, GroundingResult, Heightfield, HeightfieldConfig,
+    HeightfieldError, TerrainColumn, CHUNK_SIZE_MM, EXACT_GROUNDING_MAX_BINARY_STEPS,
+    EXACT_GROUNDING_MAX_RESIDUAL_STEPS, GENERATED_HEIGHT_MAX_MM, GENERATED_HEIGHT_MIN_MM,
+    HEIGHTFIELD_GENERATOR_DOMAIN, HEIGHTFIELD_GENERATOR_VERSION, HEIGHTFIELD_MAX_SELECTED_CELLS,
 };
 
 pub use entity::{
