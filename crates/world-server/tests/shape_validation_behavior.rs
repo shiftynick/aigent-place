@@ -1,11 +1,14 @@
-//! Closed-form candidate shape validation (task-047).
+//! Closed-form candidate shape validation (task-047 / aggregate extent budget).
 //!
 //! Expected outcomes are derived from the rules in ADR-0002 and
 //! `world/v1/CONTRACT.md` section 4, not supplied by fixtures: every reject
 //! case starts from a tree this file has already proven acceptable, applies
 //! exactly one named corruption, and asserts the specific typed reason. Budget
 //! cases assert against the value read back from the live ruleset generation,
-//! so an implementation that hardcoded a limit would fail them.
+//! so an implementation that hardcoded a limit would fail them. Aggregate
+//! extent cases build trees whose primitives individually fit the budget and
+//! assert [`ShapeRejection::AggregateExtentBudgetExceeded`] from the canonical
+//! collider at the origin.
 
 use aigent_protocol::{
     shape_node::Primitive, BoxPrimitive, CapsulePrimitive, ColorRgba, ConePrimitive,
@@ -13,8 +16,8 @@ use aigent_protocol::{
     SpherePrimitive, Vector3Millimeters,
 };
 use world_server::{
-    validate_candidate, validate_shape_tree, Axis, DimensionField, RulesetParameters, ShapeClass,
-    ShapeRejection, WORLD_BOUND_MM,
+    derive_collider, validate_candidate, validate_shape_tree, Axis, DimensionField,
+    RulesetParameters, ShapeClass, ShapeRejection, WorldPointMm, WORLD_BOUND_MM,
 };
 
 /// A parameter map that the ruleset contract itself accepts as a live
@@ -508,8 +511,12 @@ fn translation_outside_the_world_bound_rejects() {
         );
     }
     // The bound itself is inclusive.
-    let mut shape = canonical_tree();
-    node_at(&mut shape, 2).transform = transform(WORLD_BOUND_MM, -WORLD_BOUND_MM, 0);
+    // Use one primitive so this assertion isolates the per-node translation
+    // boundary from the independent aggregate-extent budget.
+    let mut shape = ShapeTree {
+        nodes: vec![node(1, 0)],
+    };
+    node_at(&mut shape, 1).transform = transform(WORLD_BOUND_MM, -WORLD_BOUND_MM, 0);
     assert_eq!(
         validate_shape_tree(&shape, ShapeClass::Body, &defaults()),
         Ok(())
@@ -833,5 +840,203 @@ fn node_array_order_does_not_change_the_outcome() {
             node_id: 5,
             parent_node_id: 98
         })
+    );
+}
+
+/// Two unit cubes whose individual local extents stay under the budget, but
+/// whose separation makes the canonical aggregate X extent exceed it.
+fn separated_cubes_on_x(child_x_mm: i64) -> ShapeTree {
+    ShapeTree {
+        nodes: vec![
+            ShapeNode {
+                primitive: cube(1_000),
+                ..node(1, 0)
+            },
+            ShapeNode {
+                transform: transform(child_x_mm, 0, 0),
+                primitive: cube(1_000),
+                ..node(2, 1)
+            },
+        ],
+    }
+}
+
+/// Aggregate X extent for [`separated_cubes_on_x`]: min=-500, max=child_x+500.
+fn separated_cubes_aggregate_x_extent_mm(child_x_mm: i64) -> f64 {
+    let min_x = -500.0;
+    let max_x = child_x_mm as f64 + 500.0;
+    max_x - min_x
+}
+
+#[test]
+fn aggregate_extent_rejects_when_primitives_fit_but_separation_exceeds() {
+    // Each cube is 1000 mm locally. Child at x=4001 -> aggregate X = 5001.
+    let shape = separated_cubes_on_x(4_001);
+    let limit = 5_000_i64;
+    let parameters = live_parameters(&[("shape.max_extent_mm", limit)]);
+    let expected_extent = separated_cubes_aggregate_x_extent_mm(4_001);
+    assert_eq!(expected_extent, 5_001.0);
+
+    for class in [ShapeClass::Body, ShapeClass::Object] {
+        assert_eq!(
+            validate_shape_tree(&shape, class, &parameters),
+            Err(ShapeRejection::AggregateExtentBudgetExceeded {
+                axis: Axis::X,
+                extent_mm_bits: expected_extent.to_bits(),
+                limit_mm: limit,
+            }),
+            "{class:?} must reject the aggregate X excess with exact context"
+        );
+    }
+}
+
+#[test]
+fn aggregate_extent_accepts_exact_budget_and_rejects_one_over() {
+    let limit = 5_000_i64;
+    let parameters = live_parameters(&[("shape.max_extent_mm", limit)]);
+
+    let exact = separated_cubes_on_x(4_000);
+    assert_eq!(separated_cubes_aggregate_x_extent_mm(4_000), 5_000.0);
+    for class in [ShapeClass::Body, ShapeClass::Object] {
+        assert_eq!(
+            validate_shape_tree(&exact, class, &parameters),
+            Ok(()),
+            "{class:?} must accept aggregate extent equal to the budget"
+        );
+    }
+
+    let over = separated_cubes_on_x(4_001);
+    let expected_extent = separated_cubes_aggregate_x_extent_mm(4_001);
+    for class in [ShapeClass::Body, ShapeClass::Object] {
+        assert_eq!(
+            validate_shape_tree(&over, class, &parameters),
+            Err(ShapeRejection::AggregateExtentBudgetExceeded {
+                axis: Axis::X,
+                extent_mm_bits: expected_extent.to_bits(),
+                limit_mm: limit,
+            }),
+            "{class:?} must reject one millimetre over the aggregate budget"
+        );
+    }
+}
+
+#[test]
+fn per_primitive_extent_budget_still_wins_independently() {
+    let shape = ShapeTree {
+        nodes: vec![ShapeNode {
+            primitive: Some(Primitive::Box(BoxPrimitive {
+                size_x_mm: 6_000,
+                size_y_mm: 100,
+                size_z_mm: 100,
+            })),
+            ..node(1, 0)
+        }],
+    };
+    let parameters = live_parameters(&[("shape.max_extent_mm", 5_000)]);
+    for class in [ShapeClass::Body, ShapeClass::Object] {
+        assert_eq!(
+            validate_shape_tree(&shape, class, &parameters),
+            Err(ShapeRejection::ExtentBudgetExceeded {
+                node_id: 1,
+                axis: Axis::X,
+                extent_mm: 6_000,
+                limit_mm: 5_000,
+            }),
+            "{class:?} must keep the per-primitive rejection distinct and earlier"
+        );
+    }
+}
+
+#[test]
+fn aggregate_extent_rejection_is_independent_of_node_array_order() {
+    let mut shape = separated_cubes_on_x(4_001);
+    // Also exceed on Y so fixed X precedence is observable.
+    node_at(&mut shape, 2).transform = transform(4_001, 4_001, 0);
+    let parameters = live_parameters(&[("shape.max_extent_mm", 5_000)]);
+    let expected = ShapeRejection::AggregateExtentBudgetExceeded {
+        axis: Axis::X,
+        extent_mm_bits: separated_cubes_aggregate_x_extent_mm(4_001).to_bits(),
+        limit_mm: 5_000,
+    };
+
+    let mut shuffled = shape.clone();
+    shuffled.nodes.reverse();
+    assert_eq!(
+        validate_shape_tree(&shape, ShapeClass::Body, &parameters),
+        Err(expected.clone())
+    );
+    assert_eq!(
+        validate_shape_tree(&shuffled, ShapeClass::Body, &parameters),
+        Err(expected)
+    );
+}
+
+/// 45 degrees about +Z as a unit quaternion (half-angle pi/8).
+fn z_rotation_45() -> Quaternion {
+    let half = std::f64::consts::FRAC_PI_4 / 2.0;
+    Quaternion {
+        x: 0.0,
+        y: 0.0,
+        z: half.sin(),
+        w: half.cos(),
+    }
+}
+
+#[test]
+fn rotated_aggregate_extent_consumes_canonical_collider_output() {
+    let limit = 1_000_i64;
+    let parameters = live_parameters(&[("shape.max_extent_mm", limit)]);
+    let primitive = Some(Primitive::Box(BoxPrimitive {
+        size_x_mm: 1_000,
+        size_y_mm: 1_000,
+        size_z_mm: 100,
+    }));
+
+    let identity = ShapeTree {
+        nodes: vec![ShapeNode {
+            primitive,
+            ..node(1, 0)
+        }],
+    };
+    assert_eq!(
+        validate_shape_tree(&identity, ShapeClass::Body, &parameters),
+        Ok(())
+    );
+
+    let rotated = ShapeTree {
+        nodes: vec![ShapeNode {
+            transform: Some(LocalTransform {
+                translation: Some(Vector3Millimeters {
+                    x_mm: 0,
+                    y_mm: 0,
+                    z_mm: 0,
+                }),
+                rotation: Some(z_rotation_45()),
+            }),
+            primitive,
+            ..node(1, 0)
+        }],
+    };
+    let collider = derive_collider(&rotated, WorldPointMm::origin()).expect("rotated collider");
+    let extent_x = collider.aggregate().max().x() - collider.aggregate().min().x();
+    assert!(
+        extent_x > limit as f64,
+        "rotated X extent must exceed the local-axis budget ({extent_x})"
+    );
+
+    let before = rotated.clone();
+    let rejection = validate_shape_tree(&rotated, ShapeClass::Object, &parameters)
+        .expect_err("rotated aggregate must reject");
+    assert_eq!(
+        rejection,
+        ShapeRejection::AggregateExtentBudgetExceeded {
+            axis: Axis::X,
+            extent_mm_bits: extent_x.to_bits(),
+            limit_mm: limit,
+        }
+    );
+    assert_eq!(
+        rotated, before,
+        "aggregate rejection must leave the candidate untouched"
     );
 }

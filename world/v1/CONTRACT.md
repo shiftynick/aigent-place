@@ -189,6 +189,10 @@ cone axes are local `y`.
 All parameters use the signed `sint64` millimetre wire representation from
 section 3.2, MUST satisfy the positive or non-negative constraints above, and
 MUST fit the active ruleset's primitive and aggregate bounds.
+`shape.max_extent_mm` applies at both granularities already required by that
+clause: each primitive's own local full extent on each of its axes, and each
+axis of the canonical aggregate AABB derived at zero entity translation
+(entity translation does not change extent).
 
 ## 5. Canonical collider
 

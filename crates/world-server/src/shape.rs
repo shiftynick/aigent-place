@@ -12,14 +12,18 @@
 //!   returns a value. It never rewrites, clamps, truncates, or partially
 //!   accepts a tree, so a rejected candidate mutates nothing anywhere.
 //! * **Bounded.** The part budget is checked before any per-node work, so an
-//!   oversized tree costs one comparison. The remainder is three linear node
+//!   oversized tree costs one comparison. Structural work is three linear node
 //!   passes — identity, the per-node rules, then the reachability walk — plus
 //!   two tree-wide sorts and one sort of each node's own tag list. Heap
-//!   allocation is fixed at five buffers, three taken before the per-node pass
-//!   and two by the reachability walk after it; each is sized from a quantity
-//!   already known when it is taken, and none is allocated per node. Reasons
-//!   are reported in the canonical ascending `node_id` order, so input array
-//!   order cannot change either the outcome or which defect is named.
+//!   allocation for that structural phase is fixed at five buffers, three taken
+//!   before the per-node pass and two by the reachability walk after it; each
+//!   is sized from a quantity already known when it is taken, and none is
+//!   allocated per node. After those checks pass, the canonical collider is
+//!   derived once at [`WorldPointMm::origin`] so the aggregate AABB extent can
+//!   be compared to `shape.max_extent_mm`; that derivation owns its own
+//!   node-count-sized buffers and is not part of the five-buffer count above.
+//!   Reasons are reported in the canonical ascending `node_id` order, so input
+//!   array order cannot change either the outcome or which defect is named.
 //! * **Live budgets.** Part, joint, and extent limits are read from the live
 //!   ruleset generation's parameter map, never from constants in this file. A
 //!   generation missing a `shape.*` path rejects the candidate rather than
@@ -40,12 +44,14 @@
 //! and rejecting a non-unit quaternion is how ADR-0002's "shear rejects the
 //! complete candidate shape" is enforced against this schema.
 //!
-//! Deriving the canonical AABB collider — and therefore the aggregate bound
-//! that composed transforms imply — is task-048 and is deliberately not done
-//! here. `shape.max_extent_mm` is applied at the granularity this module can
-//! compute in closed integer form: each primitive's own local extent.
-//! See [`ShapeBudgets::max_extent_mm`].
+//! `shape.max_extent_mm` is applied twice, independently: each primitive's own
+//! local full extent on each axis (closed integer form, before connectivity),
+//! then each axis of the canonical aggregate AABB at zero entity translation
+//! after the cheap structural checks pass. Entity translation is origin here
+//! because translation does not change extent. See
+//! [`ShapeBudgets::max_extent_mm`].
 
+use crate::collider::{derive_collider, ColliderDerivationError, WorldPointMm};
 use crate::ruleset::RulesetParameters;
 use aigent_protocol::{shape_node, Quaternion, ShapeNode, ShapeTree};
 
@@ -193,6 +199,22 @@ pub enum ShapeRejection {
         extent_mm: i64,
         limit_mm: i64,
     },
+    /// The canonical aggregate AABB extent exceeds `shape.max_extent_mm`.
+    ///
+    /// Axes are checked in fixed precedence `X`, then `Y`, then `Z`, so which
+    /// axis is named cannot depend on input node-array order. Measured extent
+    /// is the exact IEEE-754 bit pattern of the aggregate `max - min` on that
+    /// axis in millimetres; it is not truncated or rounded to `i64`.
+    AggregateExtentBudgetExceeded {
+        axis: Axis,
+        extent_mm_bits: u64,
+        limit_mm: i64,
+    },
+    /// Canonical collider derivation failed after structural validation.
+    ///
+    /// Distinct from [`Self::AggregateExtentBudgetExceeded`]: derivation did
+    /// not produce a usable aggregate AABB, so the budget comparison never ran.
+    ColliderDerivationFailed { cause: ColliderDerivationError },
     /// A joint name is not `[a-z][a-z0-9_.-]{0,63}`.
     InvalidJointName { node_id: u32 },
     /// Two nodes claim the same joint name.
@@ -232,13 +254,11 @@ impl ShapeBudgets {
         self.max_joints
     }
 
-    /// Maximum local extent of any single primitive on any of its own axes,
-    /// from `shape.max_extent_mm`.
+    /// Maximum extent budget from `shape.max_extent_mm`.
     ///
-    /// The aggregate bound over composed transforms needs the canonical
-    /// collider and is applied where that collider is derived (task-048); this
-    /// per-primitive bound is the part expressible in closed integer form
-    /// without composing rotations.
+    /// Applied independently as (1) each primitive's own local full extent on
+    /// any of its axes and (2) each axis of the canonical aggregate AABB at
+    /// zero entity translation.
     #[must_use]
     pub fn max_extent_mm(&self) -> i64 {
         self.max_extent_mm
@@ -405,7 +425,45 @@ pub fn validate_shape_tree_with_budgets(
         });
     }
 
-    check_connected_acyclic(nodes, &index_by_id)
+    check_connected_acyclic(nodes, &index_by_id)?;
+    check_aggregate_extent_budget(shape, budgets.max_extent_mm)
+}
+
+/// Derive the canonical collider at the origin and enforce the aggregate
+/// extent budget on each world axis.
+///
+/// Runs only after structural, per-node, and connectivity checks have passed.
+/// Axis precedence is fixed `X`, then `Y`, then `Z`. Derivation failures are
+/// reported as [`ShapeRejection::ColliderDerivationFailed`] rather than as an
+/// aggregate budget excess.
+fn check_aggregate_extent_budget(
+    shape: &ShapeTree,
+    max_extent_mm: i64,
+) -> Result<(), ShapeRejection> {
+    let collider = derive_collider(shape, WorldPointMm::origin())
+        .map_err(|cause| ShapeRejection::ColliderDerivationFailed { cause })?;
+    let aggregate = collider.aggregate();
+    let limit = max_extent_mm as f64;
+    // Fixed axis precedence: first excess wins; node-array order cannot affect it.
+    for (axis, extent) in [
+        (Axis::X, aggregate.max().x() - aggregate.min().x()),
+        (Axis::Y, aggregate.max().y() - aggregate.min().y()),
+        (Axis::Z, aggregate.max().z() - aggregate.min().z()),
+    ] {
+        if !extent.is_finite() {
+            return Err(ShapeRejection::ColliderDerivationFailed {
+                cause: ColliderDerivationError::NonFiniteDerivedArithmetic,
+            });
+        }
+        if extent > limit {
+            return Err(ShapeRejection::AggregateExtentBudgetExceeded {
+                axis,
+                extent_mm_bits: extent.to_bits(),
+                limit_mm: max_extent_mm,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Confirm every node reaches the single root without revisiting a node.
@@ -415,11 +473,12 @@ pub fn validate_shape_tree_with_budgets(
 /// tree is connected. Nodes finalized by an earlier walk are not rewalked, so
 /// total work is linear in node count.
 ///
-/// This is the last of the five allocation sites the module header counts: two
-/// buffers, both sized from the already-budget-checked node count, both taken
-/// once before the walk rather than per node. `path` cannot outgrow its
-/// capacity because a node is marked `ON_PATH` before it is pushed, so no walk
-/// pushes the same node twice.
+/// This is the last of the five structural allocation sites the module header
+/// counts: two buffers, both sized from the already-budget-checked node count,
+/// both taken once before the walk rather than per node. `path` cannot outgrow
+/// its capacity because a node is marked `ON_PATH` before it is pushed, so no
+/// walk pushes the same node twice. Aggregate extent checking that follows
+/// allocates only inside collider derivation.
 fn check_connected_acyclic(
     nodes: &[ShapeNode],
     index_by_id: &[(u32, u32)],

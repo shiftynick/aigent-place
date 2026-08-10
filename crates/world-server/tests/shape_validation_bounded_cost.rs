@@ -12,12 +12,14 @@
 //!
 //! The workspace forbids `unsafe_code`, so a counting global allocator is not
 //! available to measure heap use directly. Allocation is instead constrained by
-//! construction: `validate_shape_tree` takes exactly five heap buffers — three
+//! construction: the structural phase takes exactly five heap buffers — three
 //! before the per-node pass, two more for the reachability walk after it — each
 //! sized once from the already-budget-checked node count rather than grown as
-//! nodes are visited, and test 1 proves the per-node pass is never reached at
-//! all when the budget rejects. Tree size therefore changes how large those
-//! buffers are, never how many of them there are.
+//! nodes are visited. Only after that phase succeeds does canonical collider
+//! derivation take its own bounded, node-count-sized buffers for the aggregate
+//! extent check. Test 1 proves neither phase is reached when the part budget
+//! rejects. Tree size therefore changes buffer size, not the bounded number of
+//! validation and collider passes.
 
 use aigent_protocol::{
     shape_node::Primitive, BoxPrimitive, LocalTransform, Quaternion, ShapeNode, ShapeTree,
