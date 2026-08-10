@@ -6,7 +6,7 @@ priority: p1
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T14:57:28Z"
-updatedAt: "2026-08-06T14:57:28Z"
+updatedAt: "2026-08-10T01:01:07Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ task-047 validates candidate shape trees and applies shape.max_extent_mm as a pe
 ## Log
 
 - 2026-08-06T14:57:28Z — created (status: backlog)
+- 2026-08-10T01:01:07Z — note: operator: included in approved collision-core attack after task-048

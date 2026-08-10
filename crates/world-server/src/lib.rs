@@ -7,6 +7,7 @@
 //! task-018); production authentication is deferred.
 
 mod aoi;
+mod collider;
 mod entity;
 mod fanout;
 mod generation;
@@ -26,6 +27,10 @@ mod world;
 pub use aoi::{
     aoi_cap_for_role, interest_diff, truncate_nearest, AoiEntity, AoiError, FocusPoint,
     InterestDiff, SpatialHash, AOI_HARD_CAP, VIEWER_AOI_CAPS,
+};
+pub use collider::{
+    derive_collider, Aabb, Collider, ColliderDerivationError, HorizontalFootprint, NodeAabb,
+    WorldPointMm,
 };
 
 pub use entity::{
