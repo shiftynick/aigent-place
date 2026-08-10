@@ -227,8 +227,12 @@ it does not replace the ordered AABB union for overlap or sweep.
 
 Active bodies and placed objects contribute colliders. Sleeping bodies do not.
 The broadphase is a uniform spatial hash rebuilt from a published immutable
-generation; its cell size is ruleset/workload policy and cannot alter
-narrowphase results.
+generation; its cell size is the live ruleset `shape.max_extent_mm` and cannot
+alter narrowphase results. Until the explicit sleep/wake lifecycle (task-052)
+lands, the active broadphase set is exactly the entity IDs present in the
+published generation's `active_leases` map: absence means sleeping/unleased
+for overlap and enclosure candidates. That bridge does not implement wake or
+displacement.
 
 Grounding translates an entity vertically until its aggregate lower face
 equals the greatest terrain-column top beneath cells having positive-area

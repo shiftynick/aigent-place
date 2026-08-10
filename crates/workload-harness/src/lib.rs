@@ -3,13 +3,23 @@
 //! Measures world-server sim-stage timing, cadence intervals, AOI caps, and the
 //! degradation ladder against `workload/v1/CONTRACT.md` / ADR-0006. There is no
 //! WebSocket cluster: load is synthetic against library APIs.
+//!
+//! Task-050 also measures collision broadphase rebuild plus representative
+//! query cost for 300 concurrent shaped aigents against the 50 ms tick budget.
 
+use aigent_protocol::{
+    shape_node::Primitive, BoxPrimitive, LocalTransform, Quaternion, ShapeNode, ShapeTree,
+    Vector3Millimeters,
+};
+use prost::Message;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 use world_server::{
-    aoi_cap_for_role, truncate_nearest, AoiEntity, ConnectionRole, FocusPoint, OutboundQueue,
-    PublicationMailbox, SnapshotFanout, StateKind, World, WorldConfig, AOI_HARD_CAP,
-    OVERFLOW_TICK_OBSERVATIONS, QUEUE_LIMIT_BYTES, TICK_HZ, TICK_MS, VIEWER_AOI_CAPS,
+    aoi_cap_for_role, truncate_nearest, Aabb, AoiEntity, CollisionBroadphase, ConnectionRole,
+    EntitySnapshot, FocusPoint, ImmutableGeneration, LeaseSnapshot, OutboundQueue, Position,
+    PublicationMailbox, RulesetGeneration, RulesetParameters, ShapeSlot, SnapshotFanout, StateKind,
+    World, WorldConfig, WorldPointMm, AOI_HARD_CAP, FIRST_REVISION, OVERFLOW_TICK_OBSERVATIONS,
+    QUEUE_LIMIT_BYTES, TICK_HZ, TICK_MS, VIEWER_AOI_CAPS,
 };
 
 /// Printed on successful binary completion for gate smoke.
@@ -31,6 +41,11 @@ pub const CADENCE_TOLERANCE_TICKS: u32 = 1;
 pub const CAPACITY_SUSTAIN_TICKS: usize = PASS_WINDOW_TICKS;
 pub const HOST_SOAK_WALL_MIN_SECS: f64 = 59.0;
 pub const HOST_SOAK_WALL_MAX_SECS: f64 = 61.0;
+/// Broadphase measurement samples after warmup (paired rebuild+query).
+pub const BROADPHASE_SAMPLE_COUNT: usize = 32;
+pub const BROADPHASE_WARMUP_SAMPLES: usize = 4;
+/// Fail when p95(rebuild_us + query_us) reaches the 50 ms tick budget.
+pub const BROADPHASE_COMBINED_BUDGET_US: u64 = 50_000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DegradationPolicy {
@@ -232,6 +247,9 @@ pub struct HarnessReport {
     pub sim_stage_us: Distribution,
     pub viewer_cadence_intervals: Distribution,
     pub aigent_cadence_intervals: Distribution,
+    pub broadphase_rebuild_us: Distribution,
+    pub broadphase_query_us: Distribution,
+    pub broadphase_combined_us: Distribution,
     pub ladder_actions: Vec<String>,
     pub final_policy: DegradationPolicy,
     pub aoi_max_delivered: usize,
@@ -516,6 +534,9 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
         failures.push("hard cap violated by truncate_nearest".into());
     }
 
+    let (broadphase_rebuild_us, broadphase_query_us, broadphase_combined_us) =
+        measure_broadphase_budget(&mut failures);
+
     let mut host_soak_wall_secs = None;
     if options.host_soak {
         host_soak_wall_secs = Some(wall_secs);
@@ -534,12 +555,200 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
         sim_stage_us,
         viewer_cadence_intervals,
         aigent_cadence_intervals,
+        broadphase_rebuild_us,
+        broadphase_query_us,
+        broadphase_combined_us,
         ladder_actions,
         final_policy: policy_from_level(level),
         aoi_max_delivered,
         queue_overflow_isolated,
         host_soak_wall_secs,
         failures,
+    }
+}
+
+fn body_shape_slot() -> ShapeSlot {
+    let tree = ShapeTree {
+        nodes: vec![ShapeNode {
+            node_id: 1,
+            parent_node_id: 0,
+            transform: Some(LocalTransform {
+                translation: Some(Vector3Millimeters {
+                    x_mm: 0,
+                    y_mm: 0,
+                    z_mm: 0,
+                }),
+                rotation: Some(Quaternion {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    w: 1.0,
+                }),
+            }),
+            joint_name: None,
+            color: None,
+            material_tags: Vec::new(),
+            primitive: Some(Primitive::Box(BoxPrimitive {
+                size_x_mm: 1_000,
+                size_y_mm: 1_800,
+                size_z_mm: 1_000,
+            })),
+        }],
+    };
+    ShapeSlot::from_encoded(tree.encode_to_vec())
+}
+
+/// Frozen generation with `CONCURRENT_AIGENTS_TARGET` shaped active leases.
+fn broadphase_load_fixture() -> (ImmutableGeneration, RulesetGeneration) {
+    let ruleset = RulesetGeneration {
+        generation_id: 1,
+        activated_tick: 1,
+        parameters: RulesetParameters::catalog_defaults(),
+    };
+    let shape = body_shape_slot();
+    let mut entities = BTreeMap::new();
+    let mut active_leases = BTreeMap::new();
+    let count = u64::from(CONCURRENT_AIGENTS_TARGET);
+    for id in 1..=count {
+        // Spread across several cells so queries exercise multi-cell gathers.
+        let x_m = ((id % 30) as f64) * 12.0;
+        let z_m = ((id / 30) as f64) * 12.0;
+        entities.insert(
+            id,
+            EntitySnapshot {
+                entity_id: id,
+                revision: FIRST_REVISION,
+                position: Position::new(x_m, 0.0, z_m).expect("position"),
+                shape: Some(shape.clone()),
+            },
+        );
+        active_leases.insert(
+            id,
+            LeaseSnapshot {
+                body_id: id,
+                aigent_id: format!("a{id}").into_bytes(),
+                sequence: 1,
+                granted_tick: 1,
+                expire_tick: 10_000,
+            },
+        );
+    }
+    let generation = ImmutableGeneration {
+        generation: 1,
+        tick: 1,
+        world_value: 0,
+        ruleset_generation_id: ruleset.generation_id,
+        active_leases,
+        applied_commands: Vec::new(),
+        expired_leases: Vec::new(),
+        rng_draws: Vec::new(),
+        entities,
+        next_entity_id: count + 1,
+    };
+    (generation, ruleset)
+}
+
+fn measure_broadphase_budget(
+    failures: &mut Vec<String>,
+) -> (Distribution, Distribution, Distribution) {
+    let (generation, ruleset) = broadphase_load_fixture();
+    let mut rebuild_us = Distribution::default();
+    let mut query_us = Distribution::default();
+    let mut combined_us = Distribution::default();
+
+    let total = BROADPHASE_WARMUP_SAMPLES + BROADPHASE_SAMPLE_COUNT;
+    for sample_idx in 0..total {
+        let rebuild_start = Instant::now();
+        let index = match CollisionBroadphase::rebuild(&generation, &ruleset) {
+            Ok(index) => index,
+            Err(err) => {
+                failures.push(format!("broadphase rebuild failed: {err}"));
+                return (rebuild_us, query_us, combined_us);
+            }
+        };
+        let rebuild = u64::try_from(rebuild_start.elapsed().as_micros()).unwrap_or(u64::MAX);
+
+        let query_start = Instant::now();
+        // Representative queries: local overlap around a stripe of bodies plus
+        // one broader enclosure-style cage used by placement.
+        for id in [1u64, 75, 150, 225, 300] {
+            let Some(aggregate) = index.aggregate(id) else {
+                failures.push(format!("broadphase missing aggregate for entity {id}"));
+                return (rebuild_us, query_us, combined_us);
+            };
+            if let Err(err) = index.query_overlap_candidates(aggregate) {
+                failures.push(format!("broadphase overlap query failed: {err}"));
+                return (rebuild_us, query_us, combined_us);
+            }
+            if let Err(err) = index.query_bucket_candidates(aggregate) {
+                failures.push(format!("broadphase bucket query failed: {err}"));
+                return (rebuild_us, query_us, combined_us);
+            }
+        }
+        let cage = match (
+            WorldPointMm::new(-2_000.0, -2_000.0, -2_000.0),
+            WorldPointMm::new(50_000.0, 2_000.0, 50_000.0),
+        ) {
+            (Ok(min), Ok(max)) => match Aabb::try_from_min_max(min, max) {
+                Ok(aabb) => aabb,
+                Err(_) => {
+                    failures.push("broadphase cage AABB construction failed".into());
+                    return (rebuild_us, query_us, combined_us);
+                }
+            },
+            _ => {
+                failures.push("broadphase cage corners were non-finite".into());
+                return (rebuild_us, query_us, combined_us);
+            }
+        };
+        if let Err(err) = index.query_enclosure_candidates(cage) {
+            failures.push(format!("broadphase enclosure query failed: {err}"));
+            return (rebuild_us, query_us, combined_us);
+        }
+        let query = u64::try_from(query_start.elapsed().as_micros()).unwrap_or(u64::MAX);
+
+        if sample_idx >= BROADPHASE_WARMUP_SAMPLES {
+            rebuild_us.push(rebuild);
+            query_us.push(query);
+            combined_us.push(rebuild.saturating_add(query));
+        }
+    }
+
+    if index_len_mismatch(&generation, failures) {
+        return (rebuild_us, query_us, combined_us);
+    }
+
+    let combined_p95 = combined_us.percentile(0.95).unwrap_or(u64::MAX);
+    if combined_p95 >= BROADPHASE_COMBINED_BUDGET_US {
+        failures.push(format!(
+            "broadphase rebuild+query p95 {combined_p95}us >= budget {BROADPHASE_COMBINED_BUDGET_US}us at {CONCURRENT_AIGENTS_TARGET} aigents"
+        ));
+    }
+    (rebuild_us, query_us, combined_us)
+}
+
+fn index_len_mismatch(generation: &ImmutableGeneration, failures: &mut Vec<String>) -> bool {
+    let ruleset = RulesetGeneration {
+        generation_id: generation.ruleset_generation_id,
+        activated_tick: 1,
+        parameters: RulesetParameters::catalog_defaults(),
+    };
+    match CollisionBroadphase::rebuild(generation, &ruleset) {
+        Ok(index) => {
+            if index.len() != CONCURRENT_AIGENTS_TARGET as usize {
+                failures.push(format!(
+                    "broadphase indexed {} entities, expected {CONCURRENT_AIGENTS_TARGET}",
+                    index.len()
+                ));
+                true
+            } else {
+                false
+            }
+        }
+        Err(err) => {
+            failures.push(format!("broadphase verification rebuild failed: {err}"));
+            true
+        }
     }
 }
 
@@ -572,6 +781,15 @@ pub fn print_report(report: &HarnessReport) {
         "workload-harness: aigent cadence samples={} hist={:?}",
         report.aigent_cadence_intervals.count(),
         report.aigent_cadence_intervals.histogram()
+    );
+    println!(
+        "workload-harness: broadphase rebuild_p50_us={} rebuild_p95_us={} query_p50_us={} query_p95_us={} combined_p95_us={} samples={}",
+        report.broadphase_rebuild_us.percentile(0.50).unwrap_or(0),
+        report.broadphase_rebuild_us.percentile(0.95).unwrap_or(0),
+        report.broadphase_query_us.percentile(0.50).unwrap_or(0),
+        report.broadphase_query_us.percentile(0.95).unwrap_or(0),
+        report.broadphase_combined_us.percentile(0.95).unwrap_or(0),
+        report.broadphase_combined_us.count()
     );
     println!(
         "workload-harness: aoi_max_delivered={} queue_isolated={} final_level={}",
@@ -630,6 +848,17 @@ mod tests {
         assert_eq!(report.ticks_run, PASS_WINDOW_TICKS as u64);
         assert!(report.viewer_cadence_intervals.count() > 0);
         assert!(report.aoi_max_delivered <= AOI_HARD_CAP as usize);
+        assert_eq!(
+            report.broadphase_combined_us.count(),
+            BROADPHASE_SAMPLE_COUNT
+        );
+        assert!(
+            report
+                .broadphase_combined_us
+                .percentile(0.95)
+                .unwrap_or(u64::MAX)
+                < BROADPHASE_COMBINED_BUDGET_US
+        );
     }
 
     #[test]

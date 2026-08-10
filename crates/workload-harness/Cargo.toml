@@ -12,6 +12,8 @@ name = "workload-harness"
 path = "src/main.rs"
 
 [dependencies]
+aigent-protocol = { path = "../aigent-protocol" }
+prost = "0.13.5"
 world-server = { path = "../world-server" }
 
 [lints]

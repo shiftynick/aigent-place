@@ -7,6 +7,7 @@
 //! task-018); production authentication is deferred.
 
 mod aoi;
+mod broadphase;
 mod collider;
 mod entity;
 mod fanout;
@@ -29,6 +30,7 @@ pub use aoi::{
     aoi_cap_for_role, interest_diff, truncate_nearest, AoiEntity, AoiError, FocusPoint,
     InterestDiff, SpatialHash, AOI_HARD_CAP, VIEWER_AOI_CAPS,
 };
+pub use broadphase::{BroadphaseQueryError, BroadphaseRebuildError, CollisionBroadphase};
 pub use collider::{
     derive_collider, Aabb, Collider, ColliderDerivationError, HorizontalFootprint, NodeAabb,
     WorldPointMm,
