@@ -432,11 +432,13 @@ fn compose_pose_uncached(
             .ok_or(ColliderDerivationError::MissingValidatedInvariant {
                 detail: "missing transform",
             })?;
-    let rotation = transform.rotation.as_ref().ok_or(
-        ColliderDerivationError::MissingValidatedInvariant {
-            detail: "missing rotation",
-        },
-    )?;
+    let rotation =
+        transform
+            .rotation
+            .as_ref()
+            .ok_or(ColliderDerivationError::MissingValidatedInvariant {
+                detail: "missing rotation",
+            })?;
     let local_rotation = normalize_quaternion(rotation)?;
     let local_translation = match transform.translation.as_ref() {
         Some(vector) => [
@@ -472,9 +474,7 @@ fn compose_pose_uncached(
     })
 }
 
-fn primitive_half_extents_mm(
-    node: &ShapeNode,
-) -> Result<[f64; 3], ColliderDerivationError> {
+fn primitive_half_extents_mm(node: &ShapeNode) -> Result<[f64; 3], ColliderDerivationError> {
     let primitive =
         node.primitive
             .as_ref()
@@ -517,9 +517,7 @@ fn primitive_half_extents_mm(
     }
 }
 
-fn normalize_quaternion(
-    rotation: &Quaternion,
-) -> Result<UnitQuat, ColliderDerivationError> {
+fn normalize_quaternion(rotation: &Quaternion) -> Result<UnitQuat, ColliderDerivationError> {
     let components = [rotation.x, rotation.y, rotation.z, rotation.w];
     if components.iter().any(|value| !value.is_finite()) {
         return Err(ColliderDerivationError::MissingValidatedInvariant {
@@ -527,7 +525,7 @@ fn normalize_quaternion(
         });
     }
     let magnitude_squared = components.iter().map(|value| value * value).sum::<f64>();
-    if !(magnitude_squared.is_finite()) || magnitude_squared == 0.0 {
+    if !magnitude_squared.is_finite() || magnitude_squared == 0.0 {
         return Err(ColliderDerivationError::MissingValidatedInvariant {
             detail: "degenerate rotation",
         });
@@ -581,10 +579,7 @@ fn normalize_quaternion(
     })
 }
 
-fn multiply_quaternion(
-    a: UnitQuat,
-    b: UnitQuat,
-) -> Result<UnitQuat, ColliderDerivationError> {
+fn multiply_quaternion(a: UnitQuat, b: UnitQuat) -> Result<UnitQuat, ColliderDerivationError> {
     // Hamilton product; compose as parent * child (parent before child).
     let product = Quaternion {
         x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
@@ -621,10 +616,7 @@ fn rotation_matrix(q: UnitQuat) -> [[f64; 3]; 3] {
     ]
 }
 
-fn rotate_vector(
-    q: UnitQuat,
-    vector: [f64; 3],
-) -> Result<[f64; 3], ColliderDerivationError> {
+fn rotate_vector(q: UnitQuat, vector: [f64; 3]) -> Result<[f64; 3], ColliderDerivationError> {
     let matrix = rotation_matrix(q);
     Ok([
         checked_dot(matrix[0], vector)?,

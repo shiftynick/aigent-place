@@ -133,7 +133,12 @@ fn oracle_aabb_from_abs_r(
 /// Independent unit-quaternion normalization matching `world-contract.mjs`.
 fn normalize_quat(q: [f64; 4]) -> [f64; 4] {
     let magnitude = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();
-    let mut n = [q[0] / magnitude, q[1] / magnitude, q[2] / magnitude, q[3] / magnitude];
+    let mut n = [
+        q[0] / magnitude,
+        q[1] / magnitude,
+        q[2] / magnitude,
+        q[3] / magnitude,
+    ];
     let first = [n[3], n[0], n[1], n[2]]
         .into_iter()
         .find(|value| *value != 0.0)
@@ -360,8 +365,7 @@ fn identity_primitives_match_contract_half_extents() {
         let shape = ShapeTree {
             nodes: vec![node(1, 0, 0, 0, 0, Some(primitive))],
         };
-        let collider =
-            derive_collider(&shape, WorldPointMm::origin()).expect("identity primitive");
+        let collider = derive_collider(&shape, WorldPointMm::origin()).expect("identity primitive");
         assert_eq!(collider.parts().len(), 1);
         assert_aabb_matches(
             collider.parts()[0].bounds(),
@@ -421,11 +425,11 @@ fn parent_orientation_rotates_child_translation_before_addition() {
     let shape = ShapeTree {
         nodes: vec![
             ShapeNode {
-                transform: transform(10, 20, 30, parent_rotation.clone()),
+                transform: transform(10, 20, 30, parent_rotation),
                 ..node(1, 0, 0, 0, 0, box_primitive(20, 40, 60))
             },
             ShapeNode {
-                transform: transform(100, 0, 0, child_rotation.clone()),
+                transform: transform(100, 0, 0, child_rotation),
                 ..node(2, 1, 0, 0, 0, box_primitive(10, 10, 10))
             },
         ],
@@ -454,7 +458,12 @@ fn parent_orientation_rotates_child_translation_before_addition() {
     // Independent corner-minmax oracle (not production abs(R)*h).
     assert_aabb_matches_within(collider.parts()[0].bounds(), parent_min, parent_max, 1e-6);
     assert_aabb_matches_within(collider.parts()[1].bounds(), child_min, child_max, 1e-6);
-    assert_corners_inside(collider.parts()[0].bounds(), parent_center, [10.0, 20.0, 30.0], parent_q);
+    assert_corners_inside(
+        collider.parts()[0].bounds(),
+        parent_center,
+        [10.0, 20.0, 30.0],
+        parent_q,
+    );
     assert_corners_inside(
         collider.parts()[1].bounds(),
         child_center,
@@ -491,7 +500,7 @@ fn rotated_box_matches_independent_corner_oracle() {
     };
     let shape = ShapeTree {
         nodes: vec![ShapeNode {
-            transform: transform(5, -7, 11, rotation.clone()),
+            transform: transform(5, -7, 11, rotation),
             ..node(1, 0, 0, 0, 0, box_primitive(80, 20, 40))
         }],
     };
@@ -840,7 +849,7 @@ fn same_build_derivation_is_bit_identical_across_calls() {
                         x: 0.1,
                         y: 0.2,
                         z: 0.3,
-                        w: (1.0 - 0.1 * 0.1 - 0.2 * 0.2 - 0.3 * 0.3).sqrt(),
+                        w: (1.0_f64 - 0.1 * 0.1 - 0.2 * 0.2 - 0.3 * 0.3).sqrt(),
                     },
                 ),
                 ..node(1, 0, 0, 0, 0, box_primitive(11, 13, 17))
