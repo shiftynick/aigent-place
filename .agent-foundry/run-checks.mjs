@@ -25,6 +25,62 @@ import { fileURLToPath } from "node:url";
 
 const MANAGED_ROOTS = [".agent-foundry", ".agents", ".claude"];
 
+// Git exports these to hook processes so a hook acts on the repository that
+// invoked it. Installed suites create their own throwaway repositories, so a
+// forwarded name makes a fixture `git` command retarget — and lock — the
+// caller's real index instead. Scrub them before the installed-test step.
+//
+// The literal is a snapshot of `git rev-parse --local-env-vars`. It exists so
+// the scrub still works when Git is absent from PATH; `probeGitLocalEnvVars`
+// adds whatever a newer Git introduced, so a stale snapshot degrades coverage
+// only on a machine with no Git, never turns an installed project's gate red.
+export const GIT_LOCAL_ENV_VARS = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_CONFIG",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_DIR",
+  "GIT_GRAFT_FILE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  // Reported by `--local-env-vars` on Git versions before 2.52 and dropped
+  // since. Harmless to scrub either way; it matters only offline, where the
+  // probe cannot answer.
+  "GIT_INTERNAL_SUPER_PREFIX",
+  "GIT_NO_REPLACE_OBJECTS",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_PREFIX",
+  "GIT_REPLACE_REF_BASE",
+  "GIT_SHALLOW_FILE",
+  "GIT_WORK_TREE",
+];
+
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+
+export function probeGitLocalEnvVars() {
+  const result = spawnSync("git", ["rev-parse", "--local-env-vars"], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0 || typeof result.stdout !== "string") return [];
+  return result.stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => ENV_NAME_PATTERN.test(line));
+}
+
+export function scrubGitLocalEnv(environment, probedNames = probeGitLocalEnvVars()) {
+  const scrubbed = { ...environment };
+  // Windows environment lookup is case-insensitive while `Object.keys` returns
+  // the caller's casing, so fold before comparing or `Git_Dir` survives.
+  const local = new Set([...GIT_LOCAL_ENV_VARS, ...probedNames].map((name) => name.toUpperCase()));
+  for (const name of Object.keys(scrubbed)) {
+    if (local.has(name.toUpperCase())) delete scrubbed[name];
+  }
+  return scrubbed;
+}
+
 export function findRepoRoot(startDir = cwd(), maxDepth = 12) {
   let dir = startDir;
   for (let i = 0; i < maxDepth; i++) {
@@ -53,10 +109,11 @@ export function discoverTestFiles(repoRoot) {
   return found.sort();
 }
 
-function runStep(label, command, args, repoRoot) {
+function runStep(label, command, args, repoRoot, environment) {
   stdout.write(`\n=== ${label} ===\n`);
   const result = spawnSync(command, args, {
     cwd: repoRoot,
+    ...(environment ? { env: environment } : {}),
     stdio: "inherit",
     windowsHide: true,
   });
@@ -100,6 +157,9 @@ function main() {
     execPath,
     ["--test", ...tests],
     repoRoot,
+    // Only this step is scrubbed. skill-sync runs no Git, and a project gate
+    // that legitimately wants the hook's Git identity keeps it.
+    scrubGitLocalEnv(process.env),
   )) {
     failures.push("installed tests");
   }

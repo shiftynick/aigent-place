@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.24.0",
-  "installedAt": "2026-08-08T17:19:32.359Z",
+  "foundryVersion": "0.28.0",
+  "installedAt": "2026-08-09T23:16:32.155Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "162ac5a30f482d6dbab94a8aea695a9f19be5aa568c776dfdd6864f2086b46ae"
+      "sha256": "9b83167b0992138dad58e6715beed1f4b2621ecb8097e2e9dc96627eccb796cd"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
@@ -18,7 +18,7 @@
     },
     ".agent-foundry/agent-headless/COMPATIBILITY.md": {
       "tier": "mold",
-      "sha256": "9d0902580c770e57418adac6ac30ff2ecf7d4617c4a510977ed5dc85d7f02dfe"
+      "sha256": "72d8bf3f7de830f1c9b57a636e059985915fa261f2debecb12410b848b87b8a6"
     },
     ".agent-foundry/agent-headless/LICENSE": {
       "tier": "mold",
@@ -118,19 +118,19 @@
     },
     ".agent-foundry/reconcile-seeds.mjs": {
       "tier": "mold",
-      "sha256": "0b762492bb517020fe7040a414f3c147c11562ea932f7b8c89d0aced261207f8"
+      "sha256": "e7cba23e8e5c403d18fa4786916cd62dc51bb25c8f5f471f42cd78db83484209"
     },
     ".agent-foundry/reconcile-seeds.test.mjs": {
       "tier": "mold",
-      "sha256": "30fae601342a25b5e89450f3ecec9c686d8bfdabda8db5108322d438e504ad46"
+      "sha256": "5989eba63ab8f6381882bedd7917561bec6a9d12427d166240f4417f87e5428b"
     },
     ".agent-foundry/run-checks.mjs": {
       "tier": "mold",
-      "sha256": "d7c1f9db8a14d97773cd8262f0f9670ae167b2474c06c8d92ac83ee50e5799cc"
+      "sha256": "ec68239446df00ccde68651d6d35e1660668c6448219fdb86c3359b65ada3133"
     },
     ".agent-foundry/run-checks.test.mjs": {
       "tier": "mold",
-      "sha256": "ef07db4fc98ee2f9a5e11f8e7f34fa30b68b608d10298f99eb4bf6fe9c9c93bb"
+      "sha256": "d162f945741e705d97ad836e627fd4e420a7fbd63dae18ac6aae06560ae5c9b1"
     },
     ".agents/skills/README.md": {
       "tier": "mold",
@@ -178,11 +178,11 @@
     },
     ".agents/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "f9359817c36b717fee4adb1cde971ec0390d34369300299545c5779d2cd344af"
+      "sha256": "f7de073f7a38c06557d52a4d56a7f60dd9d4dcc332b757ea933c3d94a72ac930"
     },
     ".agents/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "189353ecb4b0671410d7e64087ad68dd163274bc023891194b3d93f094463e30"
+      "sha256": "8b610cd994ad7c53fe12c0f177358206148a3e50e7de93d854d3dc38e5ff0506"
     },
     ".agents/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -226,7 +226,7 @@
     },
     ".agents/skills/task-tracker/references/concurrency.md": {
       "tier": "mold",
-      "sha256": "e68d4b4113b439637439d36f20f699557c2ad80108c37311cbb9d192fdef6bd4"
+      "sha256": "2acea3a3afa30c539af8a0bc96baf467d45e3f6711fe0c5da315f6ea047939d0"
     },
     ".agents/skills/task-tracker/references/task-authoring.md": {
       "tier": "mold",
@@ -250,11 +250,11 @@
     },
     ".agents/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "ee2b5b16609bf416c2fddd9111f9e8aee7dc85e2029cba0b334eac6f22c19c64"
+      "sha256": "69159608e3907f9f864cb667dbfed5f3bc690a37fc96388b905104803476d144"
     },
     ".agents/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "6911f396cad78262bb6f009411f8290572250c9b9fdbcaa0bbfe940f3b35f805"
+      "sha256": "ea15f0be7ce22d08d46e7ffa4843c26b398ae3979c1ef331a07a19c06568d9d8"
     },
     ".agents/skills/the-fool/SKILL.md": {
       "tier": "mold",
@@ -310,11 +310,11 @@
     },
     ".claude/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "1ae41d86eb4217fe1eb3f2fbb1faf6d61e679c980cd9269568259545aa186bc1"
+      "sha256": "c568dc81a0ec277ea499ffe232dce96aa7e453aca1031259bdad2da11b33614f"
     },
     ".claude/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "189353ecb4b0671410d7e64087ad68dd163274bc023891194b3d93f094463e30"
+      "sha256": "8b610cd994ad7c53fe12c0f177358206148a3e50e7de93d854d3dc38e5ff0506"
     },
     ".claude/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -358,7 +358,7 @@
     },
     ".claude/skills/task-tracker/references/concurrency.md": {
       "tier": "mold",
-      "sha256": "e68d4b4113b439637439d36f20f699557c2ad80108c37311cbb9d192fdef6bd4"
+      "sha256": "2acea3a3afa30c539af8a0bc96baf467d45e3f6711fe0c5da315f6ea047939d0"
     },
     ".claude/skills/task-tracker/references/task-authoring.md": {
       "tier": "mold",
@@ -382,11 +382,11 @@
     },
     ".claude/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "314d6216fff228c8ad5d6c3eff3605a75bb58ea31005d2c3b849602c98d0880a"
+      "sha256": "ad795152791446ff699a9c155df8993b0fd96d8c08ce035939cca2c77e51783a"
     },
     ".claude/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "6911f396cad78262bb6f009411f8290572250c9b9fdbcaa0bbfe940f3b35f805"
+      "sha256": "ea15f0be7ce22d08d46e7ffa4843c26b398ae3979c1ef331a07a19c06568d9d8"
     },
     ".claude/skills/the-fool/SKILL.md": {
       "tier": "mold",

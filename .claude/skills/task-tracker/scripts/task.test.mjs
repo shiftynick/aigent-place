@@ -515,8 +515,46 @@ describe("task add", () => {
     }
   });
 
+  it("uses a stable namespace in detached HEAD state", () => {
+    const repo = gitFixtureRepo();
+    try {
+      git(repo, ["switch", "--detach"]);
+      const first = run(repo, ["add", "Detached one"]).trim();
+      const second = run(repo, ["add", "Detached two"]).trim();
+      assert.match(first, /^task-\d{16}$/u);
+      assert.match(second, /^task-\d{16}$/u);
+      assert.equal(first.slice(0, 15), second.slice(0, 15));
+      assert.notEqual(first, second);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("mints distinct IDs for concurrent detached worktrees at the same commit", () => {
+    const repo = gitFixtureRepo();
+    const linked = `${repo}-wt`;
+    try {
+      const head = git(repo, ["rev-parse", "HEAD"]).trim();
+      git(repo, ["switch", "--detach"]);
+      git(repo, ["worktree", "add", "--detach", linked, head]);
+      const here = run(repo, ["add", "Card here"]).trim();
+      const there = run(linked, ["add", "Card there"]).trim();
+      assert.match(here, /^task-\d{16}$/u);
+      assert.match(there, /^task-\d{16}$/u);
+      assert.notEqual(here, there);
+    } finally {
+      try {
+        git(repo, ["worktree", "remove", "--force", linked]);
+      } catch {
+        // The fixture is disposable; removal failure must not mask a result.
+      }
+      rmSync(linked, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it("keeps compact IDs on an unborn default branch", () => {
-    const repo = fixtureRepo();
+    const repo = mkdtempSync(join(tmpdir(), "tt-unborn-"));
     try {
       git(repo, ["init", "-b", "integration"]);
       assert.equal(run(repo, ["add", "First card"]).trim(), "task-001");
@@ -525,27 +563,18 @@ describe("task add", () => {
     }
   });
 
-  it("uses a stable namespace in detached HEAD state", () => {
-    const repo = gitFixtureRepo();
-    try {
-      git(repo, ["switch", "--detach"]);
-      assert.match(run(repo, ["add", "Detached card"]).trim(), /^task-\d{16}$/u);
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  it("uses remote HEAD when installed default-branch metadata is malformed", () => {
+  it("uses remote HEAD when installed default-branch metadata is malformed", async () => {
     const repo = gitFixtureRepo();
     try {
       writeFileSync(join(repo, ".agent-foundry.json"), "{ malformed\n");
+      git(repo, ["remote", "add", "origin", repo]);
       git(repo, ["update-ref", "refs/remotes/origin/integration", "HEAD"]);
-      git(repo, [
-        "symbolic-ref",
-        "refs/remotes/origin/HEAD",
-        "refs/remotes/origin/integration",
-      ]);
-      assert.equal(run(repo, ["add", "Remote default card"]).trim(), "task-001");
+      git(repo, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/integration"]);
+      const result = await runAsync(repo, ["add", "Card"]);
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(result.stdout.trim(), "task-001");
+      // A fallback that answered the question must not also warn.
+      assert.equal(result.stderr, "");
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
@@ -554,39 +583,88 @@ describe("task add", () => {
   it("warns when default-branch metadata is unusable and remote HEAD is missing", async () => {
     const repo = gitFixtureRepo();
     try {
-      writeFileSync(join(repo, ".agent-foundry.json"), "{ malformed\n");
-      const { code, stdout, stderr } = await runAsync(repo, ["add", "Ambiguous default card"]);
-      assert.equal(code, 0);
-      assert.match(stdout.trim(), /^task-\d{16}$/u);
-      assert.match(
-        stderr,
-        /task-tracker: warning: cannot identify default branch \(malformed \.agent-foundry\.json; refs\/remotes\/origin\/HEAD missing\)/,
-      );
+      for (const metadata of [
+        "{ malformed\n",
+        `${JSON.stringify({ defaultBranch: "" })}\n`,
+        `${JSON.stringify({ defaultBranch: "not a branch" })}\n`,
+        `${JSON.stringify({ defaultBranch: "bad..name" })}\n`,
+        `${JSON.stringify({ defaultBranch: "foo.lock/bar" })}\n`,
+        `${JSON.stringify({ defaultBranch: "feature/.hidden" })}\n`,
+        `${JSON.stringify({ defaultBranch: 7 })}\n`,
+      ]) {
+        writeFileSync(join(repo, ".agent-foundry.json"), metadata);
+        const result = await runAsync(repo, ["add", `Card for ${metadata.length}`]);
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stdout.trim(), /^task-\d{16}$/u);
+        assert.match(result.stderr, /using namespaced task IDs on branch 'integration'/u);
+        const warnings = result.stderr
+          .split("\n")
+          .filter((line) => line.startsWith("task-tracker: warning: cannot identify default branch"));
+        assert.equal(warnings.length, 1, result.stderr);
+      }
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
   });
 
-  it("mints distinct IDs for concurrent detached worktrees at the same commit", () => {
+  it("warns when .agent-foundry.json is absent and remote HEAD is missing", async () => {
     const repo = gitFixtureRepo();
-    const worktree = mkdtempSync(join(tmpdir(), "tt-detached-wt-"));
     try {
-      const head = git(repo, ["rev-parse", "HEAD"]).trim();
-      git(repo, ["switch", "--detach", head]);
-      // mkdtemp created the dir; worktree add wants a missing path.
-      rmSync(worktree, { recursive: true, force: true });
-      git(repo, ["worktree", "add", "--detach", worktree, head]);
-      const idA = run(repo, ["add", "Detached main worktree card"]).trim();
-      const idB = run(worktree, ["add", "Detached linked worktree card"]).trim();
-      assert.match(idA, /^task-\d{16}$/u);
-      assert.match(idB, /^task-\d{16}$/u);
-      assert.notEqual(idA, idB);
+      rmSync(join(repo, ".agent-foundry.json"));
+      const result = await runAsync(repo, ["add", "Uninstalled card"]);
+      assert.equal(result.code, 0, result.stderr);
+      assert.match(result.stdout.trim(), /^task-\d{16}$/u);
+      assert.match(result.stderr, /absent \.agent-foundry\.json/u);
     } finally {
-      try {
-        git(repo, ["worktree", "remove", "--force", worktree]);
-      } catch {
-        rmSync(worktree, { recursive: true, force: true });
-      }
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("stays silent on a feature branch when remote HEAD names another branch", async () => {
+    const repo = gitFixtureRepo();
+    try {
+      writeFileSync(join(repo, ".agent-foundry.json"), "{ malformed\n");
+      git(repo, ["remote", "add", "origin", repo]);
+      git(repo, ["update-ref", "refs/remotes/origin/integration", "HEAD"]);
+      git(repo, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/integration"]);
+      git(repo, ["switch", "-c", "work/alpha"]);
+      const result = await runAsync(repo, ["add", "Feature card"]);
+      assert.equal(result.code, 0, result.stderr);
+      // origin/HEAD answered the question: this branch is genuinely not the
+      // default, so a namespaced ID is correct and there is nothing to warn about.
+      assert.match(result.stdout.trim(), /^task-\d{16}$/u);
+      assert.equal(result.stderr, "");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a whitespace-padded defaultBranch as unusable, not as the branch it resembles", async () => {
+    // Normalizing the value would let metadata naming a task branch classify
+    // that branch as the default and mint compact IDs on it.
+    const repo = gitFixtureRepo();
+    try {
+      writeFileSync(
+        join(repo, ".agent-foundry.json"),
+        `${JSON.stringify({ defaultBranch: "  integration  " })}\n`,
+      );
+      const result = await runAsync(repo, ["add", "Padded card"]);
+      assert.equal(result.code, 0);
+      assert.match(result.stdout.trim(), /^task-\d{16}$/u);
+      assert.match(result.stderr, /invalid defaultBranch in \.agent-foundry\.json/u);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("stays silent and compact when defaultBranch metadata is usable", async () => {
+    const repo = gitFixtureRepo();
+    try {
+      const result = await runAsync(repo, ["add", "Quiet card"]);
+      assert.equal(result.code, 0);
+      assert.equal(result.stdout.trim(), "task-001");
+      assert.equal(result.stderr, "");
+    } finally {
       rmSync(repo, { recursive: true, force: true });
     }
   });
