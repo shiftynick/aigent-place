@@ -1,14 +1,12 @@
 ---
 id: task-048
 title: Derive the canonical AABB collider from a validated shape tree
-status: in_progress
+status: review
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-047]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T01:34:45Z"
-claimedBy: codex-attack-collision-core
-claimedAt: "2026-08-10T01:01:07Z"
+updatedAt: "2026-08-10T01:35:37Z"
 ---
 
 <!-- task-tracker:description -->
@@ -423,3 +421,5 @@ Nothing derives collision geometry from a shape. Implement the canonical collide
   |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
   | error: test failed, to rerun pass `-p world-server --test collider_behavior`
 - 2026-08-10T01:34:45Z — note: mutation check repaired: after changing the child to an asymmetric 20x40x60 box, replacing parent*child rotation composition with child-only rotation made parent_orientation_rotates_child_translation_before_addition fail by 10 mm. The restored implementation is mutation-sensitive for all four rubric behaviors.
+- 2026-08-10T01:35:37Z — note: warm self-pass: reviewed the frozen diff against the rubric and REVIEW-STANDARDS. Confirmed quaternion normalization matches scripts/world-contract.mjs, parent transforms compose before children, canonical ordering does not depend on input/hash order, aggregate is separate from part overlap, and no ruleset/aggregate-budget semantics leaked from the next task. Documentation change is limited to module/API docs because ADR-0002 and world/v1/CONTRACT.md already define this behavior.
+- 2026-08-10T01:35:37Z — moved to review
