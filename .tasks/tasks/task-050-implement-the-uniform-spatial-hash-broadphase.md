@@ -1,12 +1,12 @@
 ---
 id: task-050
 title: Implement the uniform spatial-hash broadphase
-status: review
+status: done
 priority: p1
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-048]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T05:12:12Z"
+updatedAt: "2026-08-10T05:12:57Z"
 ---
 
 <!-- task-tracker:description -->
@@ -209,3 +209,5 @@ There is no broadphase, so any collision query would be O(entities) per moving p
   | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
   | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
   | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T05:12:56Z — note: Cold review round 1: highest available rung 1, two separate Claude CLI calls using model claude-fable-5 with low effort. SPEC: no substantive findings; full rubric checked. STANDARDS: no substantive findings; written standards and invariants checked. Both reported the same low-severity reviewer-tool limitation: inspect mode had no shell to run packet cleanliness commands. Adjudication: no implementation defect and no code fix; primary verification confirmed the frozen 2cd20ea..0ee7624 diff passes git diff --check and its exact nine-file scope matches the packet. Current post-review tree was clean after committing review evidence. No re-review required.
+- 2026-08-10T05:12:57Z — moved to done (note: rubric satisfied; immutable generation-derived broadphase, deterministic queries, sleeping exclusion, typed failure paths, 300-aigent timing, full gate, and separate cold reviews complete)
