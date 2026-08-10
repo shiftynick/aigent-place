@@ -13,6 +13,10 @@ fn placeholder_payload_round_trips_bodies() {
         sequence: 3,
         granted_tick: 1,
         expire_tick: 200,
+        target_x_mm: 0,
+        target_z_mm: 0,
+        speed_mm_per_s: 1_000,
+        consecutive_no_progress_ticks: 0,
     };
     let body = placeholder_body_from_lease(&lease);
     let digest = [7u8; 32];
@@ -34,6 +38,10 @@ fn stub_payload_from_generation_includes_active_leases() {
             sequence: 2,
             granted_tick: 1,
             expire_tick: 50,
+            target_x_mm: 0,
+            target_z_mm: 0,
+            speed_mm_per_s: 1_000,
+            consecutive_no_progress_ticks: 0,
         },
     );
     let generation = ImmutableGeneration {
@@ -42,8 +50,10 @@ fn stub_payload_from_generation_includes_active_leases() {
         world_value: 0,
         ruleset_generation_id: 1,
         active_leases: leases,
+        aigent_bodies: Default::default(),
         applied_commands: vec![],
         expired_leases: vec![],
+        lease_terminations: vec![],
         entities: Default::default(),
         next_entity_id: world_server::FIRST_ENTITY_ID,
         rng_draws: vec![],

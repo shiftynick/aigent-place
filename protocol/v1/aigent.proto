@@ -67,6 +67,7 @@ enum PerceptKind {
   PERCEPT_KIND_CHANNEL = 3;
   PERCEPT_KIND_RULESET_CHANGED = 4;
   PERCEPT_KIND_WORLD_RECOVERY_DIAGNOSTIC = 5;
+  PERCEPT_KIND_LEASE_TERMINATED = 6;
 }
 
 enum CommandRejectionCode {
@@ -289,6 +290,33 @@ message SetShapePayload {
 
 message UnstickPayload {}
 
+// MOVE payload: renew/replace a move-toward lease (ARCHITECTURE §3).
+// target is horizontal millimetres; speed_mm_per_s must be strictly positive.
+// y is derived each tick by grounding before the continuous sweep.
+message MovePayload {
+  sint64 target_x_mm = 1;
+  sint64 target_z_mm = 2;
+  uint32 speed_mm_per_s = 3;
+}
+
+enum LeaseTerminationReason {
+  LEASE_TERMINATION_REASON_UNSPECIFIED = 0;
+  LEASE_TERMINATION_REASON_BLOCKED = 1;
+  LEASE_TERMINATION_REASON_EXPIRED = 2;
+  LEASE_TERMINATION_REASON_CANCELLED = 3;
+  LEASE_TERMINATION_REASON_RULESET = 4;
+  LEASE_TERMINATION_REASON_INVALIDATED = 5;
+}
+
+// Typed lease termination reported when a MOVE lease ends without a new
+// command result (blocked threshold, expiry, cancel, ruleset change, or an
+// invalidated authoritative entity state).
+message LeaseTerminatedPayload {
+  uint64 body_id = 1;
+  LeaseTerminationReason reason = 2;
+  optional uint64 conflicting_entity_id = 3;
+}
+
 message PhysicsRejection {
   PhysicsRejectionCode code = 1;
   optional uint64 conflicting_entity_id = 2;
@@ -317,10 +345,11 @@ message Command {
   CommandKind kind = 2;
 
   // Kind-specific protobuf bytes. Task-owned mappings are normative:
-  // PLACE_OBJECT -> PlaceObjectPayload, SET_SHAPE -> SetShapePayload,
-  // UNSTICK -> UnstickPayload. CANCEL_INTENT and STOP have empty payloads.
-  // Payload types for other command kinds remain unavailable until their
-  // owning contracts add a typed schema.
+  // MOVE -> MovePayload, PLACE_OBJECT -> PlaceObjectPayload,
+  // SET_SHAPE -> SetShapePayload, UNSTICK -> UnstickPayload.
+  // CANCEL_INTENT and STOP have empty payloads. Payload types for other
+  // command kinds remain unavailable until their owning contracts add a
+  // typed schema.
   bytes payload = 3;
 }
 
@@ -370,7 +399,8 @@ message ProtocolError {
 
 message Percept {
   PerceptKind kind = 1;
-  // WORLD_RECOVERY_DIAGNOSTIC payloads encode WorldRecoveryDiagnostic.
+  // WORLD_RECOVERY_DIAGNOSTIC payloads encode WorldRecoveryDiagnostic;
+  // LEASE_TERMINATED payloads encode LeaseTerminatedPayload.
   bytes payload = 2;
 }
 

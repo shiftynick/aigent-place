@@ -5,8 +5,46 @@ use std::collections::BTreeMap;
 /// Default `movement.lease_ttl_ms` from the ruleset catalog.
 pub const DEFAULT_LEASE_TTL_MS: u32 = 10_000;
 
+/// Default `movement.max_speed_mm_per_s`.
+pub const DEFAULT_MAX_SPEED_MM_PER_S: u32 = 5_000;
+
+/// Default `movement.blocked_lease_ticks`.
+pub const DEFAULT_BLOCKED_LEASE_TICKS: u32 = 20;
+
+/// Default `physics.sweep_max_mm`.
+pub const DEFAULT_SWEEP_MAX_MM: u32 = 5_000;
+
 /// Default ordinary soak delay in ticks.
 pub const DEFAULT_SOAK_DELAY_TICKS: u64 = 1;
+
+/// Catalog entries owned by this server's complete live map: path, inclusive
+/// range, and default. Shape budgets stay in [`SHAPE_CATALOG`].
+const MOVEMENT_PHYSICS_CATALOG: [(&str, i64, i64, i64); 4] = [
+    (
+        "movement.lease_ttl_ms",
+        1_000,
+        60_000,
+        DEFAULT_LEASE_TTL_MS as i64,
+    ),
+    (
+        "movement.max_speed_mm_per_s",
+        1,
+        50_000,
+        DEFAULT_MAX_SPEED_MM_PER_S as i64,
+    ),
+    (
+        "movement.blocked_lease_ticks",
+        1,
+        200,
+        DEFAULT_BLOCKED_LEASE_TICKS as i64,
+    ),
+    (
+        "physics.sweep_max_mm",
+        1,
+        100_000,
+        DEFAULT_SWEEP_MAX_MM as i64,
+    ),
+];
 
 /// `shape.*` catalog entries: path, inclusive range, and default, transcribed
 /// from `ruleset/v1/CONTRACT.md` section 3.
@@ -80,10 +118,9 @@ impl RulesetParameters {
     #[must_use]
     pub fn catalog_defaults() -> Self {
         let mut values = BTreeMap::new();
-        values.insert(
-            "movement.lease_ttl_ms".into(),
-            i64::from(DEFAULT_LEASE_TTL_MS),
-        );
+        for (path, _, _, default) in MOVEMENT_PHYSICS_CATALOG {
+            values.insert(path.into(), default);
+        }
         values.insert(
             "governance.soak_delay_ticks".into(),
             DEFAULT_SOAK_DELAY_TICKS as i64,
@@ -126,6 +163,29 @@ impl RulesetParameters {
             .clamp(1, u32::MAX as i64) as u32
     }
 
+    /// Live max speed. Missing path is a programming error at a physics trust
+    /// boundary; callers that cannot tolerate unwrap should use [`Self::get`].
+    #[must_use]
+    pub fn max_speed_mm_per_s(&self) -> u32 {
+        self.get("movement.max_speed_mm_per_s")
+            .expect("movement.max_speed_mm_per_s present in complete catalog")
+            .clamp(1, u32::MAX as i64) as u32
+    }
+
+    #[must_use]
+    pub fn blocked_lease_ticks(&self) -> u32 {
+        self.get("movement.blocked_lease_ticks")
+            .expect("movement.blocked_lease_ticks present in complete catalog")
+            .clamp(1, u32::MAX as i64) as u32
+    }
+
+    #[must_use]
+    pub fn sweep_max_mm(&self) -> u32 {
+        self.get("physics.sweep_max_mm")
+            .expect("physics.sweep_max_mm present in complete catalog")
+            .clamp(1, u32::MAX as i64) as u32
+    }
+
     #[must_use]
     pub fn soak_delay_ticks(&self) -> u64 {
         self.get("governance.soak_delay_ticks")
@@ -164,6 +224,9 @@ pub enum RulesetValidationError {
 pub fn validate_candidate(parameters: &RulesetParameters) -> Result<(), RulesetValidationError> {
     let required = [
         "movement.lease_ttl_ms",
+        "movement.max_speed_mm_per_s",
+        "movement.blocked_lease_ticks",
+        "physics.sweep_max_mm",
         "governance.soak_delay_ticks",
         "governance.meta_soak_delay_ticks",
         "governance.cost_ceiling",
@@ -182,6 +245,12 @@ pub fn validate_candidate(parameters: &RulesetParameters) -> Result<(), RulesetV
     for path in required {
         if parameters.get(path).is_none() {
             return Err(RulesetValidationError::IncompleteCatalog);
+        }
+    }
+    for (path, low, high, _) in MOVEMENT_PHYSICS_CATALOG {
+        let value = parameters.get(path).expect("required path present");
+        if !(low..=high).contains(&value) {
+            return Err(RulesetValidationError::OutOfRange { path: path.into() });
         }
     }
     for (path, low, high, _) in SHAPE_CATALOG {
@@ -207,12 +276,6 @@ pub fn validate_candidate(parameters: &RulesetParameters) -> Result<(), RulesetV
         .sum();
     if cost_driving_sum > envelope_cost_driving_default_sum() {
         return Err(RulesetValidationError::CostExceeded);
-    }
-    let lease = parameters.get("movement.lease_ttl_ms").unwrap();
-    if !(1_000..=60_000).contains(&lease) {
-        return Err(RulesetValidationError::OutOfRange {
-            path: "movement.lease_ttl_ms".into(),
-        });
     }
     let soak = parameters.get("governance.soak_delay_ticks").unwrap();
     let meta = parameters.get("governance.meta_soak_delay_ticks").unwrap();

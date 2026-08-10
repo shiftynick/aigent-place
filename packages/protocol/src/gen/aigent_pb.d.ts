@@ -738,6 +738,66 @@ export declare type UnstickPayload = Message<"aigent.protocol.v1.UnstickPayload"
 export declare const UnstickPayloadSchema: GenMessage<UnstickPayload>;
 
 /**
+ * MOVE payload: renew/replace a move-toward lease (ARCHITECTURE §3).
+ * target is horizontal millimetres; speed_mm_per_s must be strictly positive.
+ * y is derived each tick by grounding before the continuous sweep.
+ *
+ * @generated from message aigent.protocol.v1.MovePayload
+ */
+export declare type MovePayload = Message<"aigent.protocol.v1.MovePayload"> & {
+  /**
+   * @generated from field: sint64 target_x_mm = 1;
+   */
+  targetXMm: bigint;
+
+  /**
+   * @generated from field: sint64 target_z_mm = 2;
+   */
+  targetZMm: bigint;
+
+  /**
+   * @generated from field: uint32 speed_mm_per_s = 3;
+   */
+  speedMmPerS: number;
+};
+
+/**
+ * Describes the message aigent.protocol.v1.MovePayload.
+ * Use `create(MovePayloadSchema)` to create a new message.
+ */
+export declare const MovePayloadSchema: GenMessage<MovePayload>;
+
+/**
+ * Typed lease termination reported when a MOVE lease ends without a new
+ * command result (blocked threshold, expiry, cancel, ruleset change, or an
+ * invalidated authoritative entity state).
+ *
+ * @generated from message aigent.protocol.v1.LeaseTerminatedPayload
+ */
+export declare type LeaseTerminatedPayload = Message<"aigent.protocol.v1.LeaseTerminatedPayload"> & {
+  /**
+   * @generated from field: uint64 body_id = 1;
+   */
+  bodyId: bigint;
+
+  /**
+   * @generated from field: aigent.protocol.v1.LeaseTerminationReason reason = 2;
+   */
+  reason: LeaseTerminationReason;
+
+  /**
+   * @generated from field: optional uint64 conflicting_entity_id = 3;
+   */
+  conflictingEntityId?: bigint | undefined;
+};
+
+/**
+ * Describes the message aigent.protocol.v1.LeaseTerminatedPayload.
+ * Use `create(LeaseTerminatedPayloadSchema)` to create a new message.
+ */
+export declare const LeaseTerminatedPayloadSchema: GenMessage<LeaseTerminatedPayload>;
+
+/**
  * @generated from message aigent.protocol.v1.PhysicsRejection
  */
 export declare type PhysicsRejection = Message<"aigent.protocol.v1.PhysicsRejection"> & {
@@ -816,10 +876,11 @@ export declare type Command = Message<"aigent.protocol.v1.Command"> & {
 
   /**
    * Kind-specific protobuf bytes. Task-owned mappings are normative:
-   * PLACE_OBJECT -> PlaceObjectPayload, SET_SHAPE -> SetShapePayload,
-   * UNSTICK -> UnstickPayload. CANCEL_INTENT and STOP have empty payloads.
-   * Payload types for other command kinds remain unavailable until their
-   * owning contracts add a typed schema.
+   * MOVE -> MovePayload, PLACE_OBJECT -> PlaceObjectPayload,
+   * SET_SHAPE -> SetShapePayload, UNSTICK -> UnstickPayload.
+   * CANCEL_INTENT and STOP have empty payloads. Payload types for other
+   * command kinds remain unavailable until their owning contracts add a
+   * typed schema.
    *
    * @generated from field: bytes payload = 3;
    */
@@ -1017,7 +1078,8 @@ export declare type Percept = Message<"aigent.protocol.v1.Percept"> & {
   kind: PerceptKind;
 
   /**
-   * WORLD_RECOVERY_DIAGNOSTIC payloads encode WorldRecoveryDiagnostic.
+   * WORLD_RECOVERY_DIAGNOSTIC payloads encode WorldRecoveryDiagnostic;
+   * LEASE_TERMINATED payloads encode LeaseTerminatedPayload.
    *
    * @generated from field: bytes payload = 2;
    */
@@ -2049,6 +2111,11 @@ export enum PerceptKind {
    * @generated from enum value: PERCEPT_KIND_WORLD_RECOVERY_DIAGNOSTIC = 5;
    */
   WORLD_RECOVERY_DIAGNOSTIC = 5,
+
+  /**
+   * @generated from enum value: PERCEPT_KIND_LEASE_TERMINATED = 6;
+   */
+  LEASE_TERMINATED = 6,
 }
 
 /**
@@ -2265,6 +2332,46 @@ export enum PhysicsRejectionCode {
  * Describes the enum aigent.protocol.v1.PhysicsRejectionCode.
  */
 export declare const PhysicsRejectionCodeSchema: GenEnum<PhysicsRejectionCode>;
+
+/**
+ * @generated from enum aigent.protocol.v1.LeaseTerminationReason
+ */
+export enum LeaseTerminationReason {
+  /**
+   * @generated from enum value: LEASE_TERMINATION_REASON_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: LEASE_TERMINATION_REASON_BLOCKED = 1;
+   */
+  BLOCKED = 1,
+
+  /**
+   * @generated from enum value: LEASE_TERMINATION_REASON_EXPIRED = 2;
+   */
+  EXPIRED = 2,
+
+  /**
+   * @generated from enum value: LEASE_TERMINATION_REASON_CANCELLED = 3;
+   */
+  CANCELLED = 3,
+
+  /**
+   * @generated from enum value: LEASE_TERMINATION_REASON_RULESET = 4;
+   */
+  RULESET = 4,
+
+  /**
+   * @generated from enum value: LEASE_TERMINATION_REASON_INVALIDATED = 5;
+   */
+  INVALIDATED = 5,
+}
+
+/**
+ * Describes the enum aigent.protocol.v1.LeaseTerminationReason.
+ */
+export declare const LeaseTerminationReasonSchema: GenEnum<LeaseTerminationReason>;
 
 /**
  * @generated from enum aigent.protocol.v1.WorldRecoveryDiagnosticCode

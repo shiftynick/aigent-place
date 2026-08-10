@@ -1,7 +1,7 @@
 //! Immutable world generation published at each tick boundary.
 
 use crate::entity::EntitySnapshot;
-use crate::lease::LeaseSnapshot;
+use crate::lease::{LeaseSnapshot, LeaseTermination, LeaseTerminationReason};
 use crate::rng::DrawResult;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -24,8 +24,12 @@ pub struct ImmutableGeneration {
     pub world_value: i64,
     pub ruleset_generation_id: u64,
     pub active_leases: BTreeMap<u64, LeaseSnapshot>,
+    /// Durable aigent identity to body binding.
+    pub aigent_bodies: BTreeMap<Vec<u8>, u64>,
     pub applied_commands: Vec<AppliedCommand>,
     pub expired_leases: Vec<u64>,
+    /// Typed lease terminations this tick (blocked / expired / cancelled / ruleset).
+    pub lease_terminations: Vec<LeaseTermination>,
     pub rng_draws: Vec<(u32, DrawResult)>,
     /// Authoritative entity table frozen at this tick, ordered by unsigned ID.
     pub entities: BTreeMap<u64, EntitySnapshot>,
@@ -38,7 +42,7 @@ impl ImmutableGeneration {
     #[must_use]
     pub fn digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        hasher.update(b"aigent.world.generation.v1\0");
+        hasher.update(b"aigent.world.generation.v2\0");
         hasher.update(self.generation.to_be_bytes());
         hasher.update(self.tick.to_be_bytes());
         hasher.update(self.world_value.to_be_bytes());
@@ -51,6 +55,16 @@ impl ImmutableGeneration {
             hasher.update(lease.sequence.to_be_bytes());
             hasher.update(lease.granted_tick.to_be_bytes());
             hasher.update(lease.expire_tick.to_be_bytes());
+            hasher.update(lease.target_x_mm.to_be_bytes());
+            hasher.update(lease.target_z_mm.to_be_bytes());
+            hasher.update(u64::from(lease.speed_mm_per_s).to_be_bytes());
+            hasher.update(u64::from(lease.consecutive_no_progress_ticks).to_be_bytes());
+        }
+        hasher.update((self.aigent_bodies.len() as u64).to_be_bytes());
+        for (aigent_id, body_id) in &self.aigent_bodies {
+            hasher.update((aigent_id.len() as u32).to_be_bytes());
+            hasher.update(aigent_id);
+            hasher.update(body_id.to_be_bytes());
         }
         hasher.update((self.applied_commands.len() as u64).to_be_bytes());
         for command in &self.applied_commands {
@@ -65,6 +79,20 @@ impl ImmutableGeneration {
         hasher.update((self.expired_leases.len() as u64).to_be_bytes());
         for body_id in &self.expired_leases {
             hasher.update(body_id.to_be_bytes());
+        }
+        hasher.update((self.lease_terminations.len() as u64).to_be_bytes());
+        for term in &self.lease_terminations {
+            hasher.update(term.body_id.to_be_bytes());
+            hasher.update((term.aigent_id.len() as u32).to_be_bytes());
+            hasher.update(&term.aigent_id);
+            hasher.update([termination_reason_byte(term.reason)]);
+            match term.conflicting_entity_id {
+                Some(id) => {
+                    hasher.update([1]);
+                    hasher.update(id.to_be_bytes());
+                }
+                None => hasher.update([0]),
+            }
         }
         hasher.update((self.rng_draws.len() as u64).to_be_bytes());
         for (index, draw) in &self.rng_draws {
@@ -94,5 +122,15 @@ impl ImmutableGeneration {
         }
         hasher.update(self.next_entity_id.to_be_bytes());
         hasher.finalize().into()
+    }
+}
+
+fn termination_reason_byte(reason: LeaseTerminationReason) -> u8 {
+    match reason {
+        LeaseTerminationReason::Blocked => 1,
+        LeaseTerminationReason::Expired => 2,
+        LeaseTerminationReason::Cancelled => 3,
+        LeaseTerminationReason::Ruleset => 4,
+        LeaseTerminationReason::Invalidated => 5,
     }
 }

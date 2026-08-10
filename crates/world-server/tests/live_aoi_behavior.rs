@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use aigent_protocol::{
     command_result, envelope, handshake_frame, ClientHello, Command, CommandKind, CommandMetadata,
-    ConnectionRole, Envelope, HandshakeFrame, ServerHello, SnapshotResyncRequest,
+    ConnectionRole, Envelope, HandshakeFrame, MovePayload, ServerHello, SnapshotResyncRequest,
 };
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
@@ -120,6 +120,10 @@ fn lease(body_id: u64) -> LeaseSnapshot {
         sequence: 1,
         granted_tick: 1,
         expire_tick: 10_000,
+        target_x_mm: 0,
+        target_z_mm: 0,
+        speed_mm_per_s: 1_000,
+        consecutive_no_progress_ticks: 0,
     }
 }
 
@@ -137,8 +141,10 @@ fn generation_of(
         world_value: 0,
         ruleset_generation_id: 1,
         active_leases,
+        aigent_bodies: Default::default(),
         applied_commands: vec![],
         expired_leases: vec![],
+        lease_terminations: vec![],
         rng_draws: vec![],
         // AOI interest ranks from lease poses, not the entity table, so this
         // fixture leaves the table empty on purpose.
@@ -216,7 +222,12 @@ async fn move_and_confirm(ws: &mut Socket, hello: &ServerHello, idempotency_key:
                 idempotency_key: idempotency_key.to_vec(),
             }),
             kind: CommandKind::Move as i32,
-            payload: vec![],
+            payload: MovePayload {
+                target_x_mm: 5_000,
+                target_z_mm: 0,
+                speed_mm_per_s: 1_000,
+            }
+            .encode_to_vec(),
         })),
     }
     .encode_to_vec();

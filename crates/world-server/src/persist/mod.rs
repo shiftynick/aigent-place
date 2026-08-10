@@ -26,6 +26,8 @@ pub struct CommittedGeneration {
     pub command_summaries: Vec<String>,
     /// Active leases at commit time.
     pub active_leases: BTreeMap<u64, LeaseSnapshot>,
+    /// Durable aigent identity to body binding.
+    pub aigent_bodies: BTreeMap<Vec<u8>, u64>,
     /// Authoritative entity table at commit time, ordered by unsigned ID.
     pub entities: BTreeMap<u64, EntitySnapshot>,
     /// Entity ID allocator state at commit time (ADR-0005 records allocator
@@ -77,6 +79,16 @@ impl CommittedGeneration {
             hasher.update(lease.sequence.to_be_bytes());
             hasher.update(lease.granted_tick.to_be_bytes());
             hasher.update(lease.expire_tick.to_be_bytes());
+            hasher.update(lease.target_x_mm.to_be_bytes());
+            hasher.update(lease.target_z_mm.to_be_bytes());
+            hasher.update(u64::from(lease.speed_mm_per_s).to_be_bytes());
+            hasher.update(u64::from(lease.consecutive_no_progress_ticks).to_be_bytes());
+        }
+        hasher.update((self.aigent_bodies.len() as u64).to_be_bytes());
+        for (aigent_id, body_id) in &self.aigent_bodies {
+            hasher.update((aigent_id.len() as u32).to_be_bytes());
+            hasher.update(aigent_id);
+            hasher.update(body_id.to_be_bytes());
         }
         hasher.update((self.entities.len() as u64).to_be_bytes());
         for (entity_id, entity) in &self.entities {

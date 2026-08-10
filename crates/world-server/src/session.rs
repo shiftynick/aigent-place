@@ -3,6 +3,7 @@
 //! Production authentication is not implemented. Tests bind identity through
 //! [`IdentityBinding::TestTrustedInject`] (operator Q2=A / task-018).
 
+use crate::movement::{decode_move_payload, MoveDecodeError, MoveIntent};
 use aigent_protocol::{CommandKind, CommandRejectionCode, ProtocolErrorCode};
 use std::collections::{BTreeMap, HashMap};
 
@@ -79,6 +80,7 @@ pub enum ConnectionMode {
 pub enum AuthoritativeResult {
     Accepted {
         affected_entities: Vec<(Vec<u8>, u64)>,
+        decoded: DecodedCommandPayload,
     },
     Rejected {
         code: CommandRejectionCode,
@@ -95,6 +97,23 @@ impl AuthoritativeResult {
     pub fn accepted_empty() -> Self {
         Self::Accepted {
             affected_entities: vec![],
+            decoded: DecodedCommandPayload::None,
+        }
+    }
+
+    #[must_use]
+    pub fn accepted_move(intent: MoveIntent) -> Self {
+        Self::Accepted {
+            affected_entities: vec![],
+            decoded: DecodedCommandPayload::Move(intent),
+        }
+    }
+
+    #[must_use]
+    pub fn decoded_payload(&self) -> Option<&DecodedCommandPayload> {
+        match self {
+            Self::Accepted { decoded, .. } => Some(decoded),
+            Self::Rejected { .. } => None,
         }
     }
 }
@@ -108,8 +127,18 @@ pub struct CommandSubmit {
     pub sequence: u64,
     pub idempotency_key: Vec<u8>,
     pub kind: CommandKind,
+    /// SHA-256 of the received payload bytes (empty for STOP/CANCEL).
     pub content_digest: Vec<u8>,
+    /// Received payload bytes; digest must match these bytes.
+    pub payload_bytes: Vec<u8>,
     pub required_features: Vec<FeatureOffer>,
+}
+
+/// Kind-specific decoded intent admitted with an accepted command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecodedCommandPayload {
+    None,
+    Move(MoveIntent),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -540,9 +569,12 @@ impl SessionHub {
             }
             (prior.result.clone(), true)
         } else {
-            // Available kinds with empty authoritative mutation (cancel/stop and
-            // geometry no-ops until the world core applies typed payloads).
-            let result = AuthoritativeResult::accepted_empty();
+            let result = match admit_domain_command(command.kind, &command.payload_bytes) {
+                Ok(result) => result,
+                Err(code) => {
+                    return self.record_exact_rejection(&command, code);
+                }
+            };
             self.idempotency.insert(
                 key,
                 IdempotencyRecord {
@@ -609,6 +641,39 @@ fn kind_available(kind: CommandKind) -> bool {
             | CommandKind::SetShape
             | CommandKind::Unstick
     )
+}
+
+/// Domain admission after connection/epoch/sequence/idempotency checks.
+///
+/// MOVE must decode to a typed payload or reject with
+/// `INVALID_INTENT` without world mutation. STOP/CANCEL require empty
+/// payloads. PLACE_OBJECT / SET_SHAPE / UNSTICK remain skeleton-admitted
+/// without applying world geometry (their owning tasks).
+fn admit_domain_command(
+    kind: CommandKind,
+    payload_bytes: &[u8],
+) -> Result<AuthoritativeResult, CommandRejectionCode> {
+    match kind {
+        CommandKind::Move => match decode_move_payload(payload_bytes) {
+            Ok(intent) => Ok(AuthoritativeResult::accepted_move(intent)),
+            Err(MoveDecodeError::EmptyPayload)
+            | Err(MoveDecodeError::DecodeFailed)
+            | Err(MoveDecodeError::NonPositiveSpeed)
+            | Err(MoveDecodeError::TargetOutOfBounds) => Err(CommandRejectionCode::InvalidIntent),
+        },
+        CommandKind::CancelIntent | CommandKind::Stop => {
+            if payload_bytes.is_empty() {
+                Ok(AuthoritativeResult::accepted_empty())
+            } else {
+                Err(CommandRejectionCode::InvalidIntent)
+            }
+        }
+        CommandKind::PlaceObject | CommandKind::SetShape | CommandKind::Unstick => {
+            // Skeleton: available kinds, world geometry application deferred.
+            Ok(AuthoritativeResult::accepted_empty())
+        }
+        _ => Err(CommandRejectionCode::UnsupportedMessage),
+    }
 }
 
 fn reject_result(

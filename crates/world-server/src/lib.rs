@@ -1,10 +1,9 @@
 //! Authoritative fixed-tick world core and connection session skeleton.
 //!
-//! Wire `MOVE` is admitted with an empty payload and applies an internal
-//! movement lease (`UpsertLease`) until a typed move payload exists.
-//!
-//! Connection sessions use test-only trusted `aigent_id` inject (operator Q2=A /
-//! task-018); production authentication is deferred.
+//! Wire `MOVE` carries a typed [`MovePayload`](aigent_protocol::MovePayload)
+//! decoded into [`MoveIntent`]. Malformed payloads reject without world
+//! mutation. Accepted MOVE commands queue a renewable move-toward lease that
+//! executes continuous swept motion each tick.
 
 mod aoi;
 mod broadphase;
@@ -14,6 +13,7 @@ mod fanout;
 mod generation;
 mod heightfield;
 mod lease;
+mod movement;
 mod order;
 mod outbound;
 mod persist;
@@ -37,9 +37,10 @@ pub use collider::{
 };
 pub use heightfield::{
     sample_height_mm, CellCoord, ChunkSampleView, GroundingResult, Heightfield, HeightfieldConfig,
-    HeightfieldError, TerrainColumn, CHUNK_SIZE_MM, EXACT_GROUNDING_MAX_BINARY_STEPS,
-    EXACT_GROUNDING_MAX_RESIDUAL_STEPS, GENERATED_HEIGHT_MAX_MM, GENERATED_HEIGHT_MIN_MM,
-    HEIGHTFIELD_GENERATOR_DOMAIN, HEIGHTFIELD_GENERATOR_VERSION, HEIGHTFIELD_MAX_SELECTED_CELLS,
+    HeightfieldError, TerrainColumn, CHUNK_SIZE_MM, DEFAULT_HEIGHTFIELD_CELL_SIZE_MM,
+    EXACT_GROUNDING_MAX_BINARY_STEPS, EXACT_GROUNDING_MAX_RESIDUAL_STEPS, GENERATED_HEIGHT_MAX_MM,
+    GENERATED_HEIGHT_MIN_MM, HEIGHTFIELD_GENERATOR_DOMAIN, HEIGHTFIELD_GENERATOR_VERSION,
+    HEIGHTFIELD_MAX_SELECTED_CELLS,
 };
 
 pub use entity::{
@@ -51,7 +52,11 @@ pub use fanout::{
     ConnectionOutbound, EventStreamCursor, PublicationMailbox, PublishOutcome, SnapshotFanout,
 };
 pub use generation::{AppliedCommand, ImmutableGeneration};
-pub use lease::{LeaseSnapshot, LeaseTable};
+pub use lease::{LeaseSnapshot, LeaseTable, LeaseTermination, LeaseTerminationReason};
+pub use movement::{
+    decode_move_payload, encode_move_payload, tick_travel_mm, BlockerKey, DraftCollisionView,
+    MoveDecodeError, MoveIntent, MoveStepResult, MovementError,
+};
 pub use order::{canonical_command_order, CommandKey};
 pub use outbound::{
     EnqueueStateOutcome, ObserveOutcome, OutboundQueue, StateKind, OVERFLOW_TICK_OBSERVATIONS,
@@ -66,12 +71,14 @@ pub use rng::{
 };
 pub use ruleset::{
     validate_candidate, PendingRuleset, RulesetGeneration, RulesetParameters, RulesetStore,
-    RulesetValidationError, DEFAULT_LEASE_TTL_MS as RULESET_DEFAULT_LEASE_TTL_MS,
+    RulesetValidationError, DEFAULT_BLOCKED_LEASE_TICKS,
+    DEFAULT_LEASE_TTL_MS as RULESET_DEFAULT_LEASE_TTL_MS, DEFAULT_MAX_SPEED_MM_PER_S,
+    DEFAULT_SWEEP_MAX_MM,
 };
 pub use session::{
     AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, CompatibilityRecord,
-    ConnectionDisplaced, ConnectionMode, ConnectionRole, FeatureOffer, HandshakeOutcome,
-    IdentityBinding, SessionHub,
+    ConnectionDisplaced, ConnectionMode, ConnectionRole, DecodedCommandPayload, FeatureOffer,
+    HandshakeOutcome, IdentityBinding, SessionHub,
 };
 pub use shape::{
     is_valid_identifier, validate_shape_tree, validate_shape_tree_with_budgets, Axis,

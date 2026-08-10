@@ -61,6 +61,10 @@ fn lease(body_id: u64) -> LeaseSnapshot {
         sequence: 1,
         granted_tick: 1,
         expire_tick: 100,
+        target_x_mm: 0,
+        target_z_mm: 0,
+        speed_mm_per_s: 1_000,
+        consecutive_no_progress_ticks: 0,
     }
 }
 
@@ -98,8 +102,10 @@ fn generation(
         world_value: 0,
         ruleset_generation_id,
         active_leases,
+        aigent_bodies: Default::default(),
         applied_commands: Vec::new(),
         expired_leases: Vec::new(),
+        lease_terminations: Vec::new(),
         rng_draws: Vec::new(),
         entities,
         next_entity_id,

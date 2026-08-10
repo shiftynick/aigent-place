@@ -67,6 +67,7 @@ fn cmd(
         idempotency_key: key.to_vec(),
         kind,
         content_digest: digest.to_vec(),
+        payload_bytes: vec![],
         required_features: vec![],
     }
 }
