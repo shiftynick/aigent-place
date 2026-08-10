@@ -601,7 +601,9 @@ impl std::error::Error for BroadphaseQueryError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{axis_cell_span, metres_to_mm};
+    use super::{axis_cell_span, metres_to_mm, CollisionBroadphase};
+    use crate::collider::{Aabb, WorldPointMm};
+    use std::collections::{BTreeMap, HashMap};
 
     #[test]
     fn metres_to_mm_rejects_overflow_to_non_finite() {
@@ -618,5 +620,33 @@ mod tests {
         assert_eq!((start, end), (0, 1));
         let (start, end) = axis_cell_span(-5_000.0, 0.0, 10_000.0).unwrap();
         assert_eq!((start, end), (-1, -1));
+    }
+
+    #[test]
+    fn query_canonicalizes_reversed_bucket_order_and_duplicate_cells() {
+        let aggregate = Aabb::try_from_min_max(
+            WorldPointMm::new(0.0, 0.0, 0.0).unwrap(),
+            WorldPointMm::new(15_000.0, 1_000.0, 1_000.0).unwrap(),
+        )
+        .unwrap();
+        let mut aggregates = BTreeMap::new();
+        for entity_id in [1, 3, 5, 7, 9] {
+            aggregates.insert(entity_id, aggregate);
+        }
+        let mut cells = HashMap::new();
+        cells.insert((0, 0, 0), vec![9, 5, 1, 7, 3]);
+        cells.insert((1, 0, 0), vec![3, 7, 1, 5, 9]);
+        let index = CollisionBroadphase {
+            world_generation: 1,
+            ruleset_generation_id: 1,
+            cell_edge_mm: 10_000.0,
+            aggregates,
+            cells,
+        };
+
+        assert_eq!(
+            index.query_bucket_candidates(aggregate).unwrap(),
+            vec![1, 3, 5, 7, 9]
+        );
     }
 }
