@@ -1,12 +1,12 @@
 ---
 id: task-2929451841000001
 title: Apply the aggregate shape extent bound where the collider is derived
-status: review
+status: done
 priority: p1
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: []
 createdAt: "2026-08-06T14:57:28Z"
-updatedAt: "2026-08-10T02:28:18Z"
+updatedAt: "2026-08-10T02:30:45Z"
 ---
 
 <!-- task-tracker:description -->
@@ -552,3 +552,45 @@ task-047 validates candidate shape trees and applies shape.max_extent_mm as a pe
   | npm notice run @aigent-place/viewer@0.1.0 smoke
   | npm notice run node ./scripts/smoke.mjs
 - 2026-08-10T02:28:18Z — moved to review (note: Round-1 confirmed testability gap fixed: private helper tests now prove exact collider-error cause preservation and typed rejection when finite aggregate endpoints overflow subtraction. Limit-cast exactness is documented from the enforced 1..=100000 budget range. Final world-server lib 25/25, shape behavior 32/32, all-target clippy, and unified gate pass.)
+- 2026-08-10T02:29:54Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access answer-only --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-aggregate-spec-review-r2.md --timeout-ms 600000 --max-budget-usd 3 --output text --json
+  started 2026-08-10T02:29:28Z, exit 0 in 25.5s
+  output tail (truncated to last 30 lines):
+  | getExceeded` and from `ColliderDerivationFailed { cause }`; measured context is the exact IEEE-754 bit pattern (`to_bits`, asserted in tests); axis loop is literal fixed X→Y→Z; `per_primitive_extent_budget_still_wins_independently` proves the earlier per-primitive rejection survives with its original variant.\n3. Coverage — verified: both `ShapeClass::Body` and `ShapeClass::Object` looped in the accept/reject tests; exact boundary 5000.0 accepted and 5001 rejected (both exactly representable in f64); `aggregate_extent_rejection_is_independent_of_node_array_order` reverses the node array with a simultaneous Y excess, proving both shuffle invariance and X precedence; `rotated_aggregate_extent_consumes_canonical_collider_output` uses `derive_collider` as an independent oracle, accepts the identity variant, and asserts the rejected candidate is byte-identical afterward (all-or-nothing); failure paths covered by two executed unit tests (`collider_derivation_error_mapping_preserves_exact_cause`, `finite_aggregate_operands_that_overflow_reject_as_non_finite_derived_arithmetic`), both present in the raw 25/25 lib run; bounded-cost test header updated to scope the five-buffer claim and keep the part-budget short circuit before collider work; mutation sensitivity evidenced by the round-1 red runs (boundary `>`→`>=` and axis-swap Y-vs-X) followed by green restoration.\n4. Contract clarification without semantic change — verified the CONTRACT.md addition only names the two granularities of the pre-existing \"MUST fit the active ruleset's primitive and aggregate bounds\" clause plus translation invariance; it is consistent with the contract's aggregate-AABB budget-check sentence in section 5 and ADR-0002's \"budget excess rejects the complete candidate shape\"; no new ADR invented.\n5. Scope and gates — verified the complete diff touches only `crates/world-server/src/shape.rs`, the two shape-validation test files, and `world/v1/CONTRACT.md`; the one fixture narrowing (`translation_outside_the_world_bound_rejects` reduced to a single primitive) isolates the pre-existing assertion from the new independent budget without changing what it asserts; raw evidence shows fmt, lib 25/25, shape behavior 32/32, all-target clippy, and unified `scripts/check.mjs` exit 0 with untruncated `product-check: PASS` terminus on the frozen two-commit branch.\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "claude-fable-5",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "answer-only"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 25411
+  | }
+  | (node:47340) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T02:30:35Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access answer-only --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-aggregate-standards-review-r2.md --timeout-ms 600000 --max-budget-usd 3 --output text --json
+  started 2026-08-10T02:30:01Z, exit 0 in 34.3s
+  output tail (truncated to last 30 lines):
+  | ateExtentBudgetExceeded` carries axis, exact IEEE bit pattern of the measured extent, and limit; `ColliderDerivationFailed` preserves the exact cause (unit-tested); non-finite subtraction fails closed rather than being clamped.\n- **Confirmed vs. hypothesized findings (Foundry seed rule):** Round-1's rejected i64→f64 finding was checked against the supplied live constructor: `bounded_budget(..., 1, 100_000)` bounds `max_extent_mm`, so the `as f64` conversion is exact; the in-code comment records the invariant.\n- **ADR/locked-decision alignment (task-001 rule):** ADR-0002 already fixes aggregate-AABB derivation and complete-candidate rejection on budget excess, and the contract's pre-existing \"MUST fit … primitive and aggregate bounds\" clause already required both granularities. The CONTRACT.md addition names them without inventing new semantics, so no new ADR is required.\n- **All-or-nothing / atomicity (ADR-0002, Engineering):** The check runs after full structural validation, borrows immutably, and the rotated test asserts the candidate is untouched on rejection; per-primitive rejection remains earlier and distinct (`per_primitive_extent_budget_still_wins_independently`).\n- **Boundary/failure-path coverage (Foundry seed rule):** Exact-budget accept (5000.0, exactly representable), one-over reject (5001), Body and Object classes, rotation, shuffle, and fail-closed derivation paths all have executed tests; the world-bound fixture narrowing correctly isolates translation inclusivity from the new aggregate budget without weakening the assertion.\n- **Bounded cost and documentation accuracy (Engineering: Documentation):** The five-buffer claim is rescoped to the structural phase and collider-derivation buffers are disclosed; the bounded-cost test header matches, and test 1 still proves the part-budget short circuit precedes both phases.\n- **Determinism (Project stack):** No wall-clock, ordering, or hash-iteration dependence introduced; exact-bits comparison is consistent with the same-build replay target.\n- **Unskippable gate (Engineering: Testing):** Unified `node scripts/check.mjs` exit 0 with untruncated terminus `product-check: PASS`; fmt, clippy `-D warnings`, and focused suites all green in raw evidence.\n- **Prompt-injection scan (Foundry seed rule):** Diff, fixtures, and evidence contain no agent-addressed text.\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "claude-fable-5",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "answer-only"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 34248
+  | }
+  | (node:49532) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T02:30:45Z — note: Cold review round 2 rung 1: separate Claude Fable 5 low-effort sessions. SPEC PASS and STANDARDS PASS. All rubric lines and applicable standards checked; no unresolved findings or residual task risk.
+- 2026-08-10T02:30:45Z — moved to done (note: Acceptance complete: final focused tests, mutation evidence, full gate, and both cold-review axes pass; ready for PR delivery.)
