@@ -7,9 +7,10 @@ use crate::ruleset::{PendingRuleset, RulesetGeneration};
 use std::collections::BTreeMap;
 
 const CODEC_MAGIC: &[u8] = b"AJG1";
-/// Version 2 added the authoritative entity table and ID allocator (task-046).
-/// Older payloads are rejected rather than silently reinterpreted.
-const CODEC_VERSION: u32 = 2;
+/// Version 4 added typed MOVE lease fields and durable body bindings (task-051). Older payloads are
+/// rejected rather than silently reinterpreted; unshipped skeleton data has
+/// no migration promise.
+const CODEC_VERSION: u32 = 4;
 /// Smallest possible encoded entity: three `u64` headers, three `f64` position
 /// components, and a one-byte absent-shape flag.
 const MIN_ENTITY_BYTES: usize = 8 * 6 + 1;
@@ -42,6 +43,15 @@ pub fn encode_generation(packet: &CommittedGeneration) -> Result<Vec<u8>, Journa
         write_u64(&mut out, lease.sequence);
         write_u64(&mut out, lease.granted_tick);
         write_u64(&mut out, lease.expire_tick);
+        write_i64(&mut out, lease.target_x_mm);
+        write_i64(&mut out, lease.target_z_mm);
+        write_u32(&mut out, lease.speed_mm_per_s);
+        write_u32(&mut out, lease.consecutive_no_progress_ticks);
+    }
+    write_u64(&mut out, packet.aigent_bodies.len() as u64);
+    for (aigent_id, body_id) in &packet.aigent_bodies {
+        write_bytes(&mut out, aigent_id);
+        write_u64(&mut out, *body_id);
     }
     write_u64(&mut out, packet.entities.len() as u64);
     for (entity_id, entity) in &packet.entities {
@@ -114,8 +124,34 @@ pub fn decode_generation(bytes: &[u8]) -> Result<CommittedGeneration, JournalErr
             sequence: read_u64(bytes, &mut cursor)?,
             granted_tick: read_u64(bytes, &mut cursor)?,
             expire_tick: read_u64(bytes, &mut cursor)?,
+            target_x_mm: read_i64(bytes, &mut cursor)?,
+            target_z_mm: read_i64(bytes, &mut cursor)?,
+            speed_mm_per_s: read_u32(bytes, &mut cursor)?,
+            consecutive_no_progress_ticks: read_u32(bytes, &mut cursor)?,
         };
+        if lease.speed_mm_per_s == 0 {
+            return Err(JournalError::Storage(
+                "committed lease speed_mm_per_s must be positive".into(),
+            ));
+        }
         active_leases.insert(key, lease);
+    }
+    let binding_len = read_u64(bytes, &mut cursor)? as usize;
+    ensure_count_fits(bytes, &cursor, binding_len, 16)?;
+    let mut aigent_bodies = BTreeMap::new();
+    for _ in 0..binding_len {
+        let aigent_id = read_bytes(bytes, &mut cursor)?;
+        if aigent_id.is_empty() {
+            return Err(JournalError::Storage(
+                "empty persisted aigent binding".into(),
+            ));
+        }
+        let body_id = read_u64(bytes, &mut cursor)?;
+        if aigent_bodies.insert(aigent_id, body_id).is_some() {
+            return Err(JournalError::Storage(
+                "duplicate persisted aigent binding".into(),
+            ));
+        }
     }
     let entity_len = read_u64(bytes, &mut cursor)? as usize;
     ensure_count_fits(bytes, &cursor, entity_len, MIN_ENTITY_BYTES)?;
@@ -148,6 +184,19 @@ pub fn decode_generation(bytes: &[u8]) -> Result<CommittedGeneration, JournalErr
         );
     }
     let next_entity_id = read_u64(bytes, &mut cursor)?;
+    let mut bound_body_ids = std::collections::BTreeSet::new();
+    for body_id in aigent_bodies.values() {
+        if !entities.contains_key(body_id) {
+            return Err(JournalError::Storage(format!(
+                "persisted binding references missing body {body_id}"
+            )));
+        }
+        if !bound_body_ids.insert(*body_id) {
+            return Err(JournalError::Storage(format!(
+                "persisted body {body_id} has multiple aigent bindings"
+            )));
+        }
+    }
     let integrity_raw = read_bytes(bytes, &mut cursor)?;
     let integrity_hex = String::from_utf8(integrity_raw)
         .map_err(|error| JournalError::Storage(format!("integrity utf8 error: {error}")))?;
@@ -163,6 +212,7 @@ pub fn decode_generation(bytes: &[u8]) -> Result<CommittedGeneration, JournalErr
         pending_ruleset,
         command_summaries,
         active_leases,
+        aigent_bodies,
         entities,
         next_entity_id,
         integrity_hex,
@@ -220,6 +270,10 @@ fn ensure_count_fits(
         ));
     }
     Ok(())
+}
+
+fn write_u32(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_be_bytes());
 }
 
 fn write_u64(out: &mut Vec<u8>, value: u64) {

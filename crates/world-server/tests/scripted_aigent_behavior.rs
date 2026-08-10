@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use aigent_protocol::{
     command_result, envelope, handshake_frame, ClientHello, Command, CommandKind, CommandMetadata,
-    ConnectionRole, Envelope, HandshakeFrame, ServerHello,
+    ConnectionRole, Envelope, HandshakeFrame, MovePayload, ServerHello,
 };
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
@@ -45,7 +45,12 @@ fn move_command(
                 idempotency_key: idempotency_key.to_vec(),
             }),
             kind: CommandKind::Move as i32,
-            payload: vec![],
+            payload: MovePayload {
+                target_x_mm: 5_000,
+                target_z_mm: 0,
+                speed_mm_per_s: 1_000,
+            }
+            .encode_to_vec(),
         })),
     }
     .encode_to_vec()

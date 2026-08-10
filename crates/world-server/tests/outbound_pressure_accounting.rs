@@ -86,6 +86,10 @@ fn lease(body_id: u64) -> LeaseSnapshot {
         sequence: 1,
         granted_tick: 1,
         expire_tick: 100_000,
+        target_x_mm: 0,
+        target_z_mm: 0,
+        speed_mm_per_s: 1_000,
+        consecutive_no_progress_ticks: 0,
     }
 }
 
@@ -100,8 +104,10 @@ fn crowd_generation(tick: u64) -> ImmutableGeneration {
         world_value: 0,
         ruleset_generation_id: 1,
         active_leases,
+        aigent_bodies: Default::default(),
         applied_commands: vec![],
         expired_leases: vec![],
+        lease_terminations: vec![],
         rng_draws: vec![],
         // Frame bytes are derived from the lease-backed placeholder payload,
         // not the entity table, so this fixture leaves the table empty.

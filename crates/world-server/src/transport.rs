@@ -7,6 +7,7 @@
 //! overflow observation — the drain path never awaits a socket write.
 
 use crate::aoi::AoiError;
+use crate::entity::ShapeSlot;
 use crate::fanout::{
     PublicationMailbox, PublishOutcome, SnapshotFanout, StateFrameShape, StateSizing,
 };
@@ -14,16 +15,19 @@ use crate::generation::ImmutableGeneration;
 use crate::outbound::{ObserveOutcome, QUEUE_LIMIT_BYTES};
 use crate::session::{
     AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, ConnectionMode,
-    ConnectionRole, FeatureOffer, HandshakeOutcome, IdentityBinding, SessionHub,
+    ConnectionRole, DecodedCommandPayload, FeatureOffer, HandshakeOutcome, IdentityBinding,
+    SessionHub,
 };
 use crate::snapshot::StubSnapshotPayload;
 use crate::tick::TICK_MS;
 use crate::world::{CommandEffect, QueuedCommand, World, WorldConfig};
 use aigent_protocol::{
-    command_result, envelope, handshake_frame, CommandAccepted, CommandKind, CommandRejected,
-    CommandResult, ConnectionMode as ProtoMode, ConnectionRole as ProtoRole, Envelope,
-    FeatureSelection, FullSnapshot, HandshakeFrame, HandshakeReject, ProtocolError,
-    ProtocolErrorCode, ServerHello, SnapshotDelta, SnapshotResyncRequired,
+    command_result, envelope, handshake_frame, shape_node::Primitive, BoxPrimitive, ColorRgba,
+    CommandAccepted, CommandKind, CommandRejected, CommandResult, ConnectionMode as ProtoMode,
+    ConnectionRole as ProtoRole, Envelope, FeatureSelection, FullSnapshot, HandshakeFrame,
+    HandshakeReject, LeaseTerminatedPayload, LeaseTerminationReason as ProtoLeaseTerminationReason,
+    LocalTransform, Percept, PerceptKind, ProtocolError, ProtocolErrorCode, Quaternion,
+    ServerHello, ShapeNode, ShapeTree, SnapshotDelta, SnapshotResyncRequired, Vector3Millimeters,
 };
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{ConnectInfo, State, WebSocketUpgrade};
@@ -147,8 +151,10 @@ impl TransportState {
                     world_value: world.world_value(),
                     ruleset_generation_id: 0,
                     active_leases: Default::default(),
+                    aigent_bodies: Default::default(),
                     applied_commands: Vec::new(),
                     expired_leases: Vec::new(),
+                    lease_terminations: Vec::new(),
                     rng_draws: Vec::new(),
                     entities: world.entities().snapshots(),
                     next_entity_id: world.entities().next_entity_id(),
@@ -207,6 +213,34 @@ impl TransportState {
             let fanout = self.fanout.lock().await;
             fanout.connection_ids()
         };
+        let connection_aigents: HashMap<Vec<u8>, Vec<u8>> = {
+            let sessions = self.sessions.lock().await;
+            ids.iter()
+                .filter_map(|connection_id| {
+                    sessions
+                        .aigent_id_for(connection_id)
+                        .map(|aigent_id| (connection_id.clone(), aigent_id))
+                })
+                .collect()
+        };
+        let focus_updates: Vec<(Vec<u8>, u64)> = {
+            let world = self.world.lock().await;
+            connection_aigents
+                .iter()
+                .filter_map(|(connection_id, aigent_id)| {
+                    let body_id = world.body_for_aigent(aigent_id)?;
+                    Some((connection_id.clone(), body_id))
+                })
+                .collect()
+        };
+        if !focus_updates.is_empty() {
+            let mut fanout = self.fanout.lock().await;
+            for (connection_id, body_id) in focus_updates {
+                if let Some(connection) = fanout.get_mut(&connection_id) {
+                    connection.focus_body_id = Some(body_id);
+                }
+            }
+        }
         let mut delivered = 0usize;
         for connection_id in ids {
             if report.closed.iter().any(|id| id == &connection_id) {
@@ -247,6 +281,53 @@ impl TransportState {
                 );
                 (outcome, frames)
             };
+            if let Some(aigent_id) = connection_aigents.get(&connection_id) {
+                for termination in generation
+                    .lease_terminations
+                    .iter()
+                    .filter(|termination| &termination.aigent_id == aigent_id)
+                {
+                    let reason = match termination.reason {
+                        crate::lease::LeaseTerminationReason::Blocked => {
+                            ProtoLeaseTerminationReason::Blocked
+                        }
+                        crate::lease::LeaseTerminationReason::Expired => {
+                            ProtoLeaseTerminationReason::Expired
+                        }
+                        crate::lease::LeaseTerminationReason::Cancelled => {
+                            ProtoLeaseTerminationReason::Cancelled
+                        }
+                        crate::lease::LeaseTerminationReason::Ruleset => {
+                            ProtoLeaseTerminationReason::Ruleset
+                        }
+                        crate::lease::LeaseTerminationReason::Invalidated => {
+                            ProtoLeaseTerminationReason::Invalidated
+                        }
+                    };
+                    let frame = encode_envelope(
+                        &connection_id,
+                        self.next_server_message_id(),
+                        envelope::Body::Percept(Percept {
+                            kind: PerceptKind::LeaseTerminated as i32,
+                            payload: LeaseTerminatedPayload {
+                                body_id: termination.body_id,
+                                reason: reason as i32,
+                                conflicting_entity_id: termination.conflicting_entity_id,
+                            }
+                            .encode_to_vec(),
+                        }),
+                    );
+                    let queued = {
+                        let mut fanout = self.fanout.lock().await;
+                        fanout
+                            .get_mut(&connection_id)
+                            .is_some_and(|connection| connection.queue.enqueue_event(frame.len()))
+                    };
+                    if queued && self.try_deliver(&connection_id, Bytes::from(frame)).await {
+                        delivered += 1;
+                    }
+                }
+            }
             if let PublishOutcome::InterestUnavailable { error } = outcome {
                 report
                     .interest_unavailable
@@ -784,6 +865,7 @@ async fn handle_command_envelope(
         let world = state.world.lock().await;
         state.peek_arrival_tick().max(world.next_tick())
     };
+    let payload_bytes = command.payload.clone();
     let submit = CommandSubmit {
         connection_id: connection_id.to_vec(),
         protocol_major,
@@ -804,7 +886,8 @@ async fn handle_command_envelope(
             .map(|meta| meta.idempotency_key.clone())
             .unwrap_or_default(),
         kind: CommandKind::try_from(command.kind).unwrap_or(CommandKind::Unspecified),
-        content_digest: Sha256::digest(&command.payload).to_vec(),
+        content_digest: Sha256::digest(&payload_bytes).to_vec(),
+        payload_bytes,
         required_features: metadata
             .map(|meta| {
                 meta.required_features
@@ -827,25 +910,35 @@ async fn handle_command_envelope(
         .push((connection_id.to_vec(), arrival_tick));
 
     if let CommandOutcome::Result {
-        result: AuthoritativeResult::Accepted { .. },
+        result: AuthoritativeResult::Accepted { decoded, .. },
         replayed: false,
         ..
     } = &outcome
     {
-        apply_world_effect(state, connection_id, kind, sequence, arrival_tick).await;
+        apply_world_effect(
+            state,
+            connection_id,
+            kind,
+            sequence,
+            arrival_tick,
+            decoded.clone(),
+        )
+        .await;
     }
 
     if let Some(frame) =
         encode_command_outcome(connection_id, state.next_server_message_id(), &outcome)
     {
         let frame = Bytes::from(frame);
-        {
+        let queued = {
             let mut fanout = state.fanout.lock().await;
-            if let Some(connection) = fanout.get_mut(connection_id) {
-                let _ = connection.queue.enqueue_event(frame.len());
-            }
+            fanout
+                .get_mut(connection_id)
+                .is_some_and(|connection| connection.queue.enqueue_event(frame.len()))
+        };
+        if queued {
+            let _ = state.try_deliver(connection_id, frame).await;
         }
-        let _ = state.try_deliver(connection_id, frame).await;
     }
     true
 }
@@ -856,6 +949,7 @@ async fn apply_world_effect(
     kind: CommandKind,
     sequence: u64,
     _arrival_hint: u64,
+    decoded: DecodedCommandPayload,
 ) {
     let aigent_id = {
         let hub = state.sessions.lock().await;
@@ -864,17 +958,52 @@ async fn apply_world_effect(
     let Some(aigent_id) = aigent_id else {
         return;
     };
-    let body_id = body_id_for_aigent(&aigent_id);
-    let effect = match kind {
-        CommandKind::Move => CommandEffect::UpsertLease {
-            body_id,
-            ttl_ms: None,
-        },
-        CommandKind::CancelIntent | CommandKind::Stop => CommandEffect::CancelLease { body_id },
-        _ => return,
-    };
     let mut world = state.world.lock().await;
     let arrival_tick = state.peek_arrival_tick().max(world.next_tick());
+
+    // Narrow listen/demo path: ensure a real shaped body is created and bound
+    // in the same tick, ordered before the aigent's MOVE via a `\0`-prefixed
+    // controller identity so canonical order applies create first.
+    if !world.has_body_or_pending_spawn(&aigent_id)
+        && matches!(
+            (kind, &decoded),
+            (CommandKind::Move, DecodedCommandPayload::Move(_))
+        )
+    {
+        let mut demo_controller = vec![0u8];
+        demo_controller.extend_from_slice(&aigent_id);
+        let spawn_shape = demo_body_shape_slot();
+        let Some(spawn_position) = world.next_demo_spawn_position(&spawn_shape) else {
+            return;
+        };
+        let spawn = QueuedCommand {
+            arrival_tick,
+            aigent_id: demo_controller,
+            sequence: 1,
+            effect: CommandEffect::CreateAndBindDemoBody {
+                aigent_id: aigent_id.clone(),
+                position: spawn_position,
+                shape: spawn_shape,
+            },
+        };
+        if world.enqueue(spawn).is_err() {
+            return;
+        }
+    }
+
+    let effect = match (kind, decoded) {
+        (CommandKind::Move, DecodedCommandPayload::Move(intent)) => {
+            CommandEffect::UpsertMoveLease {
+                body_id: None,
+                intent,
+                ttl_ms: None,
+            }
+        }
+        (CommandKind::CancelIntent | CommandKind::Stop, _) => {
+            CommandEffect::CancelLease { body_id: None }
+        }
+        _ => return,
+    };
     let command = QueuedCommand {
         arrival_tick,
         aigent_id: aigent_id.clone(),
@@ -895,7 +1024,43 @@ async fn apply_world_effect(
     }
 }
 
-/// Demo mapping from a trusted-inject `aigent_id` to its placeholder body id.
+fn demo_body_shape_slot() -> ShapeSlot {
+    let tree = ShapeTree {
+        nodes: vec![ShapeNode {
+            node_id: 1,
+            parent_node_id: 0,
+            transform: Some(LocalTransform {
+                translation: Some(Vector3Millimeters {
+                    x_mm: 0,
+                    y_mm: 0,
+                    z_mm: 0,
+                }),
+                rotation: Some(Quaternion {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    w: 1.0,
+                }),
+            }),
+            joint_name: None,
+            color: Some(ColorRgba {
+                red: 80,
+                green: 160,
+                blue: 220,
+                alpha: 255,
+            }),
+            material_tags: Vec::new(),
+            primitive: Some(Primitive::Box(BoxPrimitive {
+                size_x_mm: 1_000,
+                size_y_mm: 1_800,
+                size_z_mm: 1_000,
+            })),
+        }],
+    };
+    ShapeSlot::from_encoded(ProstMessage::encode_to_vec(&tree))
+}
+
+/// Deterministic focus mapping for AOI when no entity binding exists yet.
 fn body_id_for_aigent(aigent_id: &[u8]) -> u64 {
     let digest = Sha256::digest(aigent_id);
     u64::from_be_bytes(digest[..8].try_into().expect("sha256 prefix"))

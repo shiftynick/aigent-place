@@ -141,12 +141,24 @@ owned by the replay and persistence contract linked above.
 
 `CANCEL_INTENT` and bare `STOP` are base v1 commands with empty payloads.
 ADR-0002 and the world geometry contract additionally make `PLACE_OBJECT`,
-`SET_SHAPE`, and `UNSTICK` available with their typed protobuf payloads. Every
-other command kind whose `payload` does not yet have an accepted typed schema
-is unavailable and returns `UNSUPPORTED_MESSAGE`. The bytes field is a
-reserved transport slot for the named schema, not permission to define private
-hand-copied payload types. The protocol semantic fixtures use `CANCEL_INTENT`
-when exercising accepted-result behavior.
+`SET_SHAPE`, and `UNSTICK` available with their typed protobuf payloads.
+Architecture section 3 and world contract section 6 make `MOVE` available as
+`MovePayload`: signed millimetre horizontal target `(target_x_mm,
+target_z_mm)` and strictly positive `speed_mm_per_s`. A malformed or empty
+MOVE payload is rejected with `INVALID_INTENT` and
+must not mutate the world. Every other command kind whose `payload` does not
+yet have an accepted typed schema is unavailable and returns
+`UNSUPPORTED_MESSAGE`. The bytes field is a reserved transport slot for the
+named schema, not permission to define private hand-copied payload types. The
+protocol semantic fixtures use `CANCEL_INTENT` when exercising
+accepted-result behavior.
+
+When a movement lease terminates without a new command (blocked for
+`movement.blocked_lease_ticks`, TTL expiry, cancel/stop, or ruleset clamp
+cancellation, or invalidated authoritative entity state), the server emits a `Percept` with
+`PERCEPT_KIND_LEASE_TERMINATED` whose payload encodes
+`LeaseTerminatedPayload`. Blocked termination is never an undurable
+authoritative command success.
 
 The authenticated identity layer must bind `ClientHello.aigent_id` to the
 connection before idempotency lookup; the client-provided bytes are never

@@ -65,6 +65,10 @@ type HmacSha256 = Hmac<Sha256>;
 /// Horizontal extent of one chunk in millimetres (64 m).
 pub const CHUNK_SIZE_MM: i64 = 64_000;
 
+/// Default constitutional heightfield cell size used by world construction
+/// (matches the world/v1 conformance fixtures).
+pub const DEFAULT_HEIGHTFIELD_CELL_SIZE_MM: i64 = 1_000;
+
 /// Procedural heightfield generator contract version embedded in every sample
 /// hash message.
 pub const HEIGHTFIELD_GENERATOR_VERSION: u16 = 1;
