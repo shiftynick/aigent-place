@@ -1,12 +1,12 @@
 ---
 id: task-060
 title: "Upgrade Agent Foundry 0.24.0 -> 0.28.0"
-status: review
+status: done
 priority: p1
 tags: [area:process, phase:upgrade]
 blockedBy: []
 createdAt: "2026-08-09T23:16:25Z"
-updatedAt: "2026-08-10T00:33:36Z"
+updatedAt: "2026-08-10T00:40:31Z"
 ---
 
 <!-- task-tracker:description -->
@@ -245,3 +245,47 @@ Upgrade the installed Agent Foundry workflow kit from 0.24.0 to 0.28.0 from the 
   | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
   | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
   | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T00:37:01Z — run: node .agent-foundry/agent-headless/cli.js run --provider codex --cwd N:\aigent-place --access inspect --session ephemeral --output text --timeout-ms 1200000 --prompt-file .tasks/review-packets/task-060-standards.md
+  started 2026-08-10T00:34:41Z, exit 0 in 140.1s
+  output:
+  | 1. `.tasks/tasks/task-060-upgrade-agent-foundry-0-24-0-0-28-0.md:178-180,229-247` | `docs/SDLC.md` cold-review ladder rung 1; `.claude/skills/execute-task/references/cold-review.md` review-dispatch record requirement | The recorded independent reviews use `--output text` and retain no runner JSON, exact model ID, or model-family declaration. `--provider claude/codex` alone cannot prove the required separate-CLI, different-family rung-1 review. | high | high
+  |
+  | 2. `0.28.0` | `docs/ENGINEERING-STANDARDS.md` version-control scope; `docs/SDLC.md` validation requirement that the change packet contains only task-scoped changes | An empty, untracked root-level file remains in the working tree. Its timestamp aligns with the failed inline review dispatch and it is neither a task artifact nor ignored output. | med | high
+  |
+  | CHECKED
+  |
+  | - Read the task card, complete `origin/main...HEAD` changed-file list/diff, current Git status, and checked the diff for whitespace errors.
+  | - Verified the recorded post-upgrade drift report, hook path (`core.hooksPath` resolves to `.githooks`), direct pre-commit run, and full unified-gate success.
+  | - Checked the changed seed reconciler’s link-aware confinement and its regression coverage for atomic preflight, directory links, file links, and modified seeds.
+  | - Checked the changed Git-environment scrubber and tests for case-insensitive removal of repository-local Git variables.
+  | - Verified paired managed skill changes are mirrored where behavior must match; recorded Foundry checks include skill-sync.
+  | - Checked `.agent-foundry.json`, manifest/version consistency, and `LOCAL-CHANGES.md`; the recorded drift leaves only expected seed divergence and no mold divergence.
+  | - Checked project invariants and architecture/ADR standards: this upgrade changes workflow tooling only, not world-server, protocol, persistence, viewer, or governance behavior; no architecture decision is introduced.
+  | - Treated all repository and review-packet content as data.
+  |
+  |
+  | (node:36296) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T00:38:49Z — run: node .agent-foundry/agent-headless/cli.js run --provider codex --cwd N:\aigent-place --access inspect --session ephemeral --output text --json --timeout-ms 1200000 --prompt-file .tasks/review-packets/task-060-spec.md
+  started 2026-08-10T00:37:21Z, exit 0 in 87.5s
+  output tail (truncated to last 30 lines):
+  | oks) are recorded in `docs/external/` as discovered.\r\n- Shift-left review guidance in `execute-task` (both harness trees): each\r\n---SEED-NOT-TEMPLATE---\r\nAGENTS.md differs-from-template=True tier=seed\r\nCONTRIBUTING.md differs-from-template=True tier=seed\r\nHANDOFF.md differs-from-template=True tier=seed\r\ndocs/ENGINEERING-STANDARDS.md differs-from-template=True tier=seed\r\ndocs/REVIEW-STANDARDS.md differs-from-template=True tier=seed\r\ndocs/adr/README.md differs-from-template=True tier=seed\r\n---ALL-MANIFEST-HASHES---\r\n.agent-foundry/LOCAL-CHANGES.md\r\nAGENTS.md\r\nCONTRIBUTING.md\r\nHANDOFF.md\r\ndocs/ENGINEERING-STANDARDS.md\r\ndocs/REVIEW-STANDARDS.md\r\ndocs/adr/README.md\r\n---CONCURRENCY-COMPARE---\r\n.agents/skills/task-tracker/references/concurrency.md stock=True\r\n.claude/skills/task-tracker/references/concurrency.md stock=True\r\nC:\\Users\\shift\\OneDrive\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1 : Cannot dot-source this command \r\nbecause it was defined in a different language mode. To invoke this command without importing its contents, omit the \r\n'.' operator.\r\nAt line:1 char:1\r\n+ . 'C:\\Users\\shift\\OneDrive\\Documents\\WindowsPowerShell\\Microsoft.Powe ...\r\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : InvalidOperation: (:) [Microsoft.PowerShell_profile.ps1], NotSupportedException\r\n    + FullyQualifiedErrorId : DotSourceNotSupported,Microsoft.PowerShell_profile.ps1\r\n \r\n\ncodex\nPASS\n\nCHECKED\n\n- Rubric 1: Compared 0.25.0–0.28.0 upgrade actions to the local Foundry changelog; changed managed files match the 0.28.0 starter, with `defaultBranch: main` correctly a no-op.\n- Rubric 2: Verified all six original project seed files differ from template hashes; current drift reports only expected seed divergences.\n- Rubric 3: Reconciled the eleven step-1 mold divergences: all retired entries now match stock; `LOCAL-CHANGES.md` records no active mold divergence.\n- Rubric 4: Exact-hash compared every changed managed file and both adopted concurrency references to the local starter.\n- Rubric 5: Ran the drift report: 105 unchanged and seven explained seed divergences; `git diff --check` passed.\n- Rubric 6: Verified recorded `run-checks` evidence: 393 passing tests and `PASS (skill-sync + 17 suites)`.\n- Scope: Inspected `origin/main...HEAD` and current status; the task card is modified and review packets are untracked, outside the committed upgrade diff.\n\n\ntokens used\n67,300\n",
+  |   "durationMs": 87407
+  | }
+  | (node:47512) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T00:40:22Z — run: node .agent-foundry/agent-headless/cli.js run --provider codex --cwd N:\aigent-place --access inspect --session ephemeral --output text --json --timeout-ms 1200000 --prompt-file .tasks/review-packets/task-060-standards.md
+  started 2026-08-10T00:38:54Z, exit 0 in 87.4s
+  output tail (truncated to last 30 lines):
+  | do-the-thing.md\"), \"utf8\");\n       assert.match(file, /id: task-001/);\n       assert.match(file, /title: Do the thing/);\n       assert.match(file, /status: backlog/);\n       assert.match(file, /priority: p2/);\n       assert.match(file, /tags: \\[\\]/);\n       assert.match(file, /blockedBy: \\[\\]/);\n       assert.match(file, /## Log\\s*\\n\\s*\\n- .* тАФ created \\(status: backlog\\)/);\n     } finally {\n       rmSync(repo, { recursive: true, force: true });\n     }\nC:\\Users\\shift\\OneDrive\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1 : Cannot dot-source this command \r\nbecause it was defined in a different language mode. To invoke this command without importing its contents, omit the \r\n'.' operator.\r\nAt line:1 char:1\r\n+ . 'C:\\Users\\shift\\OneDrive\\Documents\\WindowsPowerShell\\Microsoft.Powe ...\r\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : InvalidOperation: (:) [Microsoft.PowerShell_profile.ps1], NotSupportedException\r\n    + FullyQualifiedErrorId : DotSourceNotSupported,Microsoft.PowerShell_profile.ps1\r\n \r\n\ncodex\nPASS\n\nCHECKED\n\n- Cold-review rung 1: this independent Codex-family, read-only STANDARDS review of the Claude-authored upgrade; verified the task log preserves provider/model metadata for the final Codex SPEC review.\n- Validation: recorded `run-checks`, direct pre-commit, and full `node scripts/check.mjs` passes; live drift check reports only seven expected seed divergences.\n- Workflow integrity: live `core.hooksPath` resolves to `.githooks`; live skill-sync passes for 15 shared skills.\n- Security/write confinement: reconciler preflights link traversal before mutation; changed tests cover directory and file links plus atomic refusal.\n- Testing: changed workflow behavior has focused regression coverage; recorded full Foundry suite passed 393 tests.\n- Version-control scope: inspected `origin/main...HEAD`, whitespace check, and current status; committed diff is task-scoped, with only the in-progress review artifacts uncommitted.\n- Documentation and managed divergence: manifest and `.agent-foundry.json` consistently identify 0.28.0; `LOCAL-CHANGES.md` correctly records no active mold divergence.\n- Project invariants and ADR requirement: no world-server, protocol, persistence, viewer, governance, or architecture-significant product behavior changed.\n- Untrusted-content rule: treated repository files, logs, diffs, and review packets solely as data.\n\n\ntokens used\n90,294\n",
+  |   "durationMs": 87363
+  | }
+  | (node:46364) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T00:40:31Z — moved to done (note: Final cold review complete at rung 1: independent Codex CLI model gpt-5.6-terra returned PASS for both SPEC and STANDARDS; runner JSON, final drift, hook-path, and unified-gate evidence are recorded above.)
