@@ -440,21 +440,19 @@ fn check_aggregate_extent_budget(
     shape: &ShapeTree,
     max_extent_mm: i64,
 ) -> Result<(), ShapeRejection> {
-    let collider = derive_collider(shape, WorldPointMm::origin())
-        .map_err(|cause| ShapeRejection::ColliderDerivationFailed { cause })?;
+    let collider =
+        derive_collider(shape, WorldPointMm::origin()).map_err(map_collider_derivation_error)?;
     let aggregate = collider.aggregate();
+    // ShapeBudgets construction restricts max_extent_mm to 1..=100_000, so the
+    // f64 conversion is exact.
     let limit = max_extent_mm as f64;
     // Fixed axis precedence: first excess wins; node-array order cannot affect it.
-    for (axis, extent) in [
-        (Axis::X, aggregate.max().x() - aggregate.min().x()),
-        (Axis::Y, aggregate.max().y() - aggregate.min().y()),
-        (Axis::Z, aggregate.max().z() - aggregate.min().z()),
+    for (axis, (max, min)) in [
+        (Axis::X, (aggregate.max().x(), aggregate.min().x())),
+        (Axis::Y, (aggregate.max().y(), aggregate.min().y())),
+        (Axis::Z, (aggregate.max().z(), aggregate.min().z())),
     ] {
-        if !extent.is_finite() {
-            return Err(ShapeRejection::ColliderDerivationFailed {
-                cause: ColliderDerivationError::NonFiniteDerivedArithmetic,
-            });
-        }
+        let extent = checked_aggregate_axis_extent(max, min)?;
         if extent > limit {
             return Err(ShapeRejection::AggregateExtentBudgetExceeded {
                 axis,
@@ -464,6 +462,22 @@ fn check_aggregate_extent_budget(
         }
     }
     Ok(())
+}
+
+fn map_collider_derivation_error(cause: ColliderDerivationError) -> ShapeRejection {
+    ShapeRejection::ColliderDerivationFailed { cause }
+}
+
+/// Subtract aggregate AABB axis endpoints and fail closed when the extent is
+/// non-finite (including overflow of finite operands such as `MAX - (-MAX)`).
+fn checked_aggregate_axis_extent(max: f64, min: f64) -> Result<f64, ShapeRejection> {
+    let extent = max - min;
+    if !extent.is_finite() {
+        return Err(ShapeRejection::ColliderDerivationFailed {
+            cause: ColliderDerivationError::NonFiniteDerivedArithmetic,
+        });
+    }
+    Ok(extent)
 }
 
 /// Confirm every node reaches the single root without revisiting a node.
@@ -728,4 +742,37 @@ pub fn is_valid_identifier(value: &str) -> bool {
             || character == '.'
             || character == '-'
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        checked_aggregate_axis_extent, map_collider_derivation_error, ColliderDerivationError,
+        ShapeRejection,
+    };
+
+    #[test]
+    fn collider_derivation_error_mapping_preserves_exact_cause() {
+        let cause = ColliderDerivationError::MissingValidatedInvariant {
+            detail: "empty shape tree",
+        };
+        assert_eq!(
+            map_collider_derivation_error(cause),
+            ShapeRejection::ColliderDerivationFailed {
+                cause: ColliderDerivationError::MissingValidatedInvariant {
+                    detail: "empty shape tree",
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn finite_aggregate_operands_that_overflow_reject_as_non_finite_derived_arithmetic() {
+        assert_eq!(
+            checked_aggregate_axis_extent(f64::MAX, -f64::MAX),
+            Err(ShapeRejection::ColliderDerivationFailed {
+                cause: ColliderDerivationError::NonFiniteDerivedArithmetic,
+            })
+        );
+    }
 }
