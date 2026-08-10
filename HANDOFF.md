@@ -177,6 +177,7 @@ node scripts/product-check.mjs --fast
 
 # Demo
 cargo run -p world-server -- --listen
+# optional: cargo run -p world-server -- --listen --journal path\to\world-journal.sqlite
 npm run aigent:scripted-move
 npm run viewer:dev   # http://127.0.0.1:5173/?ws=ws://127.0.0.1:7600/ws
 

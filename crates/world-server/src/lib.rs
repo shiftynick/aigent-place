@@ -93,7 +93,7 @@ pub use snapshot::{
 pub use tick::{ms_to_ticks, ticks_to_ms, TickClock, DEFAULT_LEASE_TTL_MS, TICK_HZ, TICK_MS};
 pub use transport::{
     outbound_channel_cap, outbound_queue_limit_bytes, serve, serve_ephemeral,
-    spawn_simulation_loop, DrainReport, TransportState,
+    spawn_simulation_loop, DrainReport, TransportState, DEFAULT_LISTEN_JOURNAL_PATH,
 };
 pub use world::{
     replay_log, CommandEffect, QueuedCommand, TickAdvance, World, WorldConfig, WorldError,

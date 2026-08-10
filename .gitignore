@@ -12,6 +12,11 @@ node_modules/
 target/
 .agent-foundry/feedback/
 
+# Default --listen durable journal (cwd-relative; override with --journal)
+world-journal.sqlite
+world-journal.sqlite-wal
+world-journal.sqlite-shm
+
 # Local scratch (cold-review packets, ephemeral worktrees helpers)
 .tmp/
 .agent-foundry/project-status-seen.json
