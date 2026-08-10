@@ -1,12 +1,14 @@
 ---
 id: task-048
 title: Derive the canonical AABB collider from a validated shape tree
-status: review
+status: in_progress
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-047]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T01:35:37Z"
+updatedAt: "2026-08-10T01:38:24Z"
+claimedBy: "shift@Shiftor"
+claimedAt: "2026-08-10T01:38:24Z"
 ---
 
 <!-- task-tracker:description -->
@@ -423,3 +425,45 @@ Nothing derives collision geometry from a shape. Implement the canonical collide
 - 2026-08-10T01:34:45Z — note: mutation check repaired: after changing the child to an asymmetric 20x40x60 box, replacing parent*child rotation composition with child-only rotation made parent_orientation_rotates_child_translation_before_addition fail by 10 mm. The restored implementation is mutation-sensitive for all four rubric behaviors.
 - 2026-08-10T01:35:37Z — note: warm self-pass: reviewed the frozen diff against the rubric and REVIEW-STANDARDS. Confirmed quaternion normalization matches scripts/world-contract.mjs, parent transforms compose before children, canonical ordering does not depend on input/hash order, aggregate is separate from part overlap, and no ruleset/aggregate-budget semantics leaked from the next task. Documentation change is limited to module/API docs because ADR-0002 and world/v1/CONTRACT.md already define this behavior.
 - 2026-08-10T01:35:37Z — moved to review
+- 2026-08-10T01:37:25Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access answer-only --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-048-spec-review.md --timeout-ms 600000 --max-budget-usd 3 --output text --json
+  started 2026-08-10T01:36:50Z, exit 0 in 35.3s
+  output tail (truncated to last 30 lines):
+  |  primitive, parent-before-child composition, node-id order): verified via `parts_sort_by_ascending_node_id_despite_shuffled_input` (shown failing under order mutation, `[30,20,10]` vs `[10,20,30]`), `parent_orientation_rotates_child_translation_before_addition` with an asymmetric 20×40×60 child and independent corner + abs(R)·h oracles, and the recorded 10 mm mutation failure after composition was dropped. Fixture `[-90,120,30]…[310,320,630]` matches CONTRACT §5 hand math for a 90° z-rotation of a 200×400×600 box at (10,20,30)+(100,200,300).\n- Rubric 2 (aggregate AABB + horizontal footprint, deterministic): verified via `aggregate_is_component_wise_minmax_not_a_hull_merge_of_parts` (mutation-failed when aggregate replaced by first part), footprint assertions in `identity_primitives_match_contract_half_extents`, and `same_build_derivation_is_bit_identical_across_calls`.\n- Rubric 3 (strictly positive three-axis overlap; face/edge/point legal): verified via `overlap_requires_strictly_positive_extent_on_all_axes` covering exact face, edge, point, and positive-volume cases, with the recorded inclusive-overlap mutation failing the test. No epsilon introduced in the visible test math, per CONTRACT §5.\n- Rubric 4 (rotated containment, cosmetic byte-identity, mutation-sensitive tests): rotated containment verified via `rotated_box_matches_independent_corner_oracle` and `assert_corners_inside`; cosmetic byte-identity via `cosmetic_fields_do_not_change_canonical_bits` (color, material tags, joint names). Mutation execution partially verified — see finding 3.\n- Rubric 5 (task-scoped, documented boundary, focused tests + product gate): scope verified against in-scope file list (only collider.rs, lib.rs, the behavior test, and task files; no ruleset-budget leakage, matching the deferred task-2929451841000001). Boundary documentation and product gate not verifiable — findings 1 and 2.\n- CONTRACT §4.2 half-extents: verified all six primitive cases in `identity_primitives_match_contract_half_extents` against the table (including capsule segment/2 + r = 20 and zero-segment capsule = radius sphere-bounds).\n- ADR-0002 fail-closed at the validated-tree boundary: verified via `fail_closed_on_empty_tree_and_missing_invariants` (empty tree, missing transform/rotation/primitive, unknown parent, zero/duplicate id, non-finite rotation, cycle).\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "claude-fable-5",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "answer-only"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 35238
+  | }
+  | (node:48948) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T01:37:40Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access answer-only --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-048-standards-review.md --timeout-ms 600000 --max-budget-usd 3 --output text --json
+  started 2026-08-10T01:36:50Z, exit 0 in 50.5s
+  output tail (truncated to last 30 lines):
+  | hes an accepted ADR. Verified against the supplied ADR text.\n- Derived-oracle rule (task-002): test oracles (`oracle_oriented_aabb` corner min/max, independent `oracle_aabb_from_abs_r`, independent `normalize_quat`) derive expectations from inputs rather than echoing fixture classifications; the corner oracle is a genuinely different computation from production `abs(R)*h`. Verified in the visible test source.\n- Mutation-sensitivity (rubric 4 / \"test that fails without it\"): log shows red runs for inclusive overlap, reversed part order, first-part aggregate, and (after fixture hardening) dropped parent×child rotation composition. Verified from recorded failing runs.\n- Positive-extent overlap at face/edge/point contact: `overlap_requires_strictly_positive_extent_on_all_axes` exercises all three exact-contact cases plus a positive case. Verified in test source.\n- Cosmetic independence: `cosmetic_fields_do_not_change_canonical_bits` mutates color, material tags, and joint names and asserts identical bits. Verified in test source.\n- Failure/empty-state paths rule: `fail_closed_on_empty_tree_and_missing_invariants` covers empty tree, missing transform/rotation/primitive, unknown parent, zero/duplicate IDs, NaN rotation, cycles, with typed errors (structured-error standard satisfied at the boundary). Verified in test source.\n- Determinism standards (no hash/scheduler/order dependence): shuffled-input test asserts identical canonical bits and ascending node-ID order; same-build bit-identity test covers repeat calls. Verified in test source.\n- Task scoping / version control: in-scope files are collider.rs, lib.rs, the behavior test, and task-board files only; working status clean. Verified from the file list and status output.\n- Budget-guard rule (task-041) and atomic-batch rule (task-011): not applicable — no quota charging or batch overlay in this change; the outline explicitly defers aggregate ruleset-budget enforcement, consistent with the follow-on task-2929451841000001.\n- Prompt-injection lens: agent-directed text in the Cursor outputs is operational reporting, not instructions to the reviewer; nothing actionable found.\n- Full product gate execution, post-final-edit full-suite rerun, rotated non-box coverage, and collider.rs source inspection: could not be verified from the packet — reported as findings 1–4 above.\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "claude-fable-5",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "answer-only"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 50461
+  | }
+  | (node:47352) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T01:38:24Z — note: cold review round 1 rung 1: separate Claude CLI sessions, model claude-fable-5 family Claude, low effort. SPEC findings: medium missing full product gate confirmed/pending; low packet truncation confirmed process defect; low missing explicit cosmetic mutation confirmed/pending. STANDARDS findings: high missing full product gate confirmed/pending; medium final-tree focused/fmt/clippy evidence stale confirmed/pending; low rotated non-box coverage confirmed and will fix; low packet truncation confirmed process defect. No collider logic defect was reported.
+- 2026-08-10T01:38:24Z — moved to in_progress (claimed by shift@Shiftor)
