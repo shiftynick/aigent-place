@@ -1,12 +1,14 @@
 ---
 id: task-048
 title: Derive the canonical AABB collider from a validated shape tree
-status: review
+status: in_progress
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-047]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T01:42:51Z"
+updatedAt: "2026-08-10T01:45:34Z"
+claimedBy: "shift@Shiftor"
+claimedAt: "2026-08-10T01:45:34Z"
 ---
 
 <!-- task-tracker:description -->
@@ -617,3 +619,45 @@ Nothing derives collision geometry from a shape. Implement the canonical collide
   | npm notice run node ./scripts/smoke.mjs
 - 2026-08-10T01:42:51Z — note: round-1 fixes complete: added rotated containment coverage for sphere, capsule, cylinder, cone, and panel; cosmetic-field mutation now recorded failing; final cargo fmt, all 15 collider behavior tests, all-target clippy, and unified node scripts/check.mjs passed on the restored final tree. The full gate reported the existing npm audit notice but exited 0 and product-check PASS.
 - 2026-08-10T01:42:51Z — moved to review
+- 2026-08-10T01:44:22Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access answer-only --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-048-spec-review-r2.md --timeout-ms 600000 --max-budget-usd 3 --output text --json
+  started 2026-08-10T01:43:56Z, exit 0 in 26.3s
+  output tail (truncated to last 30 lines):
+  | sort_by_ascending_node_id_despite_shuffled_input` confirms order and bit-identical output across shuffled inputs; `parent_orientation_rotates_child_translation_before_addition` distinguishes parent-before-child from child-only composition with an asymmetric child and an explicit inequality assertion.\n2. Deterministic aggregate AABB and horizontal footprint — `Collider::aggregate` is component-wise min/max over parts (`component_wise_union`), `horizontal_footprint` exposes x/z bounds; negative-zero canonicalization and bit-level equality (`PartialEq` via `to_bits`) plus `same_build_derivation_is_bit_identical_across_calls` and the shuffled-input bit comparison establish determinism. `aggregate_is_component_wise_minmax_not_a_hull_merge_of_parts` verifies parts are not merged.\n3. Strict positive-volume overlap, contact legal — `overlaps_positive_volume` uses strict `>`/`<` on all three axes; `overlap_requires_strictly_positive_extent_on_all_axes` covers exact face, edge, and point contact (all non-overlap) and a genuine overlap case.\n4. Rotated containment, cosmetic independence, mutation sensitivity — rotated boxes checked against two independent oracles (corner min/max and §5 abs(R)*h) plus explicit corner-containment assertions; rotated non-box coverage spans sphere, capsule, cylinder, cone, and panel with an identity-vs-rotated inequality guard for asymmetric extents; `cosmetic_fields_do_not_change_canonical_bits` mutates color, material tags, and joint names on both nodes; round-1 record confirms a deliberate joint-name-dependent 1 mm production mutation made that test fail before restoration.\n5. Narrow scope, documented boundary, focused checks and product gate — module docs state the ADR-0002/CONTRACT §5 scope and explicitly defer aggregate extent budgeting to task-2929451841000001; fail-closed errors cover empty tree, zero/duplicate ids, missing transform/rotation/primitive, unknown parent, non-finite rotation, and cycles, all exercised by `fail_closed_on_empty_tree_and_missing_invariants`. Gate evidence in the packet: `scripts/check.mjs` exit 0 with product-check PASS, `cargo fmt --check` exit 0, 15/15 `collider_behavior` tests passing, all-target clippy exit 0 — accepted as recorded run evidence per the frozen packet (no independent re-execution available in this read-only context, which is the designated rung).\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "claude-fable-5",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "answer-only"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 26171
+  | }
+  | (node:45528) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T01:44:43Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access answer-only --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-048-standards-review-r2.md --timeout-ms 600000 --max-budget-usd 3 --output text --json
+  started 2026-08-10T01:43:56Z, exit 0 in 47.7s
+  output tail (truncated to last 30 lines):
+  | NDARDS \"Return typed or structured errors… preserve causal context\" | Non-finite results from rotation-matrix and extent arithmetic are reported as `NonFiniteWorldTranslation`, misnaming the cause (rotation/extent arithmetic, not the entity translation). The error is typed and fail-closed, but the causal context it preserves is inaccurate for those paths. | severity: low | confidence: high\n\nCHECKED\n- Executed behavioral signal (seed rule): checked packet for raw transcripts — found only prose claims; finding 1.\n- Derived-oracle rule (task-002): verified tests use an independent corner-minmax oracle and a separately coded abs(R)*h oracle, never `derive_collider` for expectations; cosmetic mutation was demonstrated red per round-1 record — pass.\n- Success/failure/empty-state paths (seed rule): verified fail-closed tests cover empty tree, missing transform/rotation/primitive, unknown parent, zero and duplicate ids, non-finite rotation, and parent cycle — pass.\n- Order-independence (task-047): verified canonical bits and aggregate are order-independent via the shuffled-input test — pass; diagnostic reason order-dependence is finding 2.\n- Determinism / no implicit inputs (state-and-data standard): verified bit-level equality across calls, explicit little-endian encoding, negative-zero canonicalization, no wall-clock/hash-order dependence — pass.\n- ADR alignment (project rule): finding 3 — not verifiable from packet.\n- Typed errors (errors standard): closed `ColliderDerivationError` enum present — pass except naming issue in finding 4.\n- Prompt-injection lens (seed rule): scanned supplied file contents for agent-addressed text — none found; pass.\n- Scope/narrow boundary (rubric 5): module doc explicitly defers aggregate extent budgeting to task-2929451841000001 with a matching task file on the branch — pass.\n- Cosmetic independence (rubric 4): color, material tags, joint names never read in `collider.rs`; test asserts identical bits — pass.\n- Strict positive-volume overlap (rubric 3): implementation uses strict inequalities on all three axes; face/edge/point contact tests assert non-overlap — pass.\n- Parent-before-child composition and stable node-id order (rubric 1): Hamilton `parent * child`, parent-rotated translation, ascending-id iteration verified in code and asymmetric-child mutation-sensitive test — pass.\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "claude-fable-5",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "answer-only"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 47617
+  | }
+  | (node:55820) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T01:45:34Z — note: cold review round 2 rung 1: SPEC PASS with full CHECKED coverage. STANDARDS: medium raw gate transcript missing from packet confirmed as packet defect; low zero-vs-duplicate diagnostic order discarded because the full zero-id pass completes before duplicate detection and therefore has fixed precedence independent of input order; low ADR text omission confirmed packet defect; low NonFiniteWorldTranslation naming for arithmetic failures confirmed and will fix. Round 3 will include raw tracker evidence and ADR-0002 text.
+- 2026-08-10T01:45:34Z — moved to in_progress (claimed by shift@Shiftor)
