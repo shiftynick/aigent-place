@@ -25,17 +25,27 @@ fn identity() -> Quaternion {
 }
 
 fn box_shape(size_x_mm: i64, size_y_mm: i64, size_z_mm: i64) -> ShapeTree {
+    box_shape_posed(size_x_mm, size_y_mm, size_z_mm, (0, 0, 0), identity())
+}
+
+fn box_shape_posed(
+    size_x_mm: i64,
+    size_y_mm: i64,
+    size_z_mm: i64,
+    local_translation_mm: (i64, i64, i64),
+    rotation: Quaternion,
+) -> ShapeTree {
     ShapeTree {
         nodes: vec![ShapeNode {
             node_id: 1,
             parent_node_id: 0,
             transform: Some(LocalTransform {
                 translation: Some(Vector3Millimeters {
-                    x_mm: 0,
-                    y_mm: 0,
-                    z_mm: 0,
+                    x_mm: local_translation_mm.0,
+                    y_mm: local_translation_mm.1,
+                    z_mm: local_translation_mm.2,
                 }),
-                rotation: Some(identity()),
+                rotation: Some(rotation),
             }),
             joint_name: None,
             color: None,
@@ -51,6 +61,33 @@ fn box_shape(size_x_mm: i64, size_y_mm: i64, size_z_mm: i64) -> ShapeTree {
 
 fn seed(byte: u8) -> [u8; 32] {
     [byte; 32]
+}
+
+/// Assert support selection, X/Z bit preservation, and exact re-derived lower face.
+fn assert_exact_direct_ground(hf: &Heightfield, shape: &ShapeTree, translation: WorldPointMm) {
+    let x_bits = translation.x().to_bits();
+    let z_bits = translation.z().to_bits();
+    let result = hf.ground(shape, translation).expect("ground");
+
+    assert_eq!(result.translation().x().to_bits(), x_bits);
+    assert_eq!(result.translation().z().to_bits(), z_bits);
+
+    let mut expected_support = i64::MIN;
+    for cell in result.selected_cells() {
+        let top = hf
+            .terrain_column(cell.x, cell.z)
+            .expect("column")
+            .top_y_mm();
+        expected_support = expected_support.max(top);
+    }
+    assert_eq!(result.support_top_mm(), expected_support);
+
+    let grounded = derive_collider(shape, result.translation()).expect("re-derive");
+    assert_eq!(
+        grounded.aggregate().min().y().to_bits(),
+        (result.support_top_mm() as f64).to_bits(),
+        "re-derived lower face must be bit-identical to support"
+    );
 }
 
 #[test]
@@ -295,7 +332,7 @@ fn shuffled_source_order_cannot_change_candidate_set_or_support() {
     let set_b: BTreeSet<_> = cells_b.iter().copied().collect();
     assert_eq!(set_a, set_b);
 
-    let grounded = hf.ground(&collider, translation).expect("ground");
+    let grounded = hf.ground(&shape, translation).expect("ground");
     assert_eq!(grounded.support_top_mm(), expected_support);
     assert_eq!(
         grounded.selected_cells(),
@@ -303,7 +340,7 @@ fn shuffled_source_order_cannot_change_candidate_set_or_support() {
         "grounding must use canonical enumeration order"
     );
     // Re-ground; support must be invariant.
-    let grounded2 = hf.ground(&collider, translation).expect("ground2");
+    let grounded2 = hf.ground(&shape, translation).expect("ground2");
     assert_eq!(grounded.support_top_mm(), grounded2.support_top_mm());
     assert_eq!(grounded.translation(), grounded2.translation());
 }
@@ -331,23 +368,11 @@ fn grounding_uses_max_support_preserves_xz_and_sets_lower_face() {
     let shape = box_shape(1500, 1000, 400);
     let translation =
         WorldPointMm::new((x + 1) as f64 * 1000.0, 12_345.5, z as f64 * 1000.0 + 200.0).expect("t");
-    let x_bits = translation.x().to_bits();
-    let z_bits = translation.z().to_bits();
-    let collider = derive_collider(&shape, translation).expect("collider");
-    let result = hf.ground(&collider, translation).expect("ground");
+    let result = hf.ground(&shape, translation).expect("ground");
 
     assert_eq!(result.support_top_mm(), max_top);
     assert_ne!(result.support_top_mm(), avg_top);
-    assert_eq!(result.translation().x().to_bits(), x_bits);
-    assert_eq!(result.translation().z().to_bits(), z_bits);
-
-    // Lower face of the grounded aggregate equals support exactly.
-    let grounded_collider =
-        derive_collider(&shape, result.translation()).expect("grounded collider");
-    assert_eq!(
-        grounded_collider.aggregate().min().y().to_bits(),
-        (max_top as f64).to_bits()
-    );
+    assert_exact_direct_ground(&hf, &shape, translation);
 }
 
 #[test]
@@ -362,9 +387,10 @@ fn flat_one_cell_grounding_and_out_of_world_failure() {
         .terrain_column(cells[0].x, cells[0].z)
         .expect("col")
         .top_y_mm();
-    let result = hf.ground(&collider, translation).expect("ground");
+    let result = hf.ground(&shape, translation).expect("ground");
     assert_eq!(result.support_top_mm(), top);
     assert_eq!(result.selected_cells().len(), 1);
+    assert_exact_direct_ground(&hf, &shape, translation);
 
     // Degenerate zero-area footprint via a zero-width... boxes cannot be zero
     // size; instead request an out-of-world translation path through selection
@@ -443,8 +469,147 @@ fn mutation_guard_max_support_and_half_open_are_observable() {
     let shape = box_shape(1500, 800, 300);
     let translation =
         WorldPointMm::new((x + 1) as f64 * 1000.0, 0.0, z as f64 * 1000.0 + 150.0).expect("t");
-    let collider = derive_collider(&shape, translation).expect("collider");
-    let result = hf.ground(&collider, translation).expect("ground");
+    let result = hf.ground(&shape, translation).expect("ground");
     assert_eq!(result.support_top_mm(), higher);
     assert_ne!(result.support_top_mm(), lower);
+}
+
+#[test]
+fn direct_ground_negative_cells_chunk_seams_and_world_edges() {
+    let hf = Heightfield::new(seed(0x61), 1000).expect("config");
+    let small = box_shape(200, 200, 200);
+
+    // Negative cell coordinates.
+    assert_exact_direct_ground(
+        &hf,
+        &small,
+        WorldPointMm::new(-2500.0, -50.5, -1800.0).expect("neg"),
+    );
+
+    // 64 m chunk seams at x=0 and x=64000.
+    assert_exact_direct_ground(
+        &hf,
+        &small,
+        WorldPointMm::new(0.0, 12.25, 500.0).expect("seam0"),
+    );
+    assert_exact_direct_ground(
+        &hf,
+        &small,
+        WorldPointMm::new(CHUNK_SIZE_MM as f64, -77.5, 500.0).expect("seam64k"),
+    );
+
+    // ±WORLD_BOUND_MM edge footprints (closed bound owned by edge cells).
+    let half = 100.0;
+    assert_exact_direct_ground(
+        &hf,
+        &small,
+        WorldPointMm::new(WORLD_BOUND_MM as f64 - half, 3.0, 0.0).expect("+W"),
+    );
+    assert_exact_direct_ground(
+        &hf,
+        &small,
+        WorldPointMm::new(-WORLD_BOUND_MM as f64 + half, -3.0, 0.0).expect("-W"),
+    );
+}
+
+#[test]
+fn direct_ground_identity_333_box_at_fractional_negative_y() {
+    let hf = Heightfield::new(seed(0x61), 1000).expect("config");
+    let shape = box_shape(333, 333, 333);
+    let translation = WorldPointMm::new(100.1, -12345.1, 100.1).expect("t");
+    assert_exact_direct_ground(&hf, &shape, translation);
+}
+
+#[test]
+fn direct_ground_rotated_counterexample_rejects_naive_arithmetic() {
+    let hf = Heightfield::new(seed(0x61), 1000).expect("config");
+    let shape = box_shape_posed(
+        333,
+        333,
+        333,
+        (5, -7, 11),
+        Quaternion {
+            x: 0.1,
+            y: 0.2,
+            z: 0.3,
+            w: 0.9273618495495703,
+        },
+    );
+    let translation =
+        WorldPointMm::new(100.1, -64_258_969.42011541, 100.1).expect("counterexample t");
+
+    // Document the rejected arithmetic-only pose: it does not re-derive exactly.
+    let start = derive_collider(&shape, translation).expect("start");
+    let cells = hf.select_cells_for_collider(&start).expect("cells");
+    let support = cells
+        .iter()
+        .map(|c| hf.terrain_column(c.x, c.z).expect("col").top_y_mm())
+        .max()
+        .expect("support");
+    let naive_y = (support as f64) + (translation.y() - start.aggregate().min().y());
+    let naive = WorldPointMm::new(translation.x(), naive_y, translation.z()).expect("naive");
+    let naive_min = derive_collider(&shape, naive)
+        .expect("naive derive")
+        .aggregate()
+        .min()
+        .y();
+    assert_ne!(
+        naive_min.to_bits(),
+        (support as f64).to_bits(),
+        "rejected formula must remain inexact on this vector"
+    );
+    assert_eq!(support, 7719);
+    assert_eq!(naive_y.to_bits(), 7969.404598362744_f64.to_bits());
+    assert_eq!(naive_min.to_bits(), 7719.000000002741_f64.to_bits());
+
+    assert_exact_direct_ground(&hf, &shape, translation);
+}
+
+#[test]
+fn direct_ground_deterministic_stress_corpus() {
+    let hf = Heightfield::new(seed(0x61), 1000).expect("config");
+    let dims = [111_i64, 333, 501];
+    let locals = [(0_i64, 0, 0), (5, -7, 11), (-3, 4, -9), (17, 0, -2)];
+    let y_values = [0.5_f64, -0.5, 12345.1, -9999.75, -12345.1, 64_258.25];
+    let rotations = [
+        identity(),
+        Quaternion {
+            x: 0.1,
+            y: 0.2,
+            z: 0.3,
+            w: 0.9273618495495703,
+        },
+        Quaternion {
+            x: 0.0,
+            y: 0.3826834323650898,
+            z: 0.0,
+            w: 0.9238795325112867,
+        },
+        Quaternion {
+            x: 0.25,
+            y: -0.1,
+            z: 0.4,
+            w: 0.875,
+        },
+    ];
+
+    let mut cases = 0_u32;
+    for &dim in &dims {
+        for &local in &locals {
+            for rotation in &rotations {
+                for &y in &y_values {
+                    let shape = box_shape_posed(dim, dim, dim, local, *rotation);
+                    // Keep footprints comfortably inside the world for every rotation.
+                    let translation = WorldPointMm::new(1500.5, y, -2500.25).expect("t");
+                    assert_exact_direct_ground(&hf, &shape, translation);
+                    cases += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(
+        cases,
+        (dims.len() * locals.len() * rotations.len() * y_values.len()) as u32
+    );
+    assert!(cases <= 400, "keep corpus runtime bounded");
 }

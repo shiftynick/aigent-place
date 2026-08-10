@@ -29,6 +29,12 @@
 //! `cell_z`. Span bounds are compared against exact `f64` products of integer
 //! cell edges (no epsilon; no lossy rounding of the footprint into integers).
 //!
+//! Authoritative grounding takes a [`ShapeTree`] plus translation, re-derives
+//! colliders while searching, and requires bit-identical aggregate lower-face
+//! equality with the selected support. A collider-only Y delta is not
+//! authoritative for rotated geometry because derivation rounds
+//! `((translation + pose.center) - world_half)` in `f64`.
+//!
 //! # Procedural generation
 //!
 //! [`sample_height_mm`] is a pure function of `(world_seed, sample_x, sample_z)`.
@@ -45,8 +51,11 @@
 //! yet publish a numeric workload cap for this surface; the constant is an
 //! explicit implementation safety limit, not silent truncation.
 
-use crate::collider::{Collider, HorizontalFootprint, WorldPointMm};
+use crate::collider::{
+    derive_collider, Collider, ColliderDerivationError, HorizontalFootprint, WorldPointMm,
+};
 use crate::shape::WORLD_BOUND_MM;
+use aigent_protocol::ShapeTree;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::fmt;
@@ -75,6 +84,18 @@ pub const GENERATED_HEIGHT_MAX_MM: i64 = 8_191;
 /// astronomical candidate rectangles inside the world bound. This cap fails
 /// closed instead of allocating unbounded memory.
 pub const HEIGHTFIELD_MAX_SELECTED_CELLS: usize = 1_048_576;
+
+/// Maximum residual Y corrections while seeking a bit-exact grounded pose.
+///
+/// Each step re-derives the collider and subtracts `(derived_min_y - support)`.
+/// Together with [`EXACT_GROUNDING_MAX_ULP_RADIUS`], this bounds termination.
+pub const EXACT_GROUNDING_MAX_RESIDUAL_STEPS: u32 = 16;
+
+/// Inclusive ulp radius polished around the residual-refined Y candidate.
+///
+/// Search order is deterministic: offset `0`, then `-1,+1`, `-2,+2`, …
+/// up to this radius. No epsilon acceptance; failure is fail-closed.
+pub const EXACT_GROUNDING_MAX_ULP_RADIUS: u32 = 64;
 
 const GENERATED_HEIGHT_SPAN: u64 = (GENERATED_HEIGHT_MAX_MM - GENERATED_HEIGHT_MIN_MM + 1) as u64;
 
@@ -268,23 +289,39 @@ impl Heightfield {
         self.select_cells(collider.horizontal_footprint())
     }
 
-    /// Ground a collider at `translation` onto this heightfield.
+    /// Authoritatively ground a shape at `translation` onto this heightfield.
     ///
-    /// Selects intersected columns, takes the greatest column top, and returns
-    /// a new translation whose Y changes by `support_top - aggregate.min.y`
-    /// while X/Z stay bit-identical to `translation`. Inputs are not mutated.
+    /// Derives the collider from `shape` at `translation`, selects intersected
+    /// columns from that aggregate footprint, takes the greatest column top,
+    /// then searches for a Y such that re-deriving the collider at the
+    /// candidate pose yields
+    /// `aggregate.min.y().to_bits() == (support_top as f64).to_bits()`.
+    /// X/Z stay bit-identical to `translation`. Inputs are not mutated.
+    ///
+    /// A collider alone is not sufficient for authoritative grounding: after a
+    /// Y change, `derive_collider` recomputes
+    /// `((translation + pose.center) - world_half)` with `f64` rounding, so the
+    /// naive `support - aggregate.min.y` delta is not always bit-exact for
+    /// rotated geometry.
+    ///
+    /// Termination is bounded by [`EXACT_GROUNDING_MAX_RESIDUAL_STEPS`] residual
+    /// corrections plus at most `2 * EXACT_GROUNDING_MAX_ULP_RADIUS + 1` ulp
+    /// candidates. If no representable pose hits exact equality, returns
+    /// [`HeightfieldError::ExactGroundingUnreachable`].
     ///
     /// # Errors
     ///
-    /// Propagates selection / column failures, reports
+    /// Propagates selection / column / derivation failures, reports
     /// [`HeightfieldError::NoTerrainContact`] when no cell is selected, or
-    /// [`HeightfieldError::NonFiniteCoordinate`] when Y arithmetic is unsafe.
+    /// [`HeightfieldError::ExactGroundingUnreachable`] when the bounded solver
+    /// cannot achieve bit-exact lower-face equality.
     pub fn ground(
         &self,
-        collider: &Collider,
+        shape: &ShapeTree,
         translation: WorldPointMm,
     ) -> Result<GroundingResult, HeightfieldError> {
-        let cells = self.select_cells_for_collider(collider)?;
+        let collider = derive_collider(shape, translation).map_err(map_derive_error)?;
+        let cells = self.select_cells_for_collider(&collider)?;
         if cells.is_empty() {
             return Err(HeightfieldError::NoTerrainContact);
         }
@@ -302,15 +339,14 @@ impl Heightfield {
             }
         }
 
-        let aggregate_min_y = collider.aggregate().min().y();
         let support_top_f64 = i64_to_exact_f64(support_top_mm)?;
-        let delta_y = checked_f64_sub(support_top_f64, aggregate_min_y)?;
-        let new_y = checked_f64_add(translation.y(), delta_y)?;
+        let grounded_y =
+            solve_exact_grounded_y(shape, translation, support_top_f64, support_top_mm)?;
 
         // Preserve X/Z bit-identically (including signed zero).
         let grounded = WorldPointMm::new(
             f64::from_bits(translation.x().to_bits()),
-            new_y,
+            grounded_y,
             f64::from_bits(translation.z().to_bits()),
         )
         .map_err(|_| HeightfieldError::NonFiniteCoordinate {
@@ -318,6 +354,12 @@ impl Heightfield {
         })?;
         debug_assert_eq!(grounded.x().to_bits(), translation.x().to_bits());
         debug_assert_eq!(grounded.z().to_bits(), translation.z().to_bits());
+        debug_assert!({
+            match derive_collider(shape, grounded) {
+                Ok(c) => c.aggregate().min().y().to_bits() == support_top_f64.to_bits(),
+                Err(_) => false,
+            }
+        });
 
         Ok(GroundingResult {
             translation: grounded,
@@ -567,6 +609,15 @@ pub enum HeightfieldError {
     CellOutOfWorld {
         axis_index: i64,
     },
+    /// Collider derivation failed while grounding (shape invariants / arithmetic).
+    ColliderDerivation {
+        detail: &'static str,
+    },
+    /// No representable Y within the bounded exact-grounding search makes the
+    /// re-derived aggregate lower face bit-identical to `support_top_mm`.
+    ExactGroundingUnreachable {
+        support_top_mm: i64,
+    },
 }
 
 impl fmt::Display for HeightfieldError {
@@ -611,6 +662,13 @@ impl fmt::Display for HeightfieldError {
                     "terrain cell axis index {axis_index} is outside the world"
                 )
             }
+            Self::ColliderDerivation { detail } => {
+                write!(f, "collider derivation failed during grounding: {detail}")
+            }
+            Self::ExactGroundingUnreachable { support_top_mm } => write!(
+                f,
+                "no exact representable grounded Y for support_top_mm={support_top_mm}"
+            ),
         }
     }
 }
@@ -831,6 +889,148 @@ fn checked_f64_sub(a: f64, b: f64) -> Result<f64, HeightfieldError> {
         return Err(HeightfieldError::NonFiniteCoordinate { context: "f64 sub" });
     }
     Ok(if difference == 0.0 { 0.0 } else { difference })
+}
+
+fn map_derive_error(err: ColliderDerivationError) -> HeightfieldError {
+    match err {
+        ColliderDerivationError::NonFiniteWorldTranslation => {
+            HeightfieldError::NonFiniteCoordinate {
+                context: "grounding world translation",
+            }
+        }
+        ColliderDerivationError::NonFiniteDerivedArithmetic => {
+            HeightfieldError::NonFiniteCoordinate {
+                context: "grounding collider derive",
+            }
+        }
+        ColliderDerivationError::MissingValidatedInvariant { detail } => {
+            HeightfieldError::ColliderDerivation { detail }
+        }
+    }
+}
+
+fn translation_with_y(translation: WorldPointMm, y: f64) -> Result<WorldPointMm, HeightfieldError> {
+    WorldPointMm::new(
+        f64::from_bits(translation.x().to_bits()),
+        y,
+        f64::from_bits(translation.z().to_bits()),
+    )
+    .map_err(|_| HeightfieldError::NonFiniteCoordinate {
+        context: "grounding candidate translation",
+    })
+}
+
+fn derived_min_y(shape: &ShapeTree, translation: WorldPointMm) -> Result<f64, HeightfieldError> {
+    let collider = derive_collider(shape, translation).map_err(map_derive_error)?;
+    Ok(collider.aggregate().min().y())
+}
+
+/// Step `y` by `steps` ulps. `steps == 0` returns `y` unchanged (canonicalized).
+fn ulp_offset(y: f64, steps: i32) -> Option<f64> {
+    if !y.is_finite() {
+        return None;
+    }
+    let mut value = if y == 0.0 { 0.0 } else { y };
+    if steps >= 0 {
+        for _ in 0..steps {
+            value = next_up_finite(value)?;
+        }
+    } else {
+        let count = steps.checked_neg()?;
+        for _ in 0..count {
+            value = next_down_finite(value)?;
+        }
+    }
+    Some(if value == 0.0 { 0.0 } else { value })
+}
+
+fn next_up_finite(value: f64) -> Option<f64> {
+    if !value.is_finite() {
+        return None;
+    }
+    let bits = if value == 0.0 {
+        1
+    } else if value > 0.0 {
+        value.to_bits().checked_add(1)?
+    } else {
+        value.to_bits().checked_sub(1)?
+    };
+    let next = f64::from_bits(bits);
+    next.is_finite().then_some(next)
+}
+
+fn next_down_finite(value: f64) -> Option<f64> {
+    if !value.is_finite() {
+        return None;
+    }
+    let bits = if value == 0.0 {
+        (1_u64 << 63) | 1
+    } else if value > 0.0 {
+        value.to_bits().checked_sub(1)?
+    } else {
+        value.to_bits().checked_add(1)?
+    };
+    let next = f64::from_bits(bits);
+    next.is_finite().then_some(next)
+}
+
+/// Find a Y such that re-derived aggregate min Y is bit-identical to `support`.
+///
+/// Bound: at most [`EXACT_GROUNDING_MAX_RESIDUAL_STEPS`] residual corrections,
+/// then at most `2 * EXACT_GROUNDING_MAX_ULP_RADIUS + 1` ulp candidates
+/// (offsets `0, -1, +1, …, ±radius`). Fail-closed when none match.
+fn solve_exact_grounded_y(
+    shape: &ShapeTree,
+    translation: WorldPointMm,
+    support: f64,
+    support_top_mm: i64,
+) -> Result<f64, HeightfieldError> {
+    let min_y = derived_min_y(shape, translation)?;
+    if min_y.to_bits() == support.to_bits() {
+        return Ok(translation.y());
+    }
+
+    let delta_y = checked_f64_sub(support, min_y)?;
+    let mut y = checked_f64_add(translation.y(), delta_y)?;
+
+    for _ in 0..EXACT_GROUNDING_MAX_RESIDUAL_STEPS {
+        let candidate = translation_with_y(translation, y)?;
+        let got = derived_min_y(shape, candidate)?;
+        if got.to_bits() == support.to_bits() {
+            return Ok(candidate.y());
+        }
+        let residual = checked_f64_sub(got, support)?;
+        let next = checked_f64_sub(y, residual)?;
+        if next.to_bits() == y.to_bits() {
+            break;
+        }
+        y = next;
+    }
+
+    let base = y;
+    for radius in 0..=EXACT_GROUNDING_MAX_ULP_RADIUS {
+        let radius_i = i32::try_from(radius).map_err(|_| HeightfieldError::IntegerOverflow {
+            context: "exact grounding ulp radius",
+        })?;
+        let pair = if radius_i == 0 {
+            [0, 0]
+        } else {
+            [-radius_i, radius_i]
+        };
+        let offsets = if radius_i == 0 { &pair[..1] } else { &pair[..] };
+        for &offset in offsets {
+            let Some(y_try) = ulp_offset(base, offset) else {
+                continue;
+            };
+            let candidate = translation_with_y(translation, y_try)?;
+            let got = derived_min_y(shape, candidate)?;
+            if got.to_bits() == support.to_bits() {
+                return Ok(candidate.y());
+            }
+        }
+    }
+
+    Err(HeightfieldError::ExactGroundingUnreachable { support_top_mm })
 }
 
 #[cfg(test)]
