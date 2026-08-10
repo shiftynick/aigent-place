@@ -1,14 +1,12 @@
 ---
 id: task-048
 title: Derive the canonical AABB collider from a validated shape tree
-status: in_progress
+status: review
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-047]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T01:38:24Z"
-claimedBy: "shift@Shiftor"
-claimedAt: "2026-08-10T01:38:24Z"
+updatedAt: "2026-08-10T01:42:51Z"
 ---
 
 <!-- task-tracker:description -->
@@ -467,3 +465,155 @@ Nothing derives collision geometry from a shape. Implement the canonical collide
   | (Use `node --trace-warnings ...` to show where the warning was created)
 - 2026-08-10T01:38:24Z — note: cold review round 1 rung 1: separate Claude CLI sessions, model claude-fable-5 family Claude, low effort. SPEC findings: medium missing full product gate confirmed/pending; low packet truncation confirmed process defect; low missing explicit cosmetic mutation confirmed/pending. STANDARDS findings: high missing full product gate confirmed/pending; medium final-tree focused/fmt/clippy evidence stale confirmed/pending; low rotated non-box coverage confirmed and will fix; low packet truncation confirmed process defect. No collider logic defect was reported.
 - 2026-08-10T01:38:24Z — moved to in_progress (claimed by shift@Shiftor)
+- 2026-08-10T01:40:26Z — run: node .agent-foundry/agent-headless/cli.js run --provider cursor --cwd N:\aigent-place --model cursor-grok-4.5-high --effort high --access edit-isolated --prompt-file C:\Users\shift\AppData\Local\Temp\codex-task-048-cursor-rotated-coverage.md --timeout-ms 600000 --trust-workspace --output text --json
+  started 2026-08-10T01:38:58Z, exit 0 in 88.1s
+  output tail (truncated to last 30 lines):
+  | h=60` | `[12, 30, 12]` |\n| Panel | `100×50×4` | `[50, 25, 2]` |\n\nEach case checks `oracle_oriented_aabb` (1e-6), corner containment, and `oracle_aabb_from_abs_r` (1e-9). Asymmetric cases also assert the rotated AABB differs from identity.\n\n**Residual risks**\n- Sphere AABB is rotation-invariant; a skipped rotation still passes that case (wrong half-extents still fail).\n- Oracles share the same rotation-matrix math as production conceptually; they are independent of `derive_collider`, not a second implementation of half-extent selection.\n- Focused test was not executed here.",
+  |   "events": [
+  |     {
+  |       "provider": "cursor",
+  |       "type": "result",
+  |       "kind": "result",
+  |       "raw": "Using worktree: C:\\Users\\shift\\.cursor\\worktrees\\aigent-place\\agent-headless-msmkcb8e-715f785e14b4\nPatched only `crates/world-server/tests/collider_behavior.rs`: added `rotated_non_box_primitives_match_independent_oracles`.\n\n**Shell:** rejected in this worktree — could not run `rustfmt` or `cargo test`. Please run:\n\n```text\nrustfmt crates/world-server/tests/collider_behavior.rs\ncargo test -p world-server --test collider_behavior rotated_non_box_primitives_match_independent_oracles -- --exact\n```\n\n**Exact cases** (shared pose: translation `(100,200,300)`, local `(5,-7,11)`, quat `(0.1, 0.2, 0.3, √(1-0.01-0.04-0.09))`):\n\n| Primitive | Params | Contract half-extents |\n| --- | --- | --- |\n| Sphere | `r=40` | `[40, 40, 40]` |\n| Capsule | `r=10`, `seg=20` | `[10, 20, 10]` |\n| Cylinder | `r=15`, `h=80` | `[15, 40, 15]` |\n| Cone | `r=12`, `h=60` | `[12, 30, 12]` |\n| Panel | `100×50×4` | `[50, 25, 2]` |\n\nEach case checks `oracle_oriented_aabb` (1e-6), corner containment, and `oracle_aabb_from_abs_r` (1e-9). Asymmetric cases also assert the rotated AABB differs from identity.\n\n**Residual risks**\n- Sphere AABB is rotation-invariant; a skipped rotation still passes that case (wrong half-extents still fail).\n- Oracles share the same rotation-matrix math as production conceptually; they are independent of `derive_collider`, not a second implementation of half-extent selection.\n- Focused test was not executed here.\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "cursor-grok-4.5-high",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "edit-isolated",
+  |     "worktree": "C:\\Users\\shift\\.cursor\\worktrees\\aigent-place\\agent-headless-msmkcb8e-715f785e14b4",
+  |     "worktreeSource": "reported",
+  |     "worktreeName": "agent-headless-msmkcb8e-715f785e14b4"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 86184
+  | }
+  | (node:42540) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T01:41:03Z — run: cargo test -p world-server --test collider_behavior
+  started 2026-08-10T01:41:02Z, exit 0 in 1.0s
+  output:
+  |
+  | running 15 tests
+  | test capsule_zero_segment_half_extents_remain_radius_on_y ... ok
+  | test canonical_bits_are_little_endian_node_id_and_f64_patterns ... ok
+  | test fail_closed_on_empty_tree_and_missing_invariants ... ok
+  | test aggregate_is_component_wise_minmax_not_a_hull_merge_of_parts ... ok
+  | test entity_translation_offsets_every_part ... ok
+  | test parts_sort_by_ascending_node_id_despite_shuffled_input ... ok
+  | test identity_primitives_match_contract_half_extents ... ok
+  | test overlap_requires_strictly_positive_extent_on_all_axes ... ok
+  | test parent_orientation_rotates_child_translation_before_addition ... ok
+  | test cosmetic_fields_do_not_change_canonical_bits ... ok
+  | test rotated_box_matches_independent_corner_oracle ... ok
+  | test world_point_rejects_non_finite_and_canonicalizes_negative_zero ... ok
+  | test same_build_derivation_is_bit_identical_across_calls ... ok
+  | test rotated_box_matches_world_contract_fixture ... ok
+  | test rotated_non_box_primitives_match_independent_oracles ... ok
+  |
+  | test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  |
+  |    Compiling world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.69s
+  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
+- 2026-08-10T01:41:16Z — run: cargo test -p world-server --test collider_behavior cosmetic_fields_do_not_change_canonical_bits
+  started 2026-08-10T01:41:14Z, exit 101 in 1.7s
+  output:
+  |
+  | running 1 test
+  | test cosmetic_fields_do_not_change_canonical_bits ... FAILED
+  |
+  | failures:
+  |
+  | ---- cosmetic_fields_do_not_change_canonical_bits stdout ----
+  |
+  | thread 'cosmetic_fields_do_not_change_canonical_bits' panicked at crates\world-server\tests\collider_behavior.rs:759:5:
+  | assertion `left == right` failed
+  |   left: [1, 0, 0, 0, 0, 0, 0, 0, 0, 128, 69, 192, 0, 0, 0, 0, 0, 192, 89, 192, 0, 0, 0, 0, 0, 96, 97, 192, 0, 0, 0, 0, 0, 128, 76, 64, 0, 0, 0, 0, 0, 64, 88, 64, 0, 0, 0, 0, 0, 32, 100, 64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 69, 64, 0, 0, 0, 0, 0, 128, 66, 64, 0, 0, 0, 0, 0, 0, 76, 64, 0, 0, 0, 0, 0, 0, 74, 64, 0, 0, 0, 0, 0, 128, 76, 64, 0, 0, 0, 0, 0, 128, 85, 64]
+  |  right: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 69, 192, 0, 0, 0, 0, 0, 192, 89, 192, 0, 0, 0, 0, 0, 96, 97, 192, 0, 0, 0, 0, 0, 0, 77, 64, 0, 0, 0, 0, 0, 64, 88, 64, 0, 0, 0, 0, 0, 32, 100, 64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 128, 69, 64, 0, 0, 0, 0, 0, 128, 66, 64, 0, 0, 0, 0, 0, 0, 76, 64, 0, 0, 0, 0, 0, 128, 74, 64, 0, 0, 0, 0, 0, 128, 76, 64, 0, 0, 0, 0, 0, 128, 85, 64]
+  | note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  |
+  |
+  | failures:
+  |     cosmetic_fields_do_not_change_canonical_bits
+  |
+  | test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+  |
+  |    Compiling world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.44s
+  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
+  | error: test failed, to rerun pass `-p world-server --test collider_behavior`
+- 2026-08-10T01:41:33Z — run: cargo fmt --all -- --check
+  started 2026-08-10T01:41:32Z, exit 0 in 0.2s
+  output:
+  | (no output)
+- 2026-08-10T01:41:35Z — run: cargo test -p world-server --test collider_behavior
+  started 2026-08-10T01:41:33Z, exit 0 in 1.8s
+  output:
+  |
+  | running 15 tests
+  | test capsule_zero_segment_half_extents_remain_radius_on_y ... ok
+  | test overlap_requires_strictly_positive_extent_on_all_axes ... ok
+  | test cosmetic_fields_do_not_change_canonical_bits ... ok
+  | test canonical_bits_are_little_endian_node_id_and_f64_patterns ... ok
+  | test fail_closed_on_empty_tree_and_missing_invariants ... ok
+  | test aggregate_is_component_wise_minmax_not_a_hull_merge_of_parts ... ok
+  | test rotated_non_box_primitives_match_independent_oracles ... ok
+  | test parent_orientation_rotates_child_translation_before_addition ... ok
+  | test parts_sort_by_ascending_node_id_despite_shuffled_input ... ok
+  | test rotated_box_matches_world_contract_fixture ... ok
+  | test identity_primitives_match_contract_half_extents ... ok
+  | test same_build_derivation_is_bit_identical_across_calls ... ok
+  | test entity_translation_offsets_every_part ... ok
+  | test world_point_rejects_non_finite_and_canonicalizes_negative_zero ... ok
+  | test rotated_box_matches_independent_corner_oracle ... ok
+  |
+  | test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  |
+  |    Compiling world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.47s
+  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
+- 2026-08-10T01:41:36Z — run: cargo clippy -p world-server --all-targets -- -D warnings
+  started 2026-08-10T01:41:35Z, exit 0 in 0.9s
+  output:
+  |     Checking world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.81s
+- 2026-08-10T01:42:27Z — run: node scripts/check.mjs
+  started 2026-08-10T01:41:36Z, exit 0 in 50.7s
+  output tail (truncated to last 30 lines):
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-10T01:42:51Z — note: round-1 fixes complete: added rotated containment coverage for sphere, capsule, cylinder, cone, and panel; cosmetic-field mutation now recorded failing; final cargo fmt, all 15 collider behavior tests, all-target clippy, and unified node scripts/check.mjs passed on the restored final tree. The full gate reported the existing npm audit notice but exited 0 and product-check PASS.
+- 2026-08-10T01:42:51Z — moved to review

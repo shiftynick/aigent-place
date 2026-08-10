@@ -532,6 +532,89 @@ fn rotated_box_matches_independent_corner_oracle() {
 }
 
 #[test]
+fn rotated_non_box_primitives_match_independent_oracles() {
+    // Non-axis-aligned unit quaternion (components on all three imaginary axes).
+    let rotation = Quaternion {
+        x: 0.1,
+        y: 0.2,
+        z: 0.3,
+        w: (1.0_f64 - 0.1 * 0.1 - 0.2 * 0.2 - 0.3 * 0.3).sqrt(),
+    };
+    let q = quat_from_proto(&rotation);
+    let translation = WorldPointMm::new(100.0, 200.0, 300.0).expect("finite");
+    let center = [
+        translation.x() + 5.0,
+        translation.y() - 7.0,
+        translation.z() + 11.0,
+    ];
+    let cases: Vec<(Primitive, [f64; 3])> = vec![
+        (
+            Primitive::Sphere(SpherePrimitive { radius_mm: 40 }),
+            [40.0, 40.0, 40.0],
+        ),
+        (
+            Primitive::Capsule(CapsulePrimitive {
+                radius_mm: 10,
+                segment_length_mm: 20,
+            }),
+            [10.0, 20.0, 10.0],
+        ),
+        (
+            Primitive::Cylinder(CylinderPrimitive {
+                radius_mm: 15,
+                height_mm: 80,
+            }),
+            [15.0, 40.0, 15.0],
+        ),
+        (
+            Primitive::Cone(ConePrimitive {
+                radius_mm: 12,
+                height_mm: 60,
+            }),
+            [12.0, 30.0, 12.0],
+        ),
+        (
+            Primitive::Panel(PanelPrimitive {
+                width_mm: 100,
+                height_mm: 50,
+                thickness_mm: 4,
+            }),
+            [50.0, 25.0, 2.0],
+        ),
+    ];
+
+    for (index, (primitive, half)) in cases.into_iter().enumerate() {
+        let shape = ShapeTree {
+            nodes: vec![ShapeNode {
+                transform: transform(5, -7, 11, rotation),
+                ..node(1, 0, 0, 0, 0, Some(primitive))
+            }],
+        };
+        let (expected_min, expected_max) = oracle_oriented_aabb(center, half, q);
+        let collider = derive_collider(&shape, translation).expect("rotated non-box");
+        assert_eq!(collider.parts().len(), 1, "case {index}");
+        assert_aabb_matches_within(
+            collider.parts()[0].bounds(),
+            expected_min,
+            expected_max,
+            1e-6,
+        );
+        assert_corners_inside(collider.parts()[0].bounds(), center, half, q);
+        let (abs_min, abs_max) = oracle_aabb_from_abs_r(center, half, q);
+        assert_aabb_matches(collider.parts()[0].bounds(), abs_min, abs_max);
+        // Asymmetric half-extents: identity orientation must differ so a skipped
+        // rotation cannot still match. Sphere stays rotation-invariant.
+        if half[0] != half[1] || half[1] != half[2] {
+            let (id_min, id_max) = oracle_aabb_from_abs_r(center, half, [0.0, 0.0, 0.0, 1.0]);
+            assert!(
+                abs_min != id_min || abs_max != id_max,
+                "case {index}: asymmetric half extents must change under rotation"
+            );
+        }
+    }
+}
+
+#[test]
 fn parts_sort_by_ascending_node_id_despite_shuffled_input() {
     let mut nodes = vec![
         node(30, 10, 300, 0, 0, box_primitive(20, 20, 20)),
