@@ -1,14 +1,12 @@
 ---
 id: task-050
 title: Implement the uniform spatial-hash broadphase
-status: in_progress
+status: review
 priority: p1
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-048]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T05:05:08Z"
-claimedBy: "shift@Shiftor"
-claimedAt: "2026-08-10T04:50:34Z"
+updatedAt: "2026-08-10T05:06:48Z"
 ---
 
 <!-- task-tracker:description -->
@@ -136,3 +134,37 @@ There is no broadphase, so any collision query would be O(entities) per moving p
   | workload-harness: ladder retreat→0 action=Retreat
   | workload-harness: ok
 - 2026-08-10T05:05:08Z — note: Integration decisions: rebuild requires matching ImmutableGeneration and RulesetGeneration provenance; cell edge is live shape.max_extent_mm; active_leases is the documented temporary active/sleeping bridge until task-052; shapeless active entities are omitted while malformed frozen geometry and identity mismatches fail closed; large query spans use a deterministic full-index scan instead of attacker-sized cell enumeration; exact overlap and enclosure results are separated from conservative bucket candidates. Measured local gate profile at 300 shaped aigents: rebuild p95 2229us, query p95 60us, combined p95 2288us against the 50000us budget.
+- 2026-08-10T05:06:18Z — run: node scripts/check.mjs
+  started 2026-08-10T05:05:38Z, exit 0 in 39.6s
+  output tail (truncated to last 30 lines):
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-10T05:06:48Z — moved to review (note: implementation complete; focused broadphase and workload tests, clippy -D warnings, mutation-resistant bucket ordering test, 300-aigent timing, fast product gate, and full unified node scripts/check.mjs all pass; ready for separate cold SPEC and STANDARDS review)
