@@ -96,12 +96,15 @@ follow it completely. Between tasks:
   behind an operator answer, stop — the plan the operator approved no longer
   exists.
 
-**Delegation is default-on.** Run each task in the `efficient-orchestration`
-posture: the orchestrator holds the run plan and judgment; workers take the
-bounded research, implementation, and testing slices. The operator may name
-the worker family up front (e.g. "with codex"); pass that through to the
-delegation backend. For tiny tasks where delegation is pure overhead, work
-locally — that skill's own guardrails apply.
+**Delegation is default-on for substantial tasks.** Run each such task in the
+`efficient-orchestration` posture: the orchestrator holds the run plan and
+judgment; workers take the bounded research, implementation, and testing
+slices. The operator may name the worker family up front (e.g. "with codex");
+pass that through to `delegate-work.mjs`. For tiny tasks where delegation is
+pure overhead, work locally — that skill's own guardrails apply. Across the
+run, amortize document reads as `execute-task` directs (first-use per session,
+then checklist) rather than re-loading standards and cold-review prose on
+every card.
 
 **A real blocker is only:**
 

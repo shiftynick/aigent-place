@@ -14,9 +14,15 @@ capabilities. Unsupported combinations fail before provider invocation.
 | Effort | native flag | config override except `max` | exact model variant |
 | JSON Schema output | yes | file-based | unavailable |
 | Per-run budget | yes | unavailable | unavailable |
-| Model listing | unavailable | unavailable | yes |
+| Model listing | Foundry allowlist | Foundry allowlist | Foundry allowlist |
+
+`models <provider>` prints the Foundry-allowed IDs only (Claude: fable/opus/
+sonnet; Codex: gpt-5.6 sol/terra/luna; Cursor: Grok low/medium/high plus
+Composer — no Grok fast). See the skill's `references/models.md`. Cursor's
+full live catalog is not exposed through this runner.
 
 Cursor's worktree does not sandbox arbitrary shell effects on Windows.
 Cursor rejects `auto`; when no model is named, it falls back to a documented
 default and reports `modelDefaulted`, so a caller can tell whether the operator
-chose the model. Name one explicitly for cold review.
+chose the model. Name one explicitly for cold review. Claude Fable defaults
+effort to `low` unless the caller sets one.

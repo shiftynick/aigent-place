@@ -10,6 +10,10 @@ product code and it is not the task board.
 | `project-status.mjs` | Derives a short operator status and stable JSON from the board, planning journal, recorded checks, and Git. |
 | `project-overview.mjs` | Refreshes the Git-ignored, self-contained `project-overview.html` visual from project-status schema v1. |
 | `agent-headless/` | Unified provider runner, library test seam, compatibility matrix, license, provenance, and reconstructable source patches. |
+| `review-packet.mjs` | Init/check a cold-review packet directory before any provider call. |
+| `cold-review.mjs` | Dual-axis cold-review preset: packet check, SPEC+STANDARDS prompts, concurrent `agent-headless` dispatch with `--json`. |
+| `delegate-work.mjs` | Bounded implementation preset: requires Environment facts, wraps write-access `agent-headless`. |
+| `process-tree.mjs` | Shared process-tree terminate/reap used by the presets on timeout. |
 | `reconcile-seeds.mjs` | Lists or restores every non-preserved project seed after a forced upgrade. |
 | `check-skill-sync.mjs` | Verifies the two harness skill trees still agree. |
 | `check-foundry-drift.mjs` | Reports how installed files differ from what was installed. |

@@ -35,15 +35,10 @@ defines the extra care that case needs.
 
 ## Surface unsent upstream before changing mold
 
-Before acquiring a new foundry, read `.agent-foundry/LOCAL-CHANGES.md` for
-`Upstream: yes` entries with **Upstream status** `unsent` or `packeted`, or
-with status missing (treat missing as `unsent`). Report them to the operator
-(path, status, ref).
-
-An upgrade may overwrite the mold those entries protect. Unsent generic fixes
-should go through `agent-foundry-feedback` first when the operator wants them
-proposed upstream. Do not create a parallel delivery tracker. Status and ref
-live on the LOCAL-CHANGES entry.
+Before acquiring a new foundry, run the same LOCAL-CHANGES upstream sweep
+described in `retrospective` → "Surface unsent upstream" (and delivered via
+`agent-foundry-feedback`). Report any `Upstream: yes` entries still `unsent`
+or `packeted`. An upgrade may overwrite the mold those entries protect.
 
 ## Acquire the new foundry
 

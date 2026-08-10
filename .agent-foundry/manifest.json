@@ -1,24 +1,24 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.28.0",
-  "installedAt": "2026-08-09T23:16:32.155Z",
+  "foundryVersion": "0.30.1",
+  "installedAt": "2026-08-10T21:54:59.845Z",
   "files": {
     ".agent-foundry.json": {
       "tier": "mold",
-      "sha256": "9b83167b0992138dad58e6715beed1f4b2621ecb8097e2e9dc96627eccb796cd"
+      "sha256": "cb02f97b9feb980cf33419e0cf379a93ef0d97879000bf14ab671063a6a8f9ef"
     },
     ".agent-foundry/LOCAL-CHANGES.md": {
       "tier": "seed",
-      "sha256": "4daa443b2faf573b1178c0467fa8d036ecf84df6fd1ad68bfaead630b85e6520",
+      "sha256": "bd04e1ee1f81a762b2fbf9e260516186c25b3cc87ce8182572996248c405d6a0",
       "preserveIfExists": true
     },
     ".agent-foundry/README.md": {
       "tier": "mold",
-      "sha256": "088c1596ad9aa9998ef130f94f33dbb56e101642da7aceaccf041e027222ecd9"
+      "sha256": "f214cd423171aef5e3efb3955e2036cea616a476f65b1f63f6c8d69ec90bb697"
     },
     ".agent-foundry/agent-headless/COMPATIBILITY.md": {
       "tier": "mold",
-      "sha256": "72d8bf3f7de830f1c9b57a636e059985915fa261f2debecb12410b848b87b8a6"
+      "sha256": "c16e1b389e9be132ca2a4af5a71d89867ea42d48f693fefb86933bfde25a68ae"
     },
     ".agent-foundry/agent-headless/LICENSE": {
       "tier": "mold",
@@ -26,19 +26,19 @@
     },
     ".agent-foundry/agent-headless/PROVENANCE.md": {
       "tier": "mold",
-      "sha256": "34c0053c8be07547a3a2e8080572b107036ac800b78565494fb3d3ca3e66bc50"
+      "sha256": "51dc2e6b9c95b1bcc47d559ada17dfa77b17288797c399d32b37fff755c119b7"
     },
     ".agent-foundry/agent-headless/cli.js": {
       "tier": "mold",
-      "sha256": "47b16b6579bac22d01e3da4969d2df3746b0dc74ee8b3c810c9f5e3442bcd432"
+      "sha256": "cd1db544d7d6ad3bc185d2a5a61ee510c591215c5e4cbf7105a216cbedb1d2ec"
     },
     ".agent-foundry/agent-headless/cli.test.mjs": {
       "tier": "mold",
-      "sha256": "5dd8b70b3b69111fee7519272821360e1eff106099af4a2593d362ee5256350e"
+      "sha256": "37d6a42589f0cfe2ffcf8bb6e0657b0308026ef7a02bc2b2227db5e4b35f924c"
     },
     ".agent-foundry/agent-headless/index.js": {
       "tier": "mold",
-      "sha256": "47239478b111a394bc96eb8107c6cc081442e2e56a67900765081e208dd03437"
+      "sha256": "fe24b329b6a749af9d867ea010e868e521e0956b600a958403a2f9b8343e6715"
     },
     ".agent-foundry/agent-headless/source/0001-feat-harden-unified-runner-for-Node-20-consumers.patch.b64": {
       "tier": "mold",
@@ -84,6 +84,10 @@
       "tier": "mold",
       "sha256": "46c120d04030af4b7eba6f6cc156278c1feeae968c58c797a3602f1a973c0119"
     },
+    ".agent-foundry/agent-headless/source/0012-feat-curated-supported-model-lists-for-Claude-Codex-and-Cursor.patch.b64": {
+      "tier": "mold",
+      "sha256": "2cb28ade1c3e5532d997a85a29297421f1b1bcb161d1f1a13766b692c14e3c49"
+    },
     ".agent-foundry/check-foundry-drift.mjs": {
       "tier": "mold",
       "sha256": "7761bea642248734c65f81a0c5e67f5a78a12c8ded97c1c119a9e0ae78683684"
@@ -99,6 +103,18 @@
     ".agent-foundry/check-skill-sync.test.mjs": {
       "tier": "mold",
       "sha256": "0594de108cf870d3f9a72ecfd68880b38473bdc3158442827b06937545b5ac1d"
+    },
+    ".agent-foundry/cold-review.mjs": {
+      "tier": "mold",
+      "sha256": "b7d57415feb7355916dd686112286b31c33372dffb58730de28b7287e5ffe93e"
+    },
+    ".agent-foundry/delegate-work.mjs": {
+      "tier": "mold",
+      "sha256": "eda6156349a904b6ffe1aa5e6ac777c069a8173ba296446123cc36e3d49d98b4"
+    },
+    ".agent-foundry/process-tree.mjs": {
+      "tier": "mold",
+      "sha256": "ee3da05cd53b960ad8d9eb4651981316a78a2c507b2af8017debb9ce5011bd25"
     },
     ".agent-foundry/project-overview.mjs": {
       "tier": "mold",
@@ -124,6 +140,14 @@
       "tier": "mold",
       "sha256": "5989eba63ab8f6381882bedd7917561bec6a9d12427d166240f4417f87e5428b"
     },
+    ".agent-foundry/review-packet.mjs": {
+      "tier": "mold",
+      "sha256": "f7b725042f35a6c6bc1bc9ee120589ab7ca89bb067f43bc5ad297c6555c76dd1"
+    },
+    ".agent-foundry/review-workflows.test.mjs": {
+      "tier": "mold",
+      "sha256": "875cff2cbe90513be7e566f8fcb98ad14479dffae2f02fc31cf77cb4f2cad95f"
+    },
     ".agent-foundry/run-checks.mjs": {
       "tier": "mold",
       "sha256": "ec68239446df00ccde68651d6d35e1660668c6448219fdb86c3359b65ada3133"
@@ -146,11 +170,15 @@
     },
     ".agents/skills/agent-headless/SKILL.md": {
       "tier": "mold",
-      "sha256": "814b5965c2d1eb7fe83a089653ee3c098cb1c632a70a6cea870b4e1aa17870e6"
+      "sha256": "a2fafb8de0cc79bc0882a79fd9cc2ab27d9273a164e0b8491f62ed31a9c68dbb"
+    },
+    ".agents/skills/agent-headless/references/models.md": {
+      "tier": "mold",
+      "sha256": "91641510d81b426a23a57914346a2e72a864499816318c32bacfbc8f303f82cd"
     },
     ".agents/skills/attack-the-board/SKILL.md": {
       "tier": "mold",
-      "sha256": "46cdfd65b7f8855e08400adf4458e3b3b5a1e9533df7d48232f9eb4f5e278561"
+      "sha256": "fad2e53d22108bd43b4d49c35e85d5ac3c956e85fd01303dd257b6b42f01d121"
     },
     ".agents/skills/codebase-audit/SKILL.md": {
       "tier": "mold",
@@ -174,15 +202,15 @@
     },
     ".agents/skills/efficient-orchestration/SKILL.md": {
       "tier": "mold",
-      "sha256": "ebfa3c9ff380361d63e57f16003dce4d5eb516ca03c9dcea0f5f02852771da2f"
+      "sha256": "9dd2c27c5b6803fb28c94b60b9125bb88e35037dadd249fa694f0aa2119a93c8"
     },
     ".agents/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "f7de073f7a38c06557d52a4d56a7f60dd9d4dcc332b757ea933c3d94a72ac930"
+      "sha256": "910ac8d139e09d31d6c269f76703fc159288bbc55a8dbace605c528007842aaa"
     },
     ".agents/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "8b610cd994ad7c53fe12c0f177358206148a3e50e7de93d854d3dc38e5ff0506"
+      "sha256": "c38e063e241f3d28e8741efd6b8c5377f4d66f233d64b526ee8b280e46afba5d"
     },
     ".agents/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -222,7 +250,7 @@
     },
     ".agents/skills/task-tracker/references/cli-reference.md": {
       "tier": "mold",
-      "sha256": "0e6a4083fa22052bf1c02a826d38f4a6d07240ee9d6b4d5def011312b863487d"
+      "sha256": "663ca4ae34c35653e43f4a12b4d193cfd0dc82927be28ff18e68619592b9fe7d"
     },
     ".agents/skills/task-tracker/references/concurrency.md": {
       "tier": "mold",
@@ -250,11 +278,11 @@
     },
     ".agents/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "69159608e3907f9f864cb667dbfed5f3bc690a37fc96388b905104803476d144"
+      "sha256": "e07b874afe364f336ca6bdd24d19f7076a46e2a8cb750534bd8befe70fe4e9be"
     },
     ".agents/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "ea15f0be7ce22d08d46e7ffa4843c26b398ae3979c1ef331a07a19c06568d9d8"
+      "sha256": "91650578e51e6bd21977137c0a9ba58c8a134a006f72fcc685582e2b2d4fb8ef"
     },
     ".agents/skills/the-fool/SKILL.md": {
       "tier": "mold",
@@ -262,7 +290,7 @@
     },
     ".agents/skills/upgrade-agent-foundry/SKILL.md": {
       "tier": "mold",
-      "sha256": "f8e73bc799e8235b4137541fdb364d84f73ea192933c139d239c11ac68a7b7ab"
+      "sha256": "7b26f1b95c4f3bd03982efa8677f186ddc0ceb315b50ee32b75ff4c0fe674b27"
     },
     ".claude/skills/README.md": {
       "tier": "mold",
@@ -278,11 +306,15 @@
     },
     ".claude/skills/agent-headless/SKILL.md": {
       "tier": "mold",
-      "sha256": "814b5965c2d1eb7fe83a089653ee3c098cb1c632a70a6cea870b4e1aa17870e6"
+      "sha256": "a2fafb8de0cc79bc0882a79fd9cc2ab27d9273a164e0b8491f62ed31a9c68dbb"
+    },
+    ".claude/skills/agent-headless/references/models.md": {
+      "tier": "mold",
+      "sha256": "91641510d81b426a23a57914346a2e72a864499816318c32bacfbc8f303f82cd"
     },
     ".claude/skills/attack-the-board/SKILL.md": {
       "tier": "mold",
-      "sha256": "f4d95aa6d5f927b47f1b4f56e72f6c9cd8d05b64f65e33b9e1982072ec7bbf87"
+      "sha256": "5a19f6b7fb7e88a71ab557d219bbe02c1aecfa95edc913645e829f0b81a1ac56"
     },
     ".claude/skills/codebase-audit/SKILL.md": {
       "tier": "mold",
@@ -306,15 +338,15 @@
     },
     ".claude/skills/efficient-orchestration/SKILL.md": {
       "tier": "mold",
-      "sha256": "ebfa3c9ff380361d63e57f16003dce4d5eb516ca03c9dcea0f5f02852771da2f"
+      "sha256": "9dd2c27c5b6803fb28c94b60b9125bb88e35037dadd249fa694f0aa2119a93c8"
     },
     ".claude/skills/execute-task/SKILL.md": {
       "tier": "mold",
-      "sha256": "c568dc81a0ec277ea499ffe232dce96aa7e453aca1031259bdad2da11b33614f"
+      "sha256": "b000ed6d8395022ae7511b13da9ea4726d3985cb14d7dcc9939b82e8498f8694"
     },
     ".claude/skills/execute-task/references/cold-review.md": {
       "tier": "mold",
-      "sha256": "8b610cd994ad7c53fe12c0f177358206148a3e50e7de93d854d3dc38e5ff0506"
+      "sha256": "19600b5da953df3c94b1e202d6e09e2e0d79e0454ba3cfd6b452906c4644f4fa"
     },
     ".claude/skills/execute-task/references/decisions-and-blockers.md": {
       "tier": "mold",
@@ -354,7 +386,7 @@
     },
     ".claude/skills/task-tracker/references/cli-reference.md": {
       "tier": "mold",
-      "sha256": "b052afbc0c4cb72772d65352df9348efd93e9d6aaeb43c383a2d24648aebdac5"
+      "sha256": "f438f60d68ce45412d3c0021dcf02ac9bc1f9f496d1cf5f2e223694e81ac96d4"
     },
     ".claude/skills/task-tracker/references/concurrency.md": {
       "tier": "mold",
@@ -382,11 +414,11 @@
     },
     ".claude/skills/task-tracker/scripts/task.mjs": {
       "tier": "mold",
-      "sha256": "ad795152791446ff699a9c155df8993b0fd96d8c08ce035939cca2c77e51783a"
+      "sha256": "448a3b97a45d95c32d8da6cbecaddbb411393d8aef32ada9884a59c4d33ba2fa"
     },
     ".claude/skills/task-tracker/scripts/task.test.mjs": {
       "tier": "mold",
-      "sha256": "ea15f0be7ce22d08d46e7ffa4843c26b398ae3979c1ef331a07a19c06568d9d8"
+      "sha256": "91650578e51e6bd21977137c0a9ba58c8a134a006f72fcc685582e2b2d4fb8ef"
     },
     ".claude/skills/the-fool/SKILL.md": {
       "tier": "mold",
@@ -394,7 +426,7 @@
     },
     ".claude/skills/upgrade-agent-foundry/SKILL.md": {
       "tier": "mold",
-      "sha256": "f8e73bc799e8235b4137541fdb364d84f73ea192933c139d239c11ac68a7b7ab"
+      "sha256": "7b26f1b95c4f3bd03982efa8677f186ddc0ceb315b50ee32b75ff4c0fe674b27"
     },
     ".tasks/archive/.gitkeep": {
       "tier": "mold",
@@ -440,7 +472,7 @@
     },
     "docs/SDLC.md": {
       "tier": "mold",
-      "sha256": "4f9ce6881c8fc08ae3db9d73ae51cbab24bd5ba78fc163d5a275a7b226b653db"
+      "sha256": "55f52c79f7a049a945d45d35aebd5dc9032f21ebd35630d9d3e8eef6cc9720f8"
     },
     "docs/adr/README.md": {
       "tier": "seed",
