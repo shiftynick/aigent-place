@@ -93,6 +93,28 @@ pub struct Aabb {
 }
 
 impl Aabb {
+    /// Build an AABB from already-validated finite corners.
+    ///
+    /// Each axis requires `min <= max`. Degenerate (zero-thickness) boxes are
+    /// allowed so callers can express query slabs; they never satisfy
+    /// [`Aabb::overlaps_positive_volume`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ColliderDerivationError::MissingValidatedInvariant`] when a
+    /// minimum exceeds its maximum on any axis.
+    pub fn try_from_min_max(
+        min: WorldPointMm,
+        max: WorldPointMm,
+    ) -> Result<Self, ColliderDerivationError> {
+        if min.x() > max.x() || min.y() > max.y() || min.z() > max.z() {
+            return Err(ColliderDerivationError::MissingValidatedInvariant {
+                detail: "aabb min exceeds max",
+            });
+        }
+        Ok(Self { min, max })
+    }
+
     #[must_use]
     pub const fn min(self) -> WorldPointMm {
         self.min
@@ -113,6 +135,20 @@ impl Aabb {
             && self.min.y() < other.max.y()
             && self.max.z() > other.min.z()
             && self.min.z() < other.max.z()
+    }
+
+    /// Aggregate enclosure check from `world/v1/CONTRACT.md` section 7.1.
+    ///
+    /// `self` is the candidate object; `aigent` is an active body. Horizontal
+    /// axes require strict containment; vertical coverage allows equality.
+    #[must_use]
+    pub fn encloses_aigent_aggregate(self, aigent: Self) -> bool {
+        self.min.x() < aigent.min.x()
+            && self.max.x() > aigent.max.x()
+            && self.min.z() < aigent.min.z()
+            && self.max.z() > aigent.max.z()
+            && self.min.y() <= aigent.min.y()
+            && self.max.y() >= aigent.max.y()
     }
 
     /// Horizontal (`x`/`z`) footprint of this box.
