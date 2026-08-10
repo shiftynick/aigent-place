@@ -1,12 +1,12 @@
 ---
 id: task-048
 title: Derive the canonical AABB collider from a validated shape tree
-status: review
+status: done
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-047]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T01:54:12Z"
+updatedAt: "2026-08-10T02:00:24Z"
 ---
 
 <!-- task-tracker:description -->
@@ -831,3 +831,78 @@ Nothing derives collision geometry from a shape. Implement the canonical collide
   | npm notice run @aigent-place/viewer@0.1.0 smoke
   | npm notice run node ./scripts/smoke.mjs
 - 2026-08-10T01:54:12Z — moved to review (note: Round-two diagnostic fix complete: NonFiniteWorldTranslation is now limited to caller-supplied WorldPointMm input; checked internal geometry arithmetic uses NonFiniteDerivedArithmetic. The invalid f64::MAX-plus-50 integration setup was replaced by a private finite-operands overflow unit test. Final-tree evidence: fmt check exit 0; collider integration 15/15; world-server lib 23/23 including the new unit test; all-target clippy exit 0; unified node scripts/check.mjs exit 0 with product-check PASS.)
+- 2026-08-10T01:55:51Z — run: powershell -NoProfile -Command node scripts/check.mjs; $gateCode=$LASTEXITCODE; Write-Output ('FINAL_GATE_EXIT=' + $gateCode); exit $gateCode
+  started 2026-08-10T01:55:13Z, exit 0 in 38.1s
+  output tail (truncated to last 30 lines):
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-10T01:59:15Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access answer-only --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-048-spec-review-r3.md --timeout-ms 600000 --max-budget-usd 3 --output text --json
+  started 2026-08-10T01:58:46Z, exit 0 in 28.8s
+  output tail (truncated to last 30 lines):
+  | t-wise min/max over parts per §5; `horizontal_footprint` exposes x/z extents; determinism proven by `same_build_derivation_is_bit_identical_across_calls` and byte-equality across shuffled inputs; `aggregate_is_component_wise_minmax_not_a_hull_merge_of_parts` confirms aggregate does not replace the ordered union for overlap.\n3. Rubric 3 (strictly positive three-axis overlap; contact legal) — `overlaps_positive_volume` uses strict `>`/`<` with no epsilon, matching ADR-0002 and CONTRACT §5; `overlap_requires_strictly_positive_extent_on_all_axes` covers face, edge, point contact (legal) and true volume overlap, with face contact asserted at exact coordinate equality.\n4. Rubric 4 (rotated containment, cosmetic independence, mutation sensitivity) — `rotated_box_matches_independent_corner_oracle`, `rotated_non_box_primitives_match_independent_oracles` (all five non-box primitives under a non-axis-aligned quaternion, with an explicit guard that asymmetric extents differ from identity so a skipped rotation cannot pass), and `assert_corners_inside` prove containment against a corner-minmax oracle that never calls production code; `cosmetic_fields_do_not_change_canonical_bits` mutates color, material tags, and joint names on both nodes and compares `canonical_bits`; the encoding itself is pinned by `canonical_bits_are_little_endian_node_id_and_f64_patterns`. The prior-round adjudication records the cosmetic mutation observed red then restored, satisfying mutation sensitivity.\n5. Rubric 5 (narrow scope, documented boundary, gates) — the module header documents the deliberately excluded ruleset extent budgeting (deferred task) and the fail-closed posture on non-validated invariants (cycles, duplicates, zero IDs, missing transform/rotation/primitive all tested in `fail_closed_on_empty_tree_and_missing_invariants`); the accepted diagnostic split (`NonFiniteWorldTranslation` for caller input vs `NonFiniteDerivedArithmetic` for checked internal arithmetic, remapped in `derived_world_point`) is proven by the private `finite_derived_operands_that_overflow_use_arithmetic_error` unit test visible green in the lib run. Raw evidence shows fmt exit 0, focused collider tests 15/15, lib tests 23/23, clippy `-D warnings` exit 0, and two `node scripts/check.mjs` runs exit 0 with the untruncated terminus `product-check: PASS` / `FINAL_GATE_EXIT=0`.\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "claude-fable-5",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "answer-only"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 28673
+  | }
+  | (node:50780) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T02:00:10Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access answer-only --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-048-standards-review-r3.md --timeout-ms 600000 --max-budget-usd 3 --output text --json
+  started 2026-08-10T01:59:22Z, exit 0 in 47.2s
+  output tail (truncated to last 30 lines):
+  |  (engineering standards, errors) — Every invariant a validated tree should guarantee (empty tree, zero/duplicate node id, missing transform/rotation/primitive, unknown parent, cycle, non-finite rotation) is a typed `MissingValidatedInvariant` verified by `fail_closed_on_empty_tree_and_missing_invariants`; cycle detection via `on_path` prevents stack overflow. Errors are typed enums across the library boundary.\n\n7. **Diagnostic-variant separation** (round-2 accepted finding, resolution verified) — `NonFiniteWorldTranslation` is confined to `WorldPointMm::new` caller input; `derived_world_point` remaps it, and all internal arithmetic sites use `NonFiniteDerivedArithmetic`. The private unit test on `checked_add(f64::MAX, f64::MAX)` is an honest executed signal at the cheapest real seam, replacing the invalid `f64::MAX + 50` integration test (whose removal and preserved red run are in evidence).\n\n8. **Determinism standards** (project stack) — No wall-clock, locale, hash-iteration, or scheduler input anywhere in the derivation; canonical ordering is explicit node-id sort; `same_build_derivation_is_bit_identical_across_calls` and bit-pattern equality (`to_bits`) in `PartialEq` enforce the same-build determinism target without unstated epsilons in production overlap code (test tolerances exist only in test oracles, which is permitted — runtime `overlaps_positive_volume` uses exact strict comparisons).\n\n9. **Scope boundary documented** (documentation standards) — Module docs state the deliberate non-application of aggregate ruleset extent budgeting with a follow-up task identifier, and document composition convention, encoding format, and the fail-closed posture. Public exports are surfaced coherently in `lib.rs`.\n\n10. **Unskippable gate** (testing standards) — The unified `node scripts/check.mjs` gate was executed twice with exit 0 on the final tree; the repo contract (CLAUDE.md/engineering standards) pins the fast subset in `.githooks/pre-commit`. Nothing in the supplied evidence indicates hooks were bypassed; the frozen branch status shows only the task tracker file modified.\n\n11. **Version control / packet integrity** — Frozen branch status and commit log are task-scoped; complete final source, tests, exports, ADR, contract, and raw untruncated gate terminus are all supplied, so no packet-completeness finding remains.\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "claude-fable-5",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "answer-only"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 47060
+  | }
+  | (node:6640) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T02:00:24Z — note: Cold review round 3 (final, rung 1): separate Claude Fable 5 low-effort answer-only sessions. SPEC PASS with all five rubric lines checked. STANDARDS PASS with ADR, derived-oracle, failure-path, order-independence, typed-diagnostic, determinism, scope, and gate checks. No unresolved findings or residual task risk.
+- 2026-08-10T02:00:24Z — moved to done (note: Acceptance complete: final focused tests, library unit tests, clippy, unified gate, and both cold-review axes pass. Ready for task branch push, pull request, required remote gate, and squash merge.)
