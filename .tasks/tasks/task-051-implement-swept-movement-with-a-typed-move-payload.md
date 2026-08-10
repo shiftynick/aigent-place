@@ -6,7 +6,7 @@ priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-046, task-049, task-050]
 createdAt: "2026-08-06T13:25:34Z"
-updatedAt: "2026-08-06T13:25:34Z"
+updatedAt: "2026-08-10T01:01:07Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ Wire MOVE currently maps to an internal lease-upsert harness with no target and 
 ## Log
 
 - 2026-08-06T13:25:34Z — created (status: backlog)
+- 2026-08-10T01:01:07Z — note: operator: included as the approved collision-core attack endpoint after terrain and broadphase

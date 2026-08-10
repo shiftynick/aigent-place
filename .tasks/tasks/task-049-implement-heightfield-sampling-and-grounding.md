@@ -6,7 +6,7 @@ priority: p1
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-048]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-06T13:25:08Z"
+updatedAt: "2026-08-10T01:01:07Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ Bodies have no terrain to rest on, so no position is grounded. Implement the hei
 ## Log
 
 - 2026-08-06T13:25:08Z — created (status: backlog)
+- 2026-08-10T01:01:07Z — note: operator: included in approved collision-core attack after collider and aggregate-bound work
