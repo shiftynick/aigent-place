@@ -138,7 +138,15 @@ cell: horizontal bounds are the cell bounds, the lower `y` bound is the
 negative world limit, and the upper bound is the greatest of the four corner
 samples. Cells are half-open on positive `x` and `z` edges, except at the
 positive world boundary. A footprint selects every cell with strictly
-positive horizontal intersection.
+positive horizontal intersection. Candidate cells enumerate in ascending
+`(cell_x, cell_z)` order.
+
+Procedural sample generation (domain separator, generator version, amplitude
+range, and the implementation safety cap on selected-cell count) lives in the
+`world-server` heightfield module as versioned private implementation
+constants while chunk persistence and height edits remain out of scope for
+that surface. Those constants do not alter the lattice, ownership, column,
+or grounding rules above.
 
 ## 4. Shape tree
 
