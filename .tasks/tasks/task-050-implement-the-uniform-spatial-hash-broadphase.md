@@ -6,7 +6,7 @@ priority: p1
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-048]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T05:07:47Z"
+updatedAt: "2026-08-10T05:12:12Z"
 ---
 
 <!-- task-tracker:description -->
@@ -179,6 +179,33 @@ There is no broadphase, so any collision query would be O(entities) per moving p
   started 2026-08-10T05:07:44Z, exit 1 in 3.2s
   output:
   | (node:54024) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T05:10:18Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access inspect --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-050-spec-review.md --timeout-ms 1200000
+  started 2026-08-10T05:08:33Z, exit 0 in 104.8s
+  output tail (truncated to last 30 lines):
+  |  added. `encloses_aigent_aggregate` in `collider.rs:145` matches CONTRACT §7.1 exactly (strict horizontal, vertical equality allowed); `overlaps_positive_volume` matches the strict-inequality positive-volume rule.
+  | - **Rubric 3 (cell coverage, boundary exactness, deterministic ordering):** Verified `axis_cell_span` uses floor/ceil-minus-one so a face exactly on a cell boundary does not enter the next cell (unit test `exact_boundary_excludes_next_cell`, including negative coordinates); results are gathered into a `BTreeSet` so output is deduplicated ascending by u64 ID regardless of `HashMap`/`Vec` bucket order (unit test seeds reversed/duplicated bucket vectors directly). The `MAX_ENUMERATED_QUERY_CELLS` full-scan fallback iterates the `BTreeMap` of aggregates with predicates equivalent to the enumerate path, so it cannot change results, only cost.
+  | - **Rubric 4 (test coverage):** Read `crates/world-server/tests/broadphase_behavior.rs` in full — 8 deterministic tests covering provenance and cell edge, ruleset mismatch, sleeping/unleased/shapeless/empty-slot exclusion (including query-level assertion), insertion-order independence, multi-cell + negative-octant + exact-face-boundary queries, overlap vs enclosure predicates (including horizontal-equality rejection), invalid frozen geometry (undecodable bytes, structurally invalid tree, missing leased entity, identity mismatch), and bucket-vs-overlap conservativeness. Names match the recorded 8-pass evidence in the task card.
+  | - **Rubric 5 (harness timing and budget):** Read `crates/workload-harness/src/lib.rs` in full. `measure_broadphase_budget` builds a 300-shaped-aigent frozen generation (`CONCURRENT_AIGENTS_TARGET = 300`), times paired rebuild + representative overlap/bucket/enclosure queries over 32 post-warmup samples, prints rebuild/query/combined percentiles, and pushes a failure when combined p95 `>= 50_000` µs (reach-or-exceed, as required); `gate_profile_passes` asserts the report is ok and p95 < budget. Recorded harness output shows combined p95 ≈ 2.3 ms, and the task card records passing focused tests, clippy `-D warnings`, and full `node scripts/check.mjs` — evidence only; I could not re-run gates (no shell), which is covered by finding 1 along with the unverified git state.
+  | - **Context docs:** Read ARCHITECTURE §1/§5 excerpts (300 aigents, 50 ms tick, spatial hash sized to max entity bound, rebuilt from published generation, sleeping bodies outside active set) and the CONTRACT.md broadphase/enclosure text; implementation and contract addition are consistent with both.
+  | (node:61336) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T05:12:12Z — run: node .agent-foundry/agent-headless/cli.js run --provider claude --cwd N:\aigent-place --model claude-fable-5 --effort low --access inspect --session ephemeral --prompt-file C:\Users\shift\AppData\Local\Temp\task-050-standards-review.md --timeout-ms 1200000
+  started 2026-08-10T05:10:23Z, exit 0 in 109.4s
+  output tail (truncated to last 30 lines):
+  | Ds, generation IDs) and no secrets.
+  | - **ENGINEERING-STANDARDS: no hash iteration / scheduler / wall-clock as business input** — cell storage is a `HashMap` but candidates are gathered through a `BTreeSet` and full scans iterate the `BTreeMap` of aggregates; the `MAX_ENUMERATED_QUERY_CELLS` fallback applies predicates equivalent to the enumerate path (`cell_ranges_overlap` mirrors bucket membership because entities are inserted into every cell of their span), so the cutover changes cost only. Wall-clock enters only harness timing measurement, which is its purpose.
+  | - **ENGINEERING-STANDARDS: validate at trust boundaries / fail closed** — frozen geometry is re-decoded and re-validated (`validate_shape_tree`) before derivation; verified in `shape.rs` that `shape.max_extent_mm` bounds each aggregate axis, so the ≤8-cells-per-entity invariant in `insert_entity` (`broadphase.rs:328`) is sound; boundary arithmetic (`floor_to_i64`/`ceil_to_i64`/`checked_cell_count`) rejects overflow rather than wrapping.
+  | - **ENGINEERING-STANDARDS: new behavior has a failing-without-it test; unskippable gate** — behavior tests above; the harness budget check (`measure_broadphase_budget`, fail at combined p95 ≥ 50 000 µs) runs inside `workload-harness`, which is part of both the pre-commit fast subset and the full CI gate per AGENTS.md.
+  | - **ENGINEERING-STANDARDS: docs change with behavior; contracts versioned** — `world/v1/CONTRACT.md` §5 now states the spatial-hash rebuild rule, cell size source, and the explicit active-leases sleeping bridge until task-052, matching the code's documented bridge in `broadphase.rs:7-14`.
+  | - **ENGINEERING-STANDARDS: dependencies** — `workload-harness` added `prost 0.13.5` and `aigent-protocol`, both already in the workspace (world-server uses the same versions); `Cargo.lock` is in the diff scope.
+  | - **AGENTS.md product invariants** — 20 Hz/50 ms budget: harness measures 300-aigent rebuild+query against 50 000 µs and recorded p95 ≈ 2.3 ms; sleeping bodies non-colliding: unleased entities excluded from aggregates and both candidate sets (test asserts absence at index and query level); shared primitive grammar: colliders derive from the same `ShapeTree`; strict positive-volume overlap and §7.1 enclosure (strict horizontal, vertical equality) match CONTRACT §5/§7.1 exactly in `collider.rs:131-152`.
+  | - **Could not verify (finding 1)** — clean working tree, absence of untracked files, and byte-level diff equivalence to commit 0ee7624; recorded gate runs are treated as evidence only, and I could not re-execute them without a shell.
+  | (node:58288) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
   | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
   | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
   | (Use `node --trace-warnings ...` to show where the warning was created)
