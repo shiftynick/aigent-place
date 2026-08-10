@@ -566,6 +566,30 @@ fn direct_ground_rotated_counterexample_rejects_naive_arithmetic() {
 }
 
 #[test]
+fn exact_grounding_unrepresentable_pose_fails_closed_after_complete_search() {
+    let hf = Heightfield::new(seed(0x73), 1000).expect("config");
+    let shape = box_shape_posed(
+        5_688,
+        3_147,
+        5_688,
+        (5, 45_734_179, 11),
+        Quaternion {
+            x: -0.605092407756588,
+            y: -0.462663884763307,
+            z: -0.555953611218278,
+            w: -0.332747486819084,
+        },
+    );
+    let translation = WorldPointMm::new(100.1, -61_634_340.336262815, 100.1).expect("translation");
+    assert!(matches!(
+        hf.ground(&shape, translation),
+        Err(HeightfieldError::ExactGroundingUnreachable {
+            support_top_mm: 8180
+        })
+    ));
+}
+
+#[test]
 fn direct_ground_deterministic_stress_corpus() {
     let hf = Heightfield::new(seed(0x61), 1000).expect("config");
     let dims = [111_i64, 333, 501];

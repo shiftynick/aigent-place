@@ -88,14 +88,15 @@ pub const HEIGHTFIELD_MAX_SELECTED_CELLS: usize = 1_048_576;
 /// Maximum residual Y corrections while seeking a bit-exact grounded pose.
 ///
 /// Each step re-derives the collider and subtracts `(derived_min_y - support)`.
-/// Together with [`EXACT_GROUNDING_MAX_ULP_RADIUS`], this bounds termination.
+/// Together with [`EXACT_GROUNDING_MAX_BINARY_STEPS`], this bounds termination.
 pub const EXACT_GROUNDING_MAX_RESIDUAL_STEPS: u32 = 16;
 
-/// Inclusive ulp radius polished around the residual-refined Y candidate.
+/// Maximum ordered-`f64` binary-search steps across the closed world Y range.
 ///
-/// Search order is deterministic: offset `0`, then `-1,+1`, `-2,+2`, …
-/// up to this radius. No epsilon acceptance; failure is fail-closed.
-pub const EXACT_GROUNDING_MAX_ULP_RADIUS: u32 = 64;
+/// Every finite binary64 value in `[-WORLD_BOUND_MM, WORLD_BOUND_MM]` is
+/// represented by one monotonically ordered key, so 64 steps cover the entire
+/// key interval. No epsilon acceptance; failure is fail-closed.
+pub const EXACT_GROUNDING_MAX_BINARY_STEPS: u32 = 64;
 
 const GENERATED_HEIGHT_SPAN: u64 = (GENERATED_HEIGHT_MAX_MM - GENERATED_HEIGHT_MIN_MM + 1) as u64;
 
@@ -305,8 +306,8 @@ impl Heightfield {
     /// rotated geometry.
     ///
     /// Termination is bounded by [`EXACT_GROUNDING_MAX_RESIDUAL_STEPS`] residual
-    /// corrections plus at most `2 * EXACT_GROUNDING_MAX_ULP_RADIUS + 1` ulp
-    /// candidates. If no representable pose hits exact equality, returns
+    /// corrections plus [`EXACT_GROUNDING_MAX_BINARY_STEPS`] ordered-`f64`
+    /// binary-search probes. If no in-world representable pose hits exact equality, returns
     /// [`HeightfieldError::ExactGroundingUnreachable`].
     ///
     /// # Errors
@@ -925,60 +926,39 @@ fn derived_min_y(shape: &ShapeTree, translation: WorldPointMm) -> Result<f64, He
     Ok(collider.aggregate().min().y())
 }
 
-/// Step `y` by `steps` ulps. `steps == 0` returns `y` unchanged (canonicalized).
-fn ulp_offset(y: f64, steps: i32) -> Option<f64> {
-    if !y.is_finite() {
-        return None;
-    }
-    let mut value = if y == 0.0 { 0.0 } else { y };
-    if steps >= 0 {
-        for _ in 0..steps {
-            value = next_up_finite(value)?;
-        }
-    } else {
-        let count = steps.checked_neg()?;
-        for _ in 0..count {
-            value = next_down_finite(value)?;
-        }
-    }
-    Some(if value == 0.0 { 0.0 } else { value })
-}
+const F64_SIGN_BIT: u64 = 1_u64 << 63;
 
-fn next_up_finite(value: f64) -> Option<f64> {
+/// Map a finite `f64` to an unsigned key whose ordinary ordering matches
+/// numeric ordering. Negative values invert every bit; non-negative values
+/// flip the sign bit. The inverse is [`f64_from_ordered_key`].
+fn ordered_f64_key(value: f64) -> Option<u64> {
     if !value.is_finite() {
         return None;
     }
-    let bits = if value == 0.0 {
-        1
-    } else if value > 0.0 {
-        value.to_bits().checked_add(1)?
+    let bits = value.to_bits();
+    Some(if bits & F64_SIGN_BIT == 0 {
+        bits | F64_SIGN_BIT
     } else {
-        value.to_bits().checked_sub(1)?
-    };
-    let next = f64::from_bits(bits);
-    next.is_finite().then_some(next)
+        !bits
+    })
 }
 
-fn next_down_finite(value: f64) -> Option<f64> {
-    if !value.is_finite() {
-        return None;
-    }
-    let bits = if value == 0.0 {
-        (1_u64 << 63) | 1
-    } else if value > 0.0 {
-        value.to_bits().checked_sub(1)?
+fn f64_from_ordered_key(key: u64) -> Option<f64> {
+    let bits = if key & F64_SIGN_BIT == 0 {
+        !key
     } else {
-        value.to_bits().checked_add(1)?
+        key & !F64_SIGN_BIT
     };
-    let next = f64::from_bits(bits);
-    next.is_finite().then_some(next)
+    let value = f64::from_bits(bits);
+    value.is_finite().then_some(value)
 }
 
 /// Find a Y such that re-derived aggregate min Y is bit-identical to `support`.
 ///
 /// Bound: at most [`EXACT_GROUNDING_MAX_RESIDUAL_STEPS`] residual corrections,
-/// then at most `2 * EXACT_GROUNDING_MAX_ULP_RADIUS + 1` ulp candidates
-/// (offsets `0, -1, +1, …, ±radius`). Fail-closed when none match.
+/// then [`EXACT_GROUNDING_MAX_BINARY_STEPS`] probes covering every
+/// representable entity Y inside the closed world bound. Fail-closed when the
+/// monotone re-derived minimum skips the exact support value.
 fn solve_exact_grounded_y(
     shape: &ShapeTree,
     translation: WorldPointMm,
@@ -992,8 +972,12 @@ fn solve_exact_grounded_y(
 
     let delta_y = checked_f64_sub(support, min_y)?;
     let mut y = checked_f64_add(translation.y(), delta_y)?;
+    let world_bound = i64_to_exact_f64(WORLD_BOUND_MM)?;
 
     for _ in 0..EXACT_GROUNDING_MAX_RESIDUAL_STEPS {
+        if !(-world_bound..=world_bound).contains(&y) {
+            break;
+        }
         let candidate = translation_with_y(translation, y)?;
         let got = derived_min_y(shape, candidate)?;
         if got.to_bits() == support.to_bits() {
@@ -1007,26 +991,39 @@ fn solve_exact_grounded_y(
         y = next;
     }
 
-    let base = y;
-    for radius in 0..=EXACT_GROUNDING_MAX_ULP_RADIUS {
-        let radius_i = i32::try_from(radius).map_err(|_| HeightfieldError::IntegerOverflow {
-            context: "exact grounding ulp radius",
+    let mut low_key =
+        ordered_f64_key(-world_bound).ok_or(HeightfieldError::NonFiniteCoordinate {
+            context: "exact grounding lower search bound",
         })?;
-        let pair = if radius_i == 0 {
-            [0, 0]
+    let mut high_key =
+        ordered_f64_key(world_bound).ok_or(HeightfieldError::NonFiniteCoordinate {
+            context: "exact grounding upper search bound",
+        })?;
+
+    for _ in 0..EXACT_GROUNDING_MAX_BINARY_STEPS {
+        if low_key > high_key {
+            break;
+        }
+        let mid_key = low_key + ((high_key - low_key) / 2);
+        let y_try = f64_from_ordered_key(mid_key).ok_or(HeightfieldError::NonFiniteCoordinate {
+            context: "exact grounding ordered key",
+        })?;
+        let candidate = translation_with_y(translation, y_try)?;
+        let got = derived_min_y(shape, candidate)?;
+        if got.to_bits() == support.to_bits() {
+            return Ok(candidate.y());
+        }
+        if got < support {
+            low_key = mid_key
+                .checked_add(1)
+                .ok_or(HeightfieldError::IntegerOverflow {
+                    context: "exact grounding lower key",
+                })?;
         } else {
-            [-radius_i, radius_i]
-        };
-        let offsets = if radius_i == 0 { &pair[..1] } else { &pair[..] };
-        for &offset in offsets {
-            let Some(y_try) = ulp_offset(base, offset) else {
-                continue;
+            let Some(next_high) = mid_key.checked_sub(1) else {
+                break;
             };
-            let candidate = translation_with_y(translation, y_try)?;
-            let got = derived_min_y(shape, candidate)?;
-            if got.to_bits() == support.to_bits() {
-                return Ok(candidate.y());
-            }
+            high_key = next_high;
         }
     }
 
@@ -1160,5 +1157,31 @@ mod tests {
         assert_eq!(b, last);
         let bounds = cell_horizontal_bounds(last, s).expect("bounds");
         assert_eq!(bounds.1, WORLD_BOUND_MM);
+    }
+
+    #[test]
+    fn ordered_f64_keys_round_trip_and_preserve_total_order() {
+        let values = [
+            -(WORLD_BOUND_MM as f64),
+            -1.0,
+            f64::from_bits(F64_SIGN_BIT | 1),
+            -0.0,
+            0.0,
+            f64::from_bits(1),
+            1.0,
+            WORLD_BOUND_MM as f64,
+        ];
+        let keys: Vec<_> = values
+            .into_iter()
+            .map(|value| {
+                let key = ordered_f64_key(value).expect("finite key");
+                assert_eq!(
+                    f64_from_ordered_key(key).expect("finite value").to_bits(),
+                    value.to_bits()
+                );
+                key
+            })
+            .collect();
+        assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
     }
 }

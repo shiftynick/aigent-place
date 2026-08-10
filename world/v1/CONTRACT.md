@@ -233,7 +233,9 @@ narrowphase results.
 Grounding translates an entity vertically until its aggregate lower face
 equals the greatest terrain-column top beneath cells having positive-area
 intersection with its aggregate horizontal footprint. Horizontal coordinates
-do not change. Terrain columns participate in overlap, wake, restore, and
+do not change. If no in-world server `f64` translation re-derives that exact
+equality, grounding fails closed with typed `exact_grounding_unreachable`; it
+MUST NOT accept an epsilon or approximate contact. Terrain columns participate in overlap, wake, restore, and
 continuous movement using the same legal-contact rule as entity AABBs.
 
 ## 6. Movement
