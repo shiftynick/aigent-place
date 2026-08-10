@@ -1,14 +1,12 @@
 ---
 id: task-048
 title: Derive the canonical AABB collider from a validated shape tree
-status: in_progress
+status: review
 priority: p0
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-047]
 createdAt: "2026-08-06T13:25:08Z"
-updatedAt: "2026-08-10T01:45:34Z"
-claimedBy: "shift@Shiftor"
-claimedAt: "2026-08-10T01:45:34Z"
+updatedAt: "2026-08-10T01:54:12Z"
 ---
 
 <!-- task-tracker:description -->
@@ -661,3 +659,175 @@ Nothing derives collision geometry from a shape. Implement the canonical collide
   | (Use `node --trace-warnings ...` to show where the warning was created)
 - 2026-08-10T01:45:34Z — note: cold review round 2 rung 1: SPEC PASS with full CHECKED coverage. STANDARDS: medium raw gate transcript missing from packet confirmed as packet defect; low zero-vs-duplicate diagnostic order discarded because the full zero-id pass completes before duplicate detection and therefore has fixed precedence independent of input order; low ADR text omission confirmed packet defect; low NonFiniteWorldTranslation naming for arithmetic failures confirmed and will fix. Round 3 will include raw tracker evidence and ADR-0002 text.
 - 2026-08-10T01:45:34Z — moved to in_progress (claimed by shift@Shiftor)
+- 2026-08-10T01:50:00Z — run: node .agent-foundry/agent-headless/cli.js run --provider cursor --cwd N:\aigent-place --model cursor-grok-4.5-high --effort high --access edit-isolated --prompt-file C:\Users\shift\AppData\Local\Temp\codex-task-048-cursor-error-cause.md --timeout-ms 600000 --trust-workspace --output text --json
+  started 2026-08-10T01:47:28Z, exit 0 in 152.4s
+  output tail (truncated to last 30 lines):
+  |     "type": "result",
+  |       "kind": "result",
+  |       "raw": "Using worktree: C:\\Users\\shift\\.cursor\\worktrees\\aigent-place\\agent-headless-msmkn92t-7a376b692bbd\nPatched only `collider.rs` and `collider_behavior.rs`. Shell was rejected in this environment, so rustfmt and the focused tests were not run.\n\n### Routing choices\n| Path | Variant |\n| --- | --- |\n| `WorldPointMm::new` (public constructor) | `NonFiniteWorldTranslation` |\n| Internal points via `derived_world_point` (center, AABB min/max, union) | remaps constructor failure → `NonFiniteDerivedArithmetic` |\n| `checked_add` / `checked_sub` / `checked_dot` / `checked_extent` | `NonFiniteDerivedArithmetic` |\n| Non-finite Hamilton product in `multiply_quaternion` | `NonFiniteDerivedArithmetic` |\n| `i64_to_f64_mm` cast failure | `NonFiniteDerivedArithmetic` |\n| Bad caller quaternion / missing tree invariants | unchanged `MissingValidatedInvariant` |\n\nNew variant name: **`NonFiniteDerivedArithmetic`** — documented as checked derived geometry arithmetic (add/sub/dot/extent/quaternion product/integer cast) or an internally built world coordinate failing finiteness.\n\n### Tests\n- Existing constructor test still expects `NonFiniteWorldTranslation`.\n- New `derived_non_finite_arithmetic_is_distinct_from_translation_error`: finite `f64::MAX` translation constructs successfully; deriving a box overflows center±half and returns `NonFiniteDerivedArithmetic` without panic.\n\n### Residual risks\n- Any external exhaustive match on `ColliderDerivationError` must add the new variant (none found outside these files).\n- Intermediate products (`abs(R)*h`, matrix·vector) are not checked before `checked_add`; non-finite products still fail at the add/canonicalize step as the derived variant.\n- Quaternion product that is finite but degenerate still goes through `normalize_quaternion` → `MissingValidatedInvariant` (pre-existing).\n\nVerify locally:\n```text\nrustfmt crates/world-server/src/collider.rs crates/world-server/tests/collider_behavior.rs\ncargo test -p world-server --test collider_behavior -- world_point_rejects_non_finite derived_non_finite_arithmetic\n```\n"
+  |     }
+  |   ],
+  |   "exitCode": 0,
+  |   "modelRequested": "cursor-grok-4.5-high",
+  |   "warnings": [],
+  |   "workspace": {
+  |     "cwd": "N:\\aigent-place",
+  |     "access": "edit-isolated",
+  |     "worktree": "C:\\Users\\shift\\.cursor\\worktrees\\aigent-place\\agent-headless-msmkn92t-7a376b692bbd",
+  |     "worktreeSource": "reported",
+  |     "worktreeName": "agent-headless-msmkn92t-7a376b692bbd"
+  |   },
+  |   "stderr": "",
+  |   "durationMs": 151494
+  | }
+  | (node:57608) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T01:50:40Z — run: cargo fmt --all -- --check
+  started 2026-08-10T01:50:40Z, exit 0 in 0.2s
+  output:
+  | (no output)
+- 2026-08-10T01:50:43Z — run: cargo test -p world-server --test collider_behavior
+  started 2026-08-10T01:50:41Z, exit 101 in 2.7s
+  output tail (truncated to last 30 lines):
+  | test parent_orientation_rotates_child_translation_before_addition ... ok
+  | test parts_sort_by_ascending_node_id_despite_shuffled_input ... ok
+  | test rotated_box_matches_world_contract_fixture ... ok
+  | test derived_non_finite_arithmetic_is_distinct_from_translation_error ... FAILED
+  | test rotated_non_box_primitives_match_independent_oracles ... ok
+  | test same_build_derivation_is_bit_identical_across_calls ... ok
+  | test entity_translation_offsets_every_part ... ok
+  | test fail_closed_on_empty_tree_and_missing_invariants ... ok
+  | test world_point_rejects_non_finite_and_canonicalizes_negative_zero ... ok
+  |
+  | failures:
+  |
+  | ---- derived_non_finite_arithmetic_is_distinct_from_translation_error stdout ----
+  |
+  | thread 'derived_non_finite_arithmetic_is_distinct_from_translation_error' panicked at crates\world-server\tests\collider_behavior.rs:296:5:
+  | assertion `left == right` failed
+  |   left: Ok(Collider { parts: [NodeAabb { node_id: 1, bounds: Aabb { min: WorldPointMm { x: 1.7976931348623157e308, y: -50.0, z: -50.0 }, max: WorldPointMm { x: 1.7976931348623157e308, y: 50.0, z: 50.0 } } }], aggregate: Aabb { min: WorldPointMm { x: 1.7976931348623157e308, y: -50.0, z: -50.0 }, max: WorldPointMm { x: 1.7976931348623157e308, y: 50.0, z: 50.0 } } })
+  |  right: Err(NonFiniteDerivedArithmetic)
+  | note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  |
+  |
+  | failures:
+  |     derived_non_finite_arithmetic_is_distinct_from_translation_error
+  |
+  | test result: FAILED. 15 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  |
+  |    Compiling world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 2.37s
+  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
+  | error: test failed, to rerun pass `-p world-server --test collider_behavior`
+- 2026-08-10T01:51:47Z — run: node .agent-foundry/agent-headless/cli.js run --provider cursor --cwd C:\Users\shift\.cursor\worktrees\aigent-place\agent-headless-msmkn92t-7a376b692bbd --model cursor-grok-4.5-high --effort high --access edit --prompt-file C:\Users\shift\AppData\Local\Temp\codex-task-048-cursor-error-test-followup.md --timeout-ms 600000 --trust-workspace --output text --json
+  started 2026-08-10T01:51:47Z, exit 1 in 0.1s
+  output:
+  | invalid_request: invalid --access value
+  | (node:58004) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.
+  | Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+  | To eliminate this warning, add "type": "module" to N:\aigent-place\package.json.
+  | (Use `node --trace-warnings ...` to show where the warning was created)
+- 2026-08-10T01:52:59Z — run: cargo fmt --all -- --check
+  started 2026-08-10T01:52:59Z, exit 0 in 0.2s
+  output:
+  | (no output)
+- 2026-08-10T01:53:00Z — run: cargo test -p world-server --test collider_behavior
+  started 2026-08-10T01:52:59Z, exit 0 in 1.5s
+  output:
+  |
+  | running 15 tests
+  | test world_point_rejects_non_finite_and_canonicalizes_negative_zero ... ok
+  | test rotated_box_matches_world_contract_fixture ... ok
+  | test aggregate_is_component_wise_minmax_not_a_hull_merge_of_parts ... ok
+  | test identity_primitives_match_contract_half_extents ... ok
+  | test overlap_requires_strictly_positive_extent_on_all_axes ... ok
+  | test fail_closed_on_empty_tree_and_missing_invariants ... ok
+  | test canonical_bits_are_little_endian_node_id_and_f64_patterns ... ok
+  | test cosmetic_fields_do_not_change_canonical_bits ... ok
+  | test parent_orientation_rotates_child_translation_before_addition ... ok
+  | test capsule_zero_segment_half_extents_remain_radius_on_y ... ok
+  | test entity_translation_offsets_every_part ... ok
+  | test parts_sort_by_ascending_node_id_despite_shuffled_input ... ok
+  | test rotated_box_matches_independent_corner_oracle ... ok
+  | test same_build_derivation_is_bit_identical_across_calls ... ok
+  | test rotated_non_box_primitives_match_independent_oracles ... ok
+  |
+  | test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  |
+  |    Compiling world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.21s
+  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
+- 2026-08-10T01:53:02Z — run: cargo test -p world-server --lib
+  started 2026-08-10T01:53:01Z, exit 0 in 0.9s
+  output tail (truncated to last 30 lines):
+  | running 23 tests
+  | test aoi::tests::hard_cap_constant_matches_workload ... ok
+  | test aoi::tests::role_caps ... ok
+  | test collider::tests::finite_derived_operands_that_overflow_use_arithmetic_error ... ok
+  | test entity::tests::bounds_are_closed_and_negative_zero_canonicalizes ... ok
+  | test entity::tests::exhausted_allocator_rejects_instead_of_reusing ... ok
+  | test entity::tests::restore_fails_closed_on_invariant_violations ... ok
+  | test tick::tests::tick_constants_match_architecture ... ok
+  | test entity::tests::ids_are_monotonic_and_only_accepted_creation_consumes_one ... ok
+  | test outbound::tests::gap_in_observe_ticks_resets_overflow_streak ... ok
+  | test entity::tests::unknown_entity_rejects_without_allocating ... ok
+  | test lease::tests::lower_sequence_does_not_replace ... ok
+  | test order::tests::sorts_by_tick_then_aigent_bytes_then_sequence ... ok
+  | test rng::tests::matches_replay_oracle_fixture_draw ... ok
+  | test outbound::tests::coalesces_delta_to_full_when_dropping_prior_full ... ok
+  | test rng::tests::matches_rejection_block_and_spatial_oracles ... ok
+  | test outbound::tests::exactly_at_limit_is_not_over ... ok
+  | test entity::tests::revision_exhaustion_rejects_without_effect ... ok
+  | test tick::tests::clock_advances_without_wall_clock ... ok
+  | test entity::tests::revision_increments_once_and_skips_no_ops ... ok
+  | test entity::tests::shape_slot_is_stored_verbatim_and_no_op_aware ... ok
+  | test transport::feature_wire_tests::wire_to_semantic_hello_preserves_noncontiguous_versions ... ok
+  | test lease::tests::ttl_expiry_removes_lease ... ok
+  | test outbound::tests::duplicate_observe_same_tick_does_not_double_count ... ok
+  |
+  | test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  |
+  |    Compiling world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.68s
+  |      Running unittests src\lib.rs (target\debug\deps\world_server-2d7c22779d6e15e7.exe)
+- 2026-08-10T01:53:03Z — run: cargo clippy -p world-server --all-targets -- -D warnings
+  started 2026-08-10T01:53:02Z, exit 0 in 0.9s
+  output:
+  |     Checking world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.81s
+- 2026-08-10T01:53:53Z — run: node scripts/check.mjs
+  started 2026-08-10T01:53:03Z, exit 0 in 50.2s
+  output tail (truncated to last 30 lines):
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-10T01:54:12Z — moved to review (note: Round-two diagnostic fix complete: NonFiniteWorldTranslation is now limited to caller-supplied WorldPointMm input; checked internal geometry arithmetic uses NonFiniteDerivedArithmetic. The invalid f64::MAX-plus-50 integration setup was replaced by a private finite-operands overflow unit test. Final-tree evidence: fmt check exit 0; collider integration 15/15; world-server lib 23/23 including the new unit test; all-target clippy exit 0; unified node scripts/check.mjs exit 0 with product-check PASS.)

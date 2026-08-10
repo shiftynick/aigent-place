@@ -38,7 +38,9 @@ impl WorldPointMm {
     /// # Errors
     ///
     /// Returns [`ColliderDerivationError::NonFiniteWorldTranslation`] when any
-    /// component is NaN or infinite.
+    /// caller-supplied component is NaN or infinite. Internal derivation sites
+    /// that build derived coordinates remap that failure to
+    /// [`ColliderDerivationError::NonFiniteDerivedArithmetic`].
     pub fn new(x: f64, y: f64, z: f64) -> Result<Self, ColliderDerivationError> {
         Ok(Self {
             x: canonicalize_mm(x).ok_or(ColliderDerivationError::NonFiniteWorldTranslation)?,
@@ -128,12 +130,12 @@ impl Aabb {
         center: WorldPointMm,
         half: [f64; 3],
     ) -> Result<Self, ColliderDerivationError> {
-        let min = WorldPointMm::new(
+        let min = derived_world_point(
             checked_sub(center.x(), half[0])?,
             checked_sub(center.y(), half[1])?,
             checked_sub(center.z(), half[2])?,
         )?;
-        let max = WorldPointMm::new(
+        let max = derived_world_point(
             checked_add(center.x(), half[0])?,
             checked_add(center.y(), half[1])?,
             checked_add(center.z(), half[2])?,
@@ -162,8 +164,8 @@ impl Aabb {
             max_z = max_z.max(part.bounds.max.z());
         }
         Ok(Self {
-            min: WorldPointMm::new(min_x, min_y, min_z)?,
-            max: WorldPointMm::new(max_x, max_y, max_z)?,
+            min: derived_world_point(min_x, min_y, min_z)?,
+            max: derived_world_point(max_x, max_y, max_z)?,
         })
     }
 }
@@ -300,8 +302,12 @@ impl Collider {
 /// than silently inventing geometry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ColliderDerivationError {
-    /// Entity translation or an intermediate world coordinate was non-finite.
+    /// Caller-supplied [`WorldPointMm`] components were NaN or infinite.
     NonFiniteWorldTranslation,
+    /// Checked derived geometry arithmetic produced a non-finite value
+    /// (add/sub/dot/extent/quaternion product/integer cast), or an internally
+    /// constructed world coordinate failed finiteness after that arithmetic.
+    NonFiniteDerivedArithmetic,
     /// A supposedly validated-tree invariant required by derivation is absent.
     MissingValidatedInvariant { detail: &'static str },
 }
@@ -310,7 +316,7 @@ pub enum ColliderDerivationError {
 ///
 /// # Errors
 ///
-/// Returns [`ColliderDerivationError`] when a world coordinate becomes
+/// Returns [`ColliderDerivationError`] when derived geometry arithmetic becomes
 /// non-finite, or when a transform / primitive / parent invariant that shape
 /// validation should already have enforced is missing.
 pub fn derive_collider(
@@ -361,7 +367,7 @@ pub fn derive_collider(
             checked_extent(matrix[1], half)?,
             checked_extent(matrix[2], half)?,
         ];
-        let center = WorldPointMm::new(
+        let center = derived_world_point(
             checked_add(translation.x(), pose.center[0])?,
             checked_add(translation.y(), pose.center[1])?,
             checked_add(translation.z(), pose.center[2])?,
@@ -591,7 +597,7 @@ fn multiply_quaternion(a: UnitQuat, b: UnitQuat) -> Result<UnitQuat, ColliderDer
         .iter()
         .all(|value| value.is_finite())
     {
-        return Err(ColliderDerivationError::NonFiniteWorldTranslation);
+        return Err(ColliderDerivationError::NonFiniteDerivedArithmetic);
     }
     normalize_quaternion(&product)
 }
@@ -630,11 +636,11 @@ fn checked_extent(row: [f64; 3], half: [f64; 3]) -> Result<f64, ColliderDerivati
     for (matrix_element, half_extent) in row.into_iter().zip(half) {
         let absolute = matrix_element.abs();
         if !absolute.is_finite() {
-            return Err(ColliderDerivationError::NonFiniteWorldTranslation);
+            return Err(ColliderDerivationError::NonFiniteDerivedArithmetic);
         }
         sum = checked_add(sum, absolute * half_extent)?;
     }
-    canonicalize_mm(sum).ok_or(ColliderDerivationError::NonFiniteWorldTranslation)
+    canonicalize_mm(sum).ok_or(ColliderDerivationError::NonFiniteDerivedArithmetic)
 }
 
 fn checked_dot(row: [f64; 3], vector: [f64; 3]) -> Result<f64, ColliderDerivationError> {
@@ -642,24 +648,38 @@ fn checked_dot(row: [f64; 3], vector: [f64; 3]) -> Result<f64, ColliderDerivatio
     for (matrix_element, component) in row.into_iter().zip(vector) {
         sum = checked_add(sum, matrix_element * component)?;
     }
-    canonicalize_mm(sum).ok_or(ColliderDerivationError::NonFiniteWorldTranslation)
+    canonicalize_mm(sum).ok_or(ColliderDerivationError::NonFiniteDerivedArithmetic)
 }
 
 fn checked_add(left: f64, right: f64) -> Result<f64, ColliderDerivationError> {
     let sum = left + right;
-    canonicalize_mm(sum).ok_or(ColliderDerivationError::NonFiniteWorldTranslation)
+    canonicalize_mm(sum).ok_or(ColliderDerivationError::NonFiniteDerivedArithmetic)
 }
 
 fn checked_sub(left: f64, right: f64) -> Result<f64, ColliderDerivationError> {
     let difference = left - right;
-    canonicalize_mm(difference).ok_or(ColliderDerivationError::NonFiniteWorldTranslation)
+    canonicalize_mm(difference).ok_or(ColliderDerivationError::NonFiniteDerivedArithmetic)
 }
 
 fn i64_to_f64_mm(value: i64) -> Result<f64, ColliderDerivationError> {
     let as_f64 = value as f64;
     // Exact for every legal millimetre integer in the world bound; still reject
     // if casting somehow produced a non-finite value.
-    canonicalize_mm(as_f64).ok_or(ColliderDerivationError::NonFiniteWorldTranslation)
+    canonicalize_mm(as_f64).ok_or(ColliderDerivationError::NonFiniteDerivedArithmetic)
+}
+
+/// Build a world point from already-checked derivation arithmetic.
+///
+/// Remaps [`WorldPointMm::new`]'s caller-translation error to
+/// [`ColliderDerivationError::NonFiniteDerivedArithmetic`] so internal sites
+/// do not mislabel derived geometry failures.
+fn derived_world_point(x: f64, y: f64, z: f64) -> Result<WorldPointMm, ColliderDerivationError> {
+    WorldPointMm::new(x, y, z).map_err(|err| match err {
+        ColliderDerivationError::NonFiniteWorldTranslation => {
+            ColliderDerivationError::NonFiniteDerivedArithmetic
+        }
+        other => other,
+    })
 }
 
 fn canonicalize_mm(value: f64) -> Option<f64> {
@@ -667,4 +687,17 @@ fn canonicalize_mm(value: f64) -> Option<f64> {
         return None;
     }
     Some(if value == 0.0 { 0.0 } else { value })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{checked_add, ColliderDerivationError};
+
+    #[test]
+    fn finite_derived_operands_that_overflow_use_arithmetic_error() {
+        assert_eq!(
+            checked_add(f64::MAX, f64::MAX),
+            Err(ColliderDerivationError::NonFiniteDerivedArithmetic)
+        );
+    }
 }
