@@ -32,7 +32,10 @@ The product workspace is a Cargo workspace (`crates/world-server`,
 SDK façade (`packages/aigent-sdk`). The world-server binary prints a smoke
 marker by default; `world-server --listen [HOST:PORT]` serves
 `ws://HOST:PORT/ws` for local handshake demos (demo trusted-inject identity;
-default `127.0.0.1:7600`). Connected clients receive snapshot observe envelopes
+default `127.0.0.1:7600`). The listen path opens a durable SQLite WAL journal
+(default `world-journal.sqlite` in the process working directory; override with
+`--journal PATH`), recovers the world before accepting connections, and fails
+closed on corrupt or gapped committed history. Connected clients receive snapshot observe envelopes
 from the outbound fan-out drain (`TransportState::drain_fanout`); sustained
 outbound overflow isolates only the slow connection. Every observe payload —
 full snapshots, deltas, and resync baselines alike — is truncated to the
@@ -88,8 +91,9 @@ The accepted durable replay decision is
 [replay and persistence v1 contract](replay/v1/CONTRACT.md) defines canonical
 command admission, atomic durable generations, retry/event retention, crash
 recovery, and counter-based seeded randomness. The world-server keeps an
-in-memory journal for fast tests and a SQLite WAL journal for durable restart
-recovery behind the same single-writer generation contract. Async SQLite commits
+in-memory journal for fast tests and uses an async SQLite WAL journal for the
+live `--listen` path (and durable restart recovery tests) behind the same
+single-writer generation contract. Async SQLite commits
 use a bounded writer thread so the 20 Hz simulation stage never awaits storage;
 mutations install only after durable success.
 

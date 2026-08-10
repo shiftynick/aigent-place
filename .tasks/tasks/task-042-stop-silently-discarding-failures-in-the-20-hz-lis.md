@@ -6,7 +6,7 @@ priority: p2
 tags: [area:reliability, phase:debt]
 blockedBy: []
 createdAt: "2026-08-06T13:17:31Z"
-updatedAt: "2026-08-06T13:17:31Z"
+updatedAt: "2026-08-10T08:12:46Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ Debt left by the live-connection-slice milestone. The listen loop swallows every
 ## Log
 
 - 2026-08-06T13:17:31Z — created (status: backlog)
+- 2026-08-10T08:12:46Z — note: Task-039 cold review inventory update: after async SQLite becomes the live --listen path, include the second poll_durable call inside the Submitted/Busy arm (current transport.rs near the if let Ok(Some(...)) branch); it can silently discard a same-tick writer error in addition to the top-of-loop and advance branches already listed.

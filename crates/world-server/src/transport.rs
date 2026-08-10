@@ -13,6 +13,7 @@ use crate::fanout::{
 };
 use crate::generation::ImmutableGeneration;
 use crate::outbound::{ObserveOutcome, QUEUE_LIMIT_BYTES};
+use crate::persist::DurableJournal;
 use crate::session::{
     AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, ConnectionMode,
     ConnectionRole, DecodedCommandPayload, FeatureOffer, HandshakeOutcome, IdentityBinding,
@@ -20,7 +21,7 @@ use crate::session::{
 };
 use crate::snapshot::StubSnapshotPayload;
 use crate::tick::TICK_MS;
-use crate::world::{CommandEffect, QueuedCommand, World, WorldConfig};
+use crate::world::{CommandEffect, QueuedCommand, World, WorldConfig, WorldError};
 use aigent_protocol::{
     command_result, envelope, handshake_frame, shape_node::Primitive, BoxPrimitive, ColorRgba,
     CommandAccepted, CommandKind, CommandRejected, CommandResult, ConnectionMode as ProtoMode,
@@ -40,6 +41,7 @@ use prost::Message as ProstMessage;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,6 +50,11 @@ use tokio::sync::{mpsc, watch, Mutex};
 use tokio::task::JoinHandle;
 
 const OUTBOUND_CHANNEL_CAP: usize = 8;
+
+/// Documented default SQLite WAL path for `world-server --listen`.
+///
+/// Relative to the process working directory. Override with `--journal PATH`.
+pub const DEFAULT_LISTEN_JOURNAL_PATH: &str = "world-journal.sqlite";
 
 #[derive(Debug)]
 struct LiveSocket {
@@ -88,18 +95,39 @@ impl TransportState {
 
     #[must_use]
     pub fn new_with_options(hub: SessionHub, allow_non_loopback: bool) -> Arc<Self> {
+        Self::new_with_world(hub, allow_non_loopback, World::new(WorldConfig::default()))
+    }
+
+    /// Build shared state around an already-recovered or test-owned [`World`].
+    #[must_use]
+    pub fn new_with_world(hub: SessionHub, allow_non_loopback: bool, world: World) -> Arc<Self> {
+        let next_arrival = world.next_tick().max(1);
         Arc::new(Self {
             sessions: Mutex::new(hub),
             fanout: Mutex::new(SnapshotFanout::new()),
             mailbox: PublicationMailbox::new(),
-            world: Mutex::new(World::new(WorldConfig::default())),
-            next_arrival_tick: AtomicU64::new(1),
+            world: Mutex::new(world),
+            next_arrival_tick: AtomicU64::new(next_arrival),
             stamped_arrivals: Mutex::new(Vec::new()),
             connection_seq: AtomicU64::new(1),
             server_message_seq: AtomicU64::new(1),
             sockets: Mutex::new(HashMap::new()),
             allow_non_loopback: AtomicBool::new(allow_non_loopback),
         })
+    }
+
+    /// Open the async SQLite journal at `path`, recover the world, then build
+    /// listen state. Fails closed on corrupt or gapped committed history
+    /// (ADR-0005). Call before accepting connections.
+    pub fn try_new_with_durable_journal(
+        hub: SessionHub,
+        allow_non_loopback: bool,
+        journal_path: impl AsRef<Path>,
+    ) -> Result<Arc<Self>, WorldError> {
+        let journal =
+            DurableJournal::async_sqlite(journal_path).map_err(WorldError::Persistence)?;
+        let world = World::recover_from_journal(WorldConfig::default(), journal)?;
+        Ok(Self::new_with_world(hub, allow_non_loopback, world))
     }
 
     fn mint_connection_id(&self) -> Vec<u8> {

@@ -146,7 +146,9 @@ Validated ruleset candidates activate only at the tick boundary after soak
 journal commits each generation in canonical command order and supports restart
 reconstruction of the last committed generation (task-007 / task-032). Fast
 tests use an in-memory journal; the durable v1 store is SQLite WAL behind the
-same journal contract. Async SQLite commits run on a bounded single-writer
+same journal contract. The `--listen` binary opens `DurableJournal::async_sqlite`
+(default `world-journal.sqlite`, overridable with `--journal`) and recovers the
+world before accepting connections. Async SQLite commits run on a bounded single-writer
 thread (`DurableJournal::async_sqlite`); the 20 Hz simulation stage submits and
 polls without awaiting storage. A sync helper (`advance_tick`) may wait for the
 writer in tests. Mutations install only after durable success (ADR-0005).
