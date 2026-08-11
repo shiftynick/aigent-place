@@ -55,6 +55,46 @@ describe("review-packet", () => {
     assert.ok(result.problems.some((p) => p.includes("no change surface")));
   });
 
+  it("refuses round >= 2 without a named fix-verification check", () => {
+    const repo = mkdtempSync(join(tmpdir(), "pkt-fix-repo-"));
+    const dir = join(repo, "packet");
+    initPacket(dir, { taskId: "task-048", round: 2, repoRoot: repo });
+    fillPacket(dir);
+    const empty = checkPacket(dir, { repoRoot: repo });
+    assert.equal(empty.ok, false);
+    assert.ok(empty.problems.some((p) => p.includes("fix-verification.md")));
+
+    rmSync(join(dir, "fix-verification.md"));
+    const missing = checkPacket(dir, { repoRoot: repo });
+    assert.equal(missing.ok, false);
+    assert.ok(missing.problems.some((p) => p.includes("required")));
+
+    writeFileSync(join(dir, "fix-verification.md"), "none\n");
+    const none = checkPacket(dir, { repoRoot: repo });
+    assert.equal(none.ok, false);
+    assert.ok(none.problems.some((p) => p.includes("empty or 'none'")));
+
+    writeFileSync(
+      join(dir, "fix-verification.md"),
+      "DISTINCT ON concepts: node --test --test-name-pattern 'concepts query' failed before the ORDER BY fix.\n",
+    );
+    const named = checkPacket(dir, { repoRoot: repo });
+    assert.equal(named.ok, true);
+    assert.match(named.packet.fixVerification, /DISTINCT ON/);
+    const prompt = buildAxisPrompt(named.packet, "SPEC");
+    assert.match(prompt, /packet: fix verification/);
+    assert.match(prompt, /DISTINCT ON/);
+  });
+
+  it("allows round 1 packets with fix-verification none", () => {
+    const repo = mkdtempSync(join(tmpdir(), "pkt-r1-fix-"));
+    const dir = join(repo, "packet");
+    initPacket(dir, { taskId: "task-048", round: 1, repoRoot: repo });
+    fillPacket(dir);
+    const result = checkPacket(dir, { repoRoot: repo });
+    assert.equal(result.ok, true);
+  });
+
   it("builds COMBINED prompts that include standards", () => {
     const repo = mkdtempSync(join(tmpdir(), "pkt-prompt-repo-"));
     const dir = join(repo, "packet");
