@@ -80,6 +80,62 @@ describe("task run (recorded evidence)", () => {
     }
   });
 
+  it("accepts --timeout-ms for ordinary commands", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      const out = run(repo, [
+        "run", "task-001", "--timeout-ms", "60000", "--",
+        "node", "-e", '"console.log(41+1)"',
+      ]);
+      assert.match(out, /task-001 evidence recorded: exit 0/);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("enforces --timeout-ms by killing an over-budget command", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      assert.throws(
+        () =>
+          run(repo, [
+            "run", "task-001", "--timeout-ms", "200", "--",
+            "node", "-e", '"Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,2000)"',
+          ]),
+        (err) =>
+          err.status === 1 &&
+          /timed out after/.test(String(err.stderr ?? err.stdout ?? err.message)),
+      );
+    } finally {
+      try {
+        rmSync(repo, { recursive: true, force: true });
+      } catch {
+        // Windows can briefly keep the killed child locked on the temp tree.
+      }
+    }
+  });
+
+  it("refuses provider wraps below the 20-minute budget", () => {
+    const repo = fixtureRepo();
+    try {
+      run(repo, ["add", "Alpha"]);
+      assert.throws(
+        () =>
+          run(repo, [
+            "run", "task-001", "--timeout-ms", "900000", "--",
+            "node", ".agent-foundry/cold-review.mjs", "--help",
+          ]),
+        (err) =>
+          err.status === 2 &&
+          /below the 1200000ms provider budget/.test(String(err.stderr ?? err.message)),
+      );
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it("never writes trailing whitespace, even for blank output lines", () => {
     const repo = fixtureRepo();
     try {

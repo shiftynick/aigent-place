@@ -1,13 +1,13 @@
 # Bundled agent-headless
 
 - Upstream: `https://github.com/shiftynick/agent-headless`
-- Version: `0.3.0`
+- Version: `0.4.0`
 - CLI artifact: `dist/cli.js`
-- CLI SHA-256: `47b16b6579bac22d01e3da4969d2df3746b0dc74ee8b3c810c9f5e3442bcd432`
+- CLI SHA-256: `cd1db544d7d6ad3bc185d2a5a61ee510c591215c5e4cbf7105a216cbedb1d2ec`
 - Library artifact: `dist/index.js`
-- Library SHA-256: `47239478b111a394bc96eb8107c6cc081442e2e56a67900765081e208dd03437`
+- Library SHA-256: `fe24b329b6a749af9d867ea010e868e521e0956b600a958403a2f9b8343e6715`
 - Public base commit: `7600ff8cc6a0e158dbbe7835daed05862aac3810`
-- Source commit: `2aa51a8740ed0b6de885dba3f702560244e4d362`
+- Source commit: `eaa32c49734d55af94e31ac769f383a2a03a7706`
 - Source patches:
   - `source/0001-feat-harden-unified-runner-for-Node-20-consumers.patch.b64`: `a23f3f15a13024043761ffe54adc4360d2c5fb4f1a7eff806de07ca7f63bb07b`
   - `source/0002-fix-tighten-least-privilege-and-cancellation-contrac.patch.b64`: `bd04083e8f3ea06f09edfd844b5fd8828160822a0b1cc31682330a2a4193f01e`
@@ -20,6 +20,7 @@
   - `source/0009-fix-case-variant-duplicates-resolve-last-wins-in-eve.patch.b64`: `b8d68f97e7984b1ae3a1d727877b17b987799a58f3874d46becadf463c525df8`
   - `source/0010-refactor-one-matcher-for-every-environment-read.patch.b64`: `ff8bc3847fa06bdc777a75044f7c4fc0799896aba871a45d6527daa9b6360752`
   - `source/0011-refactor-single-source-the-environment-name-fold.patch.b64`: `46c120d04030af4b7eba6f6cc156278c1feeae968c58c797a3602f1a973c0119`
+  - `source/0012-feat-curated-supported-model-lists-for-Claude-Codex-and-Cursor.patch.b64`: `2cb28ade1c3e5532d997a85a29297421f1b1bcb161d1f1a13766b692c14e3c49`
 - License: `MIT` (see adjacent `LICENSE`)
 - Runtime: Node.js 20+
 

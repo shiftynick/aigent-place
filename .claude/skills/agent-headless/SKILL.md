@@ -8,15 +8,26 @@ description: >-
 
 # Agent Headless
 
-Use the Foundry-owned Node entry point:
+Use the Foundry-owned Node entry point for raw provider calls:
 
 ```text
 node .agent-foundry/agent-headless/cli.js <command>
 ```
 
+For the two repeated workflows, prefer the Foundry presets instead of
+hand-building argv:
+
+| Workflow | Preset |
+| --- | --- |
+| Dual-axis cold review | `node .agent-foundry/cold-review.mjs --provider … --packet <dir> …` |
+| Packet completeness gate | `node .agent-foundry/review-packet.mjs check <dir>` |
+| Bounded implementation | `node .agent-foundry/delegate-work.mjs --provider … --prompt-file …` |
+
 `docs/SDLC.md` remains authoritative for model-family selection, the separate
 SPEC/STANDARDS reviews, packet completeness, permissions, and adjudication.
-This skill owns only safe, consistent provider invocation.
+Cold-review prompt and packet layout live in
+`../execute-task/references/cold-review.md`. This skill owns safe, consistent
+provider invocation; the presets bake the repeated flag and prompt contracts.
 
 ## Preflight
 
@@ -24,8 +35,11 @@ Executable/version probes were rechecked on 3 August 2026. Flag contracts were
 last verified against help for Claude Code 2.1.220 and Codex CLI 0.145.0 on
 27 July, and Cursor Agent 2026.07.23-e383d2b on 30 July 2026.
 
-Run the capability probe. Re-check help before relying on version-sensitive
-flags. An unknown-flag failure means the adapter aged.
+Run the capability probe **once per provider per session** before the first
+costly call to that provider. Re-check help before relying on version-sensitive
+flags. An unknown-flag failure means the adapter aged. Do not re-probe before
+every subsequent call in the same session unless the provider binary or model
+allowlist may have changed.
 
 Probe the selected provider before constructing a costly call:
 
@@ -33,8 +47,15 @@ Probe the selected provider before constructing a costly call:
 node .agent-foundry/agent-headless/cli.js capabilities claude
 node .agent-foundry/agent-headless/cli.js capabilities codex
 node .agent-foundry/agent-headless/cli.js capabilities cursor
+node .agent-foundry/agent-headless/cli.js models claude
+node .agent-foundry/agent-headless/cli.js models codex
 node .agent-foundry/agent-headless/cli.js models cursor
 ```
+
+`models` prints the Foundry allowlist for that provider — not the full Cursor
+catalog. Exact IDs, defaults (Cursor Grok medium; Claude Fable effort low), and
+shorthand mapping live in `references/models.md`. Do not invent IDs or cross
+provider spellings.
 
 Require `availability: "available"`. Report a `missing` or `unusable` reason.
 Do not silently substitute another model. Set `CLAUDE_BIN`, `CODEX_BIN`, or
@@ -57,17 +78,24 @@ Do not assume from the model name — it cannot tell you who chose it.
 
 ## Safe calls
 
-Put non-trivial prompts and complete packets in UTF-8 files:
+Put non-trivial prompts and complete packets in UTF-8 files. Prefer
+`cold-review.mjs` / `delegate-work.mjs` for those workflows. Raw examples:
 
 ```text
-node .agent-foundry/agent-headless/cli.js run --provider claude --cwd <repo> --access answer-only --session ephemeral --prompt-file <review.md> --timeout-ms 1200000 --max-budget-usd 3
-node .agent-foundry/agent-headless/cli.js run --provider codex --cwd <repo> --access answer-only --session ephemeral --prompt-file <review.md> --timeout-ms 1200000
-node .agent-foundry/agent-headless/cli.js run --provider cursor --cwd <repo> --model <exact-id> --access answer-only --prompt-file <review.md> --timeout-ms 1200000 --trust-workspace
+node .agent-foundry/agent-headless/cli.js run --provider claude --cwd <repo> --access answer-only --session ephemeral --prompt-file <review.md> --timeout-ms 1200000 --max-budget-usd 3 --json
+node .agent-foundry/agent-headless/cli.js run --provider codex --cwd <repo> --access answer-only --session ephemeral --prompt-file <review.md> --timeout-ms 1200000 --json
+node .agent-foundry/agent-headless/cli.js run --provider cursor --cwd <repo> --model <exact-id> --access answer-only --prompt-file <review.md> --timeout-ms 1200000 --trust-workspace --json
 ```
 
-For cold review, follow `../execute-task/references/cold-review.md` when building
-the packet. An `answer-only` reviewer cannot inspect omitted files or execute
-tests. It reasons only from the supplied packet and recorded evidence.
+For cold review, follow `../execute-task/references/cold-review.md` and
+dispatch with `cold-review.mjs` after `review-packet.mjs check`. An
+`answer-only` reviewer cannot inspect omitted files or execute tests. It
+reasons only from the supplied packet and recorded evidence.
+
+When recording a provider wrap through `task.mjs run`, the tracker default
+timeout is 25 minutes. Do not pass `--timeout-ms` below 20 minutes for
+`agent-headless`, `cold-review.mjs`, or `delegate-work.mjs` — the tracker
+refuses those wraps.
 
 `--trust-workspace` is an explicit assertion. Use it only after resolving and
 checking the intended workspace.

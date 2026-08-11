@@ -45,10 +45,11 @@ claimable task. Inspect `board` and blockers. Do not invent work.
 
 ## Implement
 
-- Read `docs/REVIEW-STANDARDS.md` and the applicable
-  `docs/ENGINEERING-STANDARDS.md` sections **before you write code**. The
-  STANDARDS review axis judges against them; meet them at the source instead
-  of discovering them as findings.
+- On the **first code-writing task of this session**, read
+  `docs/REVIEW-STANDARDS.md` and the applicable
+  `docs/ENGINEERING-STANDARDS.md` sections. Later tasks in the same session
+  reuse that read unless those docs or the task's standards surface changed.
+  Meet the STANDARDS axis at the source instead of discovering it as findings.
 - Keep the diff task-scoped. File out-of-scope discoveries as separate tasks.
 - When the task creates a new interface, public signature set, or module
   boundary, outline the types and signatures first — no bodies. Log the
@@ -95,27 +96,32 @@ node .agents/skills/task-tracker/scripts/task.mjs move task-NNN review
 
 ## Cold review
 
-Before you construct or run any review, read `references/cold-review.md`
-completely. It defines the two independent axes, concurrent dispatch,
-findings-only output, complete packet, review ladder, triage, re-review cap,
-and DISTILL rule.
+Before the **first** review of a session, read `references/cold-review.md`
+completely. Later reviews in the same session may follow its session
+checklist unless the packet shape or ladder rung changed. That file defines
+the two independent axes, the `review-packet.mjs` / `cold-review.mjs`
+dispatch preset, findings-only output, complete packet, review ladder,
+triage, re-review cap, DISTILL, and the trivial-diff fast path pointer to
+`docs/SDLC.md`.
 
 Do not promote work merely because review ran. Verify and adjudicate findings
 against live repository evidence. Fix confirmed defects. Re-review task-scoped
 changes made after the latest review.
 
-### Report review results
+### Report results to the operator
 
-Apply `docs/SDLC.md` → "Operator communication" (ASD-STE100) when you report
-review results. Record each finding and its adjudication in the task log. The
-operator receives the result and an STE summary of each material problem, its
-practical effect, and the recommendation. Provide the technical record only
-when it helps a decision or the operator asks for it.
+Apply `docs/SDLC.md` → "Operator communication" (ASD-STE100) for review and
+validation reports alike. Record findings, adjudications, and gate outcomes
+in the task log. The operator receives the result and an STE summary of each
+material problem, its practical effect, and the recommendation. Provide the
+technical record only when it helps a decision or the operator asks for it.
 
 ## Validate
 
-Before validating, read `docs/SDLC.md` → "Validation" completely. Apply its
-gate-selection and invalidation rules. Apply the testing requirements in
+Before the **first** validation of a session, read `docs/SDLC.md` →
+"Validation" completely. Later tasks reuse that read unless the change is
+high-risk or cross-cutting (then re-read). Apply its gate-selection and
+invalidation rules. Apply the testing requirements in
 `docs/ENGINEERING-STANDARDS.md` and the project's lint, type, or static gates.
 Record every command-expressible signal through the tracker:
 
@@ -134,13 +140,6 @@ one-liners with metacharacters fail or truncate at shell boundaries.
 Evidence follows the edit. After the last edit of any round, re-record the
 applicable gates on the final tree before you request or re-enter review.
 Evidence recorded before that edit does not count.
-
-### Report validation results
-
-Apply `docs/SDLC.md` → "Operator communication" (ASD-STE100) to validation
-results too. State what passed or failed and what that means. Keep raw output
-in the task log unless the operator needs it to decide or asks to see it.
-
 ## Complete and commit
 
 Before completion, verify:

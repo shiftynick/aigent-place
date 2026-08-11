@@ -40,15 +40,17 @@ The worker a slice runs on is a dial, not an identity:
 - **Opt-in: the other model family.** When the invocation names the
   counterpart CLI (e.g. "efficient orchestration with codex" from Claude
   Code, or "with claude" from Codex), route the **work/implementation
-  slices** through the shared `agent-headless` skill (provider `codex` from
-  Claude Code; provider `claude` from Codex), which owns the invocation contract,
-  sandbox rules, and prompt discipline. A different family is the point. It
+  slices** through `node .agent-foundry/delegate-work.mjs` (provider
+  `codex` from Claude Code; provider `claude` from Codex). That preset wraps
+  `agent-headless`, requires an Environment facts section in the prompt, and
+  applies the write-access defaults. A different family is the point. It
   does not share the orchestrator's blind spots on a slice.
 
 Either way, the judgment/synthesis/final-review layer is **never** delegated.
 Run independent slices in parallel. Keep blocking or tightly coupled work
 local. Everything below applies to both backends — where it says "worker",
-read "subagent or counterpart-CLI run".
+read "subagent or counterpart-CLI run". Local commits still follow
+`docs/SDLC.md` → "Commit authority" (do not restate it here).
 
 ## The two dials: model and effort
 
@@ -66,13 +68,15 @@ reporting — not just how long it thinks.
 
 ## Announce the dials
 
-Before dispatching delegated work, state the routing plan to the operator:
-for work slices and for review/verification slices separately, which backend
-and model family runs them, which specific model, and at which effort
-level — plus the reason for any deviation from the defaults above. When a dial changes mid-run (effort raised, a slice escalated to a
+Once per session (and again when a dial changes), state the routing plan to
+the operator: for work slices and for review/verification slices separately,
+which backend and model family runs them, which specific model, and at which
+effort level — plus the reason for any deviation from the defaults above.
+When a dial changes mid-run (effort raised, a slice escalated to a
 bigger model, work pulled back to the orchestrator), announce the change and
 why as it happens. The operator should never have to ask which model and
-effort produced or reviewed a given piece of work.
+effort produced or reviewed a given piece of work. Do not re-announce the
+same plan before every slice.
 
 ## Workflow
 
@@ -117,7 +121,14 @@ deliberately, and say so — rather than converting the wait into a poll loop.
 Write every delegated prompt as if the worker has seen nothing — because it
 has not. Apply `docs/SDLC.md` → "Agent boundaries": capability does not imply
 assignment, and every packet names its objective, mutation ceiling, and scope.
-Include:
+Include a required section:
+
+```markdown
+## Environment facts
+- <auth invocation, memory-file pointer, repo slug, path quirk already known>
+```
+
+`delegate-work.mjs` refuses prompts that omit it. Also include:
 
 - The repo path and exact objective.
 - Files, packages, or surfaces in scope, and anything explicitly out of scope.

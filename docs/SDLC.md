@@ -181,6 +181,25 @@ Every task receives two separately scoped cold-context passes:
 2. **STANDARDS:** Is it correct, safe, maintainable, tested, documented, and
    consistent with project invariants?
 
+### Trivial-diff fast path
+
+A **trivial diff** may take one combined cold call instead of two axes when
+**all** of the following hold. Log `fast-path: trivial` and the combined
+charter in the task log. Do not stretch this class.
+
+- The frozen diff touches only documentation prose, comments, or
+  non-executable config values (no scripts, no code, no schemas, no CI, no
+  skill/workflow machinery, no dependency manifests).
+- The change adds or alters no runtime behavior and no validation gate.
+- The diff is under roughly 100 changed lines and needs no new tests.
+- The warm self-pass found nothing material.
+
+The combined call still uses the highest available cold-review ladder rung,
+findings-only output, and a CHECKED list covering both the rubric and the
+applicable standards. Dispatch it with
+`node .agent-foundry/cold-review.mjs ... --axis COMBINED`. Anything outside
+this class uses the full two-axis path below.
+
 Re-review is **severity-gated**. A confirmed `high` or `medium` finding,
 once fixed, sends the fresh diff through both cold axes again. Confirmed
 `low`-severity findings are fixed in the same pass and receive a **delta
@@ -240,9 +259,10 @@ Review independence is a ladder, not a single vendor requirement. Use the
 highest rung available in the current environment, and **log which rung was
 used** in the task log — an unrecorded rung is treated as rung 4.
 
-1. **Separate CLI, different model family.** Invoke the shared
-   `agent-headless` skill: Codex normally selects provider `claude`; Claude
-   Code normally selects provider `codex`. An
+1. **Separate CLI, different model family.** Prefer the Foundry preset
+   `node .agent-foundry/cold-review.mjs` (packet check + concurrent SPEC and
+   STANDARDS via `agent-headless`). Codex normally selects provider `claude`;
+   Claude Code normally selects provider `codex`. An
    operator-selected neutral router such as Cursor also qualifies only when
    the operator explicitly selected its exact model and that model's family
    differs from the implementer. Log the transport, model ID, and family.

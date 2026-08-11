@@ -96,6 +96,7 @@ const KNOWN_FLAGS = new Set([
   "--remove-tag",
   "--status",
   "--tag",
+  "--timeout-ms",
   "--title",
 ]);
 
@@ -754,7 +755,47 @@ function cmdRm(args) {
 // is printed to the console at run time and is not the log's job to preserve.
 const RUN_TAIL_LINES = 30;
 const RUN_TAIL_CHARS = 3000;
-const RUN_TIMEOUT_MS = 15 * 60 * 1000;
+// Default above Cursor's ~20 m provider budget and agent-headless's 20 m
+// default so a wrap around a coding or cold-review run is not the killer.
+const RUN_TIMEOUT_MS = 25 * 60 * 1000;
+const PROVIDER_BUDGET_MS = 20 * 60 * 1000;
+const PROVIDER_WRAP_RE =
+  /(?:^|[/\\])(?:agent-headless[/\\]cli\.js|cold-review\.mjs|delegate-work\.mjs)\b/u;
+
+function parseRunArgs(args) {
+  let timeoutMs = RUN_TIMEOUT_MS;
+  let timeoutExplicit = false;
+  const commandParts = [];
+  let i = 0;
+  const id = args[0];
+  if (!id || (!literalValueIndices.has(0) && id.startsWith("--"))) {
+    fail(2, "usage: task.mjs run <id> [--timeout-ms <ms>] -- <command> [args...]");
+  }
+  i = 1;
+  while (i < args.length) {
+    const a = args[i];
+    if (a === "--timeout-ms") {
+      const raw = optionValue(args, i, a);
+      const n = Number(raw);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+        fail(2, `--timeout-ms must be a positive integer (got ${JSON.stringify(raw)})`);
+      }
+      timeoutMs = n;
+      timeoutExplicit = true;
+      i += 2;
+      continue;
+    }
+    if (a.startsWith("--") && !literalValueIndices.has(i) && KNOWN_FLAGS.has(a)) {
+      fail(2, `run does not accept ${a} (supported: --timeout-ms)`);
+    }
+    commandParts.push(...args.slice(i));
+    break;
+  }
+  if (commandParts.length === 0) {
+    fail(2, "usage: task.mjs run <id> [--timeout-ms <ms>] -- <command> [args...]");
+  }
+  return { id, timeoutMs, timeoutExplicit, commandParts };
+}
 
 // Anything recorded in a task log is committed, so terminal control sequences
 // have to be removed rather than scrubbed: the control-character pass turns a
@@ -806,11 +847,7 @@ function evidenceTail(output) {
 // log. This is the difference between claimed and recorded validation: the
 // entry is written by this tool from the real result, not typed by the agent.
 function cmdRun(args) {
-  const id = args[0];
-  const commandParts = args.slice(1);
-  if (!id || commandParts.length === 0) {
-    fail(2, "usage: task.mjs run <id> -- <command> [args...]");
-  }
+  const { id, timeoutMs, timeoutExplicit, commandParts } = parseRunArgs(args);
   const root = requireRepoRoot();
   // Fail fast on a bad id before spending minutes running the command.
   withRepoWriteLock(root, () => {
@@ -821,16 +858,23 @@ function cmdRun(args) {
   });
 
   const commandLine = commandParts.join(" ");
+  if (PROVIDER_WRAP_RE.test(commandLine) && timeoutMs < PROVIDER_BUDGET_MS) {
+    fail(
+      2,
+      `run timeout ${timeoutMs}ms is below the ${PROVIDER_BUDGET_MS}ms provider budget for agent-headless / cold-review / delegate-work wraps; pass --timeout-ms ${PROVIDER_BUDGET_MS} or higher` +
+        (timeoutExplicit ? "" : " (or rely on the 25-minute default)"),
+    );
+  }
   const startedAt = nowIso();
   const t0 = Date.now();
-  // The command itself runs OUTSIDE the repo lock: a ten-minute test suite
-  // must not block every other board command on this machine.
+  // The command itself runs OUTSIDE the repo lock: a long suite or provider
+  // wrap must not block every other board command on this machine.
   const result = spawnSync(commandLine, {
     shell: true,
     cwd: root,
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
-    timeout: RUN_TIMEOUT_MS,
+    timeout: timeoutMs,
     killSignal: "SIGTERM",
     windowsHide: true,
   });

@@ -37,7 +37,7 @@ destination. Offer regeneration when the user asks to see the board.
 task.mjs add "<title>" [--priority p1] [--tag k:v ...] [--blocked-by task-NNN ...] [--description "..."]
 task.mjs move <id> <status> [--force] [--note "..."]
 task.mjs note <id> "<text>"
-task.mjs run <id> -- <command> [args...]
+task.mjs run <id> [--timeout-ms <ms>] -- <command> [args...]
 task.mjs edit <id> [--title ...] [--priority ...] [--add-tag ...] [--remove-tag ...]
                    [--add-blocked-by ...] [--remove-blocked-by ...] [--description "..."]
 task.mjs rm <id>
@@ -106,5 +106,10 @@ Exit 5 distinguishes:
   intended update.
 
 `run` releases the lock during execution and reacquires it only to append
-evidence. Runs time out after 15 minutes. Split longer gates, or preserve
-their own logged output and note its location.
+evidence. Runs time out after 25 minutes by default — above Cursor's ~20
+minute provider budget and agent-headless's 20 minute default, so a wrap
+around a coding or cold-review run is not killed by the tracker first. Pass
+`--timeout-ms <ms>` to override. Wrapping `agent-headless/cli.js`,
+`cold-review.mjs`, or `delegate-work.mjs` with a timeout below 20 minutes is
+refused. For ordinary long gates that are not provider wraps, split the work
+or preserve their own logged output and note its location.
