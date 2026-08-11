@@ -107,6 +107,9 @@ and again — costs turns and tool slots without making the work finish sooner:
 - **Do not re-read an unchanged artifact.** A poll that returns nothing new
   is a wasted round trip. Repeatedly reading a log or output file that has
   not moved is the observed failure, not a wait strategy.
+- **Do not ping an unfinished review or worker.** Checking a cold-review or
+  delegated-worker result that has not changed, with nothing overlapped into
+  the wait, is the same waste as re-reading an unchanged file.
 - **Scale the interval to what is being waited on.** Check on the cadence of
   the pipeline, not on a short fixed tick.
 - **Fill the wait.** This is workflow step 5 applied to machines instead of

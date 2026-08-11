@@ -18,6 +18,10 @@
 //   decisions.md           required, non-empty (ADRs/rulings, or "none")
 //   review-standards.md    required for STANDARDS axis material
 //   engineering-standards.md  optional; include when applicable sections exist
+//   fix-verification.md    required when manifest.round >= 2: must be
+//                          present and not empty/'none'. The gate does not
+//                          parse the contents. Round 1 may omit it or use
+//                          "none".
 //   manifest.json          written by init / required by check (taskId, round)
 
 import {
@@ -46,7 +50,7 @@ export const REQUIRED_FILES = [
   "manifest.json",
 ];
 
-export const OPTIONAL_FILES = ["engineering-standards.md"];
+export const OPTIONAL_FILES = ["engineering-standards.md", "fix-verification.md"];
 
 function usage() {
   return [
@@ -136,6 +140,18 @@ export function checkPacket(packetDir, { repoRoot = cwd() } = {}) {
     );
   }
 
+  const round = Number.isInteger(manifest?.round) ? manifest.round : 1;
+  const fixText = files["fix-verification.md"];
+  if (round >= 2) {
+    if (fixText === undefined) {
+      problems.push("fix-verification.md is required when manifest.round >= 2");
+    } else if (!isNonEmpty(fixText) || fixText.trim().toLowerCase() === "none") {
+      problems.push(
+        "fix-verification.md is empty or 'none'; round >= 2 requires a filled file",
+      );
+    }
+  }
+
   if (problems.length > 0) return { ok: false, problems, packet: null };
 
   return {
@@ -153,6 +169,7 @@ export function checkPacket(packetDir, { repoRoot = cwd() } = {}) {
       decisions: files["decisions.md"].trim(),
       reviewStandards: files["review-standards.md"],
       engineeringStandards: files["engineering-standards.md"] ?? "",
+      fixVerification: (files["fix-verification.md"] ?? "").trim(),
     },
   };
 }
@@ -248,6 +265,7 @@ export function initPacket(packetDir, { taskId, round = 1, repoRoot = cwd() } = 
     "decisions.md": "none\n",
     "review-standards.md": "",
     "engineering-standards.md": "",
+    "fix-verification.md": round >= 2 ? "" : "none\n",
     "manifest.json": `${JSON.stringify({ taskId, round, createdBy: "review-packet.mjs" }, null, 2)}\n`,
   };
   for (const [name, body] of Object.entries(stubs)) {
@@ -313,6 +331,9 @@ export function buildAxisPrompt(packet, axis) {
     "",
     "--- packet: decisions ---",
     packet.decisions,
+    "",
+    "--- packet: fix verification ---",
+    packet.fixVerification || "(none)",
     "",
     "--- packet: recorded evidence ---",
     packet.evidence,

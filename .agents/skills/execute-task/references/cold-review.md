@@ -53,7 +53,8 @@ dispatch through the Foundry wrappers:
 ```bash
 node .agent-foundry/review-packet.mjs init .tasks/review-packets/task-NNN-r1 --task-id task-NNN --round 1
 # fill objective.txt, rubric.txt, diff.patch, status.txt, untracked.txt,
-# evidence.md, decisions.md, review-standards.md (+ engineering-standards.md)
+# evidence.md, decisions.md, review-standards.md (+ engineering-standards.md).
+# Round 2+: fill fix-verification.md (check refuses empty/'none').
 node .agent-foundry/review-packet.mjs check .tasks/review-packets/task-NNN-r1
 node .agents/skills/task-tracker/scripts/task.mjs run task-NNN -- \
   node .agent-foundry/cold-review.mjs --provider <claude|codex|cursor> \
@@ -124,7 +125,11 @@ Before you dispatch the next round, verify each fix from the previous round
 against the working tree with a diff. A fix that the log claims but the tree
 does not contain is itself a finding to record and resolve. Review-round
 fixes are new code: give each one the same failing-test check as the
-original change.
+original change. Write those checks in the packet's `fix-verification.md`
+(one entry per fix: what changed, and the command or test that failed
+before the fix). `review-packet.mjs check` refuses a round >= 2 packet whose
+file is missing, empty, or `none`. The gate does not parse the file to prove
+a test failed; it only blocks dispatch without a filled file.
 
 Re-review is severity-gated; `docs/SDLC.md` → "Review" owns the rule. In
 short: fixes for confirmed `high` or `medium` findings send the fresh diff
@@ -151,7 +156,11 @@ turn one-off bugs into permanent policy.
 3. Warm self-pass done; trivial fast path only when SDLC allows (`--axis COMBINED`).
 4. `cold-review.mjs` (or declared lower rung) → both axes complete with CHECKED
    (or one COMBINED axis on the trivial fast path).
-5. Adjudicate against the live tree; severity-gate re-review; cap at 3 rounds.
+5. Adjudicate against the live tree. Before the next dispatch: each
+   prior-round fix is in the tree; each has the failing-test check written
+   in `fix-verification.md`. Round >= 2 fails `review-packet.mjs check` if
+   that file is missing, empty, or `none`. Severity-gate re-review; cap at
+   3 rounds.
 6. Record rung, provider, model, and JSON outcome via `task.mjs run`.
 7. Validation: SDLC Validation rules already loaded this session (or re-read
    for high-risk/cross-cutting work); record gates via `task.mjs run`.
