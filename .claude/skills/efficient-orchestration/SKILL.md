@@ -1,13 +1,11 @@
 ---
 name: efficient-orchestration
 description: >-
-  Run the top-tier model as orchestrator — decomposition, architecture,
-  synthesis, judgment — while cheaper workhorse models do bounded token-heavy
-  research, coding, and testing slices. Use on "efficient mode", "efficient
-  orchestration", "save tokens on this big task", "use lesser models",
-  "liberal use of subagents", or any codebase-heavy work where cost matters.
-  Add "with <counterpart CLI>" to route work slices to the other model family
-  via `agent-headless`.
+  Use when the operator requests efficient mode, lower-cost models, liberal
+  subagent use, or token savings on codebase-heavy work that can be split into
+  bounded research, coding, or testing tasks. Also use when the operator asks
+  to coordinate multiple tasks through another model family. Use
+  agent-headless instead for one direct provider invocation.
 ---
 
 # Efficient Orchestration
@@ -66,7 +64,32 @@ reporting — not just how long it thinks.
   find it — so low-effort slices need packets that leave nothing to ask
   about.
 
-## Announce the dials
+## Confirm the dials with the operator
+
+Before the first delegation, confirm the provider, model, and effort routing
+with the operator. If the operator did not already supply those choices, ask
+one concise question that proposes a complete plan by tier:
+
+- **Orchestration and judgment:** the current provider and top-tier model at
+  its current effort level.
+- **Work and implementation:** the same-family delegation backend, the least
+  expensive available model that is capable of the bounded slices, and low or
+  medium effort based on the slice type.
+- **Review and verification:** the highest available cold-review ladder rung,
+  preferably the configured other-family provider and model, at high effort.
+
+Name the provider and exact model ID that are available in the active
+environment. Do not invent an unavailable model. Present the proposal so the
+operator can accept it unchanged or replace choices for individual tiers.
+Wait for the answer before delegation begins.
+
+If the operator already specified all provider and model choices, skip the
+question and use them. If the routing is only partial, ask only for the
+missing tiers and still present recommended defaults for those tiers. User
+choices do not override the lifecycle, cold-review independence, or agent
+boundary rules in `docs/SDLC.md`.
+
+## Announce the confirmed dials
 
 Once per session (and again when a dial changes), state the routing plan to
 the operator: for work slices and for review/verification slices separately,

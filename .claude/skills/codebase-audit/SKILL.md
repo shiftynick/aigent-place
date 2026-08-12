@@ -1,14 +1,9 @@
 ---
 name: codebase-audit
 description: >-
-  Periodic whole-repository sweep for quality drift — duplication past a
-  threshold, modules that outgrew comprehension, dead code, eroded boundaries,
-  inconsistent solutions to one problem. Use when the user says "audit the
-  codebase", "code health check", "technical debt review", "is this getting
-  messy", or when a cadence trigger fires (every N completed tasks, before a
-  milestone). Distinct from the fresh-eyes review in `execute-task`, which
-  judges one diff; this judges what many correct diffs added up to. Files
-  tasks; never blocks work.
+  Use when the operator asks for a whole-repository code health, technical
+  debt, or quality-drift audit, or when the project's audit cadence is due.
+  Do not use for review of one task diff; use execute-task for that review.
 ---
 
 # Codebase Audit

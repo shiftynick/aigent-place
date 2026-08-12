@@ -1,14 +1,10 @@
 ---
 name: attack-the-board
 description: >-
-  Interrogate the remaining backlog up front, then execute as much of it as
-  possible autonomously: scope the work, plan the path, harvest every
-  operator-only question in one batch, then run task after task through the
-  standard lifecycle until nothing claimable remains. Use on "attack the
-  board", "burn down the backlog", "work through everything you can", or
-  "how far can you get without me". Distinct from plan-milestone (which
-  produces tasks) and execute-task (which runs one); this drives a multi-task
-  session across existing tasks.
+  Use when the operator asks to "attack the board", "burn down the backlog",
+  "work through everything you can", or make the most autonomous progress
+  possible across multiple existing tasks. Do not use to plan a new milestone
+  or to execute only one task.
 ---
 
 # Attack the Board

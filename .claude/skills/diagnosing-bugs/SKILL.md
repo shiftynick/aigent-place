@@ -1,10 +1,10 @@
 ---
 name: diagnosing-bugs
 description: >-
-  Feedback-loop-first diagnosis discipline for hard bugs and performance
-  regressions. Use when the user says "diagnose" / "debug this", or reports
-  something broken, throwing, failing, flaky, or slow — before reading code
-  to build a theory. Not for trivial fixes where the cause is already known.
+  Use when the operator asks to diagnose or debug a hard bug or performance
+  regression, or reports behavior that is broken, failing, flaky, or slow and
+  the cause is not already known. Do not use for trivial fixes with a known
+  cause.
 ---
 
 # Diagnosing Bugs

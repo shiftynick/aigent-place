@@ -1,13 +1,8 @@
 ---
 name: handoff-writer
 description: >-
-  Write a restart-from-cold HANDOFF.md at the repo root from git state,
-  the current conversation, project journals, and the task board. Use when
-  the user says "create a handoff", "write the handoff", "wrap up the
-  session", "checkpoint where we are", "leave notes before I step away",
-  or any phrasing that means leave a complete catch-up document before
-  the session ends. Overwrites HANDOFF.md in place after preserving the
-  exact prior bytes as a recoverable Git blob.
+  Use when the operator asks to create a handoff, checkpoint the session,
+  wrap up, or leave enough context for another agent to restart cold.
 ---
 
 # Handoff Writer

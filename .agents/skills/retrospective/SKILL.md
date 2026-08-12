@@ -1,13 +1,10 @@
 ---
 name: retrospective
 description: >-
-  Mine the task archive, logs, and journals for repeated process mistakes and
-  workflow friction. Turn each confirmed pattern into an edit to the skill,
-  standard, or contract that governs the behavior. Use when the user says
-  "retrospective", "retro", "why do we keep hitting this", "improve the
-  workflow", or on the recorded cadence. Distinct from codebase-audit, which
-  examines code; this examines how the work went. Corrections are edits to
-  existing documents through normal tasks — never a new lessons file.
+  Use when the operator asks for a retrospective, asks why a workflow problem
+  keeps recurring, wants to improve the work process, or when the recorded
+  retrospective cadence is due. Use codebase-audit instead for code-quality
+  drift.
 ---
 
 # Retrospective

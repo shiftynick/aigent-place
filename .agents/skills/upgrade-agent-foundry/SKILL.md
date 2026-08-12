@@ -1,13 +1,9 @@
 ---
 name: upgrade-agent-foundry
 description: >-
-  Upgrade this project's installed Agent Foundry workflow kit to a newer
-  release, from either a local foundry checkout or a Git URL. Use on
-  "upgrade agent foundry", "pull in the new foundry version", "update the
-  workflow kit", or when a drift check reports the installed version behind
-  an available release. This skill acquires and verifies the new foundry and
-  gates the risky steps; the upgrade procedure itself is the acquired
-  foundry's UPGRADING.md, followed completely.
+  Use when the operator asks to upgrade, update, or pull in a newer Agent
+  Foundry release, or when a drift check confirms that the installed version
+  is behind an available release.
 ---
 
 # Upgrade Agent Foundry

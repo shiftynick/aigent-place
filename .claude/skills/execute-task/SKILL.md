@@ -1,11 +1,9 @@
 ---
 name: execute-task
 description: >-
-  Run one board task end-to-end: rubric, claim, implementation, cold
-  review, validation, completion, and local commit. Use for "work on
-  task-NNN", "pick up the next task", or after task-tracker `next` or `move
-  ... in_progress` picks a task. This skill owns lifecycle execution.
-  task-tracker owns board and CLI semantics.
+  Use when the operator asks to work on a named board task, pick up the next
+  task, or continue a task selected or claimed through task-tracker. Use
+  task-tracker instead for board and CLI operations without task execution.
 ---
 
 # Execute Task

@@ -1,11 +1,9 @@
 ---
 name: task-tracker
 description: >-
-  Operate the persistent file-based task board: inspect, add, claim, move,
-  block, annotate, validate, and archive tasks. Use for "what's next", "what
-  should I work on", tasks, board, kanban, backlog, ready, in_progress,
-  review, blocked, or task-tracker CLI semantics. Distinct from a
-  transcript-scoped plan; use execute-task for work after selection.
+  Use when the operator asks what is next or asks to inspect or change the
+  persistent task board, or when task-tracker CLI semantics are needed. Do not
+  use for a transcript-only plan; use execute-task to perform selected work.
 ---
 
 # Task Tracker

@@ -1,13 +1,10 @@
 ---
 name: agent-foundry-feedback
 description: >-
-  Package feedback about the installed Agent Foundry workflow kit — defects,
-  friction, and locally fixed mold files worth upstreaming — into a
-  self-contained packet the foundry's maintainers can act on. Use on "send
-  feedback to agent foundry", "report this foundry issue upstream",
-  "upstream this fix", or when a retrospective or LOCAL-CHANGES entry marks
-  a change as upstream-worthy. Always writes a local packet file; filing a
-  hosted issue is a separate operator-gated step.
+  Use when the operator asks to send or report Agent Foundry feedback, or to
+  upstream a Foundry fix. Also use when a retrospective or LOCAL-CHANGES
+  entry identifies a generic defect, source of friction, or mold change that
+  Foundry maintainers should receive.
 ---
 
 # Agent Foundry Feedback

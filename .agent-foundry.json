@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "foundryVersion": "0.30.3",
+  "foundryVersion": "0.34.0",
   "projectName": "Aigent Place",
   "projectDescription": "A repository for the Aigent Place architecture and implementation.",
   "defaultBranch": "main",
-  "installedAt": "2026-08-11T21:41:28.253Z"
+  "installedAt": "2026-08-12T12:51:41.601Z"
 }
