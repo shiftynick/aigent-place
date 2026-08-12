@@ -1,11 +1,9 @@
 ---
 name: the-fool
 description: >-
-  Stress-test ideas, proposals, product bets, and implementation plans with
-  direct adversarial reasoning before execution starts. Use when someone says
-  "challenge this idea", "stress test this plan", "play devil's advocate",
-  "run a pre-mortem", or "/the-fool". Do not use for code review; use the
-  fresh-eyes review in `execute-task` for code changes.
+  Use when the operator asks to challenge or stress-test an idea, proposal,
+  product bet, or implementation plan before execution, including a devil's
+  advocate review or pre-mortem. Do not use for code review; use execute-task.
 ---
 
 # The Fool

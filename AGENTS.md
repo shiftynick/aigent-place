@@ -58,21 +58,6 @@ node .agents/skills/task-tracker/scripts/task.mjs board
 node .agents/skills/task-tracker/scripts/task.mjs next
 ```
 
-For a short human-facing view of direction, active work, decisions, and the
-latest recorded check, use:
-
-```text
-node .agent-foundry/project-status.mjs
-node .agent-foundry/project-status.mjs --mark-seen
-node .agent-foundry/project-overview.mjs
-```
-
-The second command prints the same view and records a local, Git-ignored marker
-for the next "since last look" comparison. Use `--json` for other generated
-views; the board remains the source of task truth.
-The overview command refreshes the Git-ignored, self-contained
-`.agent-foundry/project-overview.html` visual from the same status projection.
-
 New fronts of work enter the board through the `plan-milestone` skill with
 operator approval (`docs/SDLC.md` → "Planning above the task"); anything
 waiting on a human carries the `needs:operator` tag.
@@ -190,32 +175,10 @@ process; these are the sweeps that can.
 
 Never report a planned or unavailable command as passing.
 
-## Project-local skills
-
-| Skill | Purpose |
-| --- | --- |
-| `task-tracker` | Persistent board, dependencies, status, and archival. |
-| `plan-milestone` | Operator-approved decomposition of goals into task fronts. |
-| `execute-task` | End-to-end task execution and review lifecycle. |
-| `attack-the-board` | Front-loaded question harvest, then an autonomous multi-task run. |
-| `adr` | Architecture decision creation and supersession. |
-| `diagnosing-bugs` | Reproduction-first debugging discipline. |
-| `codebase-audit` | Periodic sweep for accumulated quality drift. |
-| `retrospective` | Periodic mining of process friction into corrected guidance. |
-| `efficient-orchestration` | Top-tier model orchestrates; workhorse tiers do bounded slices. |
-| `handoff-writer` | Restart-from-cold `HANDOFF.md`. |
-| `the-fool` | Pre-implementation adversarial review. |
-| `grill-me` | One-question-at-a-time decision clarification. |
-| `agent-headless` | Unified safe Claude, Codex, and operator-selected Cursor invocation. |
-| `upgrade-agent-foundry` | Guided in-place upgrade of the installed workflow kit. |
-| `agent-foundry-feedback` | Package kit defects and upstream-worthy fixes into feedback packets. |
-| `codex-in-cc` | Legacy local Claude bridge retained from before Foundry; prefer `agent-headless` for the shared task lifecycle. |
-
-The fifteen shared workflows are mirrored between `.agents/skills/` and
-`.claude/skills/`. The unmanaged `codex-in-cc` bridge is a preserved local
-extension. Preserve shared workflow behavior while retaining harness-specific
-paths. Edit both managed copies in the same commit and verify with
-`node .agent-foundry/check-skill-sync.mjs`.
+Shared workflow skills are loaded from the harness-local skill tree. The
+unmanaged `codex-in-cc` bridge remains a preserved local extension. When a
+shared skill changes, edit both harness copies in the same commit and verify
+with `node .agent-foundry/check-skill-sync.mjs`.
 
 The dependency-free `agent-headless` runtime is vendored so both harnesses use
 one offline, least-privilege provider boundary instead of duplicated wrappers.

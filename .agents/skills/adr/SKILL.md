@@ -1,13 +1,10 @@
 ---
 name: adr
 description: >-
-  Create, supersede, or reject an Architecture Decision Record in
-  docs/adr/ (MADR-style, one file per decision, indexed). Use when a
-  decision shapes system structure, is expensive to reverse, or a future
-  contributor would ask "why is it like this?" — including when such a
-  decision surfaces mid-task, when the user says "write an ADR", "record
-  this decision", or when a review flags an undocumented architecture
-  choice. Not for small in-task choices (those go in the task log).
+  Use when a decision shapes system structure, is expensive to reverse, or
+  needs a durable explanation for future contributors. Also use when the
+  operator asks to write or record an ADR, or when review finds an
+  undocumented architecture choice. Do not use for small in-task choices.
 ---
 
 # ADR

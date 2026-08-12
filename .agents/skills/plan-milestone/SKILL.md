@@ -1,14 +1,10 @@
 ---
 name: plan-milestone
 description: >-
-  Decompose an operator-agreed goal into a dependency-ordered, context-sized
-  task front on the board — and re-plan an existing front when evidence
-  invalidates it. Use when the user says "plan the next milestone", "what
-  should the next phase be", "break this goal down", "re-plan", or when
-  `execute-task`'s completion check finds the current front exhausted or
-  invalidated. The operator approves the plan before any task is filed.
-  Distinct from task-tracker (which stores tasks) and execute-task (which
-  consumes them): this skill produces them.
+  Use when the operator asks to plan or re-plan a milestone, choose the next
+  phase, or break an agreed goal into tasks. Also use when the current task
+  front is exhausted or evidence invalidates it. Do not use only to store or
+  execute an existing task.
 ---
 
 # Plan Milestone

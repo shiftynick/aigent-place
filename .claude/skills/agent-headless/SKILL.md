@@ -1,9 +1,10 @@
 ---
 name: agent-headless
 description: >-
-  Invoke Claude Code, Codex CLI, or Cursor Agent through the Foundry's unified
-  safe headless runner for cold reviews, second opinions, research, or bounded
-  delegated work. Cursor and its exact model remain operator-selected.
+  Use when a cold review, second opinion, research task, or bounded delegated
+  task needs direct invocation of Claude Code, Codex CLI, or an
+  operator-selected Cursor model. Use efficient-orchestration instead to plan
+  and coordinate multiple delegated tasks for cost or token efficiency.
 ---
 
 # Agent Headless

@@ -1,5 +1,10 @@
 # HANDOFF — Aigent Place, 2026-08-06 (late)
 
+Process update (2026-08-12): task-063 upgraded the installed Agent Foundry
+from 0.30.3 to 0.34.0 from the committed local source. Recovery backup:
+`.agent-foundry-backups/20260812T125141601Z`. The upgrade is local only;
+nothing was pushed, merged, or deployed.
+
 You are picking up mid-milestone with a **clean, unblocked board**. The
 `shape-collision-slice` front is operator-approved, its two roots are merged,
 and `task-048` is the next card. Nothing is waiting on a human.

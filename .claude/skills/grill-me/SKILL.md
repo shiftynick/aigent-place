@@ -1,10 +1,9 @@
 ---
 name: grill-me
 description: >-
-  Run a one-question-at-a-time decision interview about a plan, choice, or
-  idea until the user's intent is clear. Use when the user wants to stress-test
-  their thinking, decide what they actually want, or uses any 'grill' trigger
-  phrase.
+  Use when the operator asks to be grilled about a plan, choice, or idea,
+  wants to stress-test their thinking, or needs a one-question-at-a-time
+  interview to clarify what they want.
 ---
 
 # Grill Me — Decision Interview
