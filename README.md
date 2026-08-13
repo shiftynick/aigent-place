@@ -108,3 +108,4 @@ The accepted ruleset decision is
 [ruleset and constitution v1 contract](ruleset/v1/CONTRACT.md) defines the
 mutable parameter catalog, non-votable constitution envelope, and Track A/B
 governance boundary.
+coder workspace smoke test
