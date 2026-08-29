@@ -7,81 +7,13 @@ import {
   HandshakeFrameSchema,
   SnapshotResyncRequestSchema,
 } from "@aigent-place/protocol";
+import {
+  decodeWorldSnapshotBody,
+  decodeWorldSnapshotDelta,
+} from "./wire/real-snapshot.js";
 
 const status = document.querySelector("#status");
 const canvas = document.querySelector("#viewport");
-
-const PLACEHOLDER_MAGIC = "AIGB";
-
-/**
- * @param {Uint8Array} bytes
- * @returns {{ tick: bigint, bodies: Array<{ bodyId: bigint, sequence: bigint, xMm: bigint, yMm: bigint, zMm: bigint }> } | null}
- */
-export function decodePlaceholderPayload(bytes) {
-  if (bytes.length < 4 + 1 + 8 + 32 + 4) {
-    return null;
-  }
-  const magic = String.fromCharCode(...bytes.subarray(0, 4));
-  if (magic !== PLACEHOLDER_MAGIC || bytes[4] !== 1) {
-    return null;
-  }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const tick = view.getBigUint64(5, false);
-  const count = view.getUint32(45, false);
-  let cursor = 49;
-  const bodies = [];
-  for (let i = 0; i < count; i += 1) {
-    if (bytes.length < cursor + 40) {
-      return null;
-    }
-    bodies.push({
-      bodyId: view.getBigUint64(cursor, false),
-      sequence: view.getBigUint64(cursor + 8, false),
-      xMm: view.getBigInt64(cursor + 16, false),
-      yMm: view.getBigInt64(cursor + 24, false),
-      zMm: view.getBigInt64(cursor + 32, false),
-    });
-    cursor += 40;
-  }
-  return { tick, bodies };
-}
-
-export function createSmokeScene(targetCanvas) {
-  const renderer = new THREE.WebGLRenderer({
-    canvas: targetCanvas,
-    antialias: true,
-  });
-  renderer.setPixelRatio(window.devicePixelRatio || 1);
-  renderer.setSize(targetCanvas.clientWidth, targetCanvas.clientHeight, false);
-
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b1220);
-
-  const camera = new THREE.PerspectiveCamera(
-    60,
-    targetCanvas.clientWidth / Math.max(targetCanvas.clientHeight, 1),
-    0.1,
-    200,
-  );
-  camera.position.set(8, 6, 10);
-  camera.lookAt(0, 0.5, 0);
-
-  const light = new THREE.DirectionalLight(0xffffff, 1.1);
-  light.position.set(3, 5, 2);
-  scene.add(light);
-  scene.add(new THREE.AmbientLight(0x6688aa, 0.35));
-  scene.add(new THREE.GridHelper(40, 40, 0x1f2a44, 0x152033));
-
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
-  );
-  mesh.position.y = 0.5;
-  scene.add(mesh);
-
-  renderer.render(scene, camera);
-  return { renderer, scene, camera, mesh };
-}
 
 function mmToMeters(mm) {
   return Number(mm) / 1000;
@@ -93,12 +25,42 @@ function setStatus(text) {
   }
 }
 
+function createSmokeScene(targetCanvas) {
+  const renderer = new THREE.WebGLRenderer({ canvas: targetCanvas, antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(targetCanvas.clientWidth, targetCanvas.clientHeight, false);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0d12);
+  const camera = new THREE.PerspectiveCamera(
+    60,
+    targetCanvas.clientWidth / Math.max(1, targetCanvas.clientHeight),
+    0.1,
+    1000,
+  );
+  camera.position.set(8, 6, 10);
+  camera.lookAt(0, 0, 0);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambient);
+  const directional = new THREE.DirectionalLight(0xffffff, 0.4);
+  directional.position.set(5, 10, 7);
+  scene.add(directional);
+  const cube = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
+  );
+  scene.add(cube);
+  return { renderer, scene, camera, cube };
+}
+
 /**
- * Live spectator that renders placeholder bodies from stub snapshot payloads.
+ * Live spectator that decodes `WorldSnapshotBodyProto` /
+ * `WorldSnapshotDeltaProto` from the server and renders one Three.js
+ * mesh per entity. Actual visual mesh selection from the shape tree
+ * is task-055; this card wires the decoder in lockstep with the
+ * server encoder.
  */
 export function startLiveViewer(targetCanvas, wsUrl) {
   const { renderer, scene, camera } = createSmokeScene(targetCanvas);
-  // Remove the static smoke cube; live bodies replace it.
   const smoke = scene.children.find((child) => child.isMesh);
   if (smoke) {
     scene.remove(smoke);
@@ -115,30 +77,10 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   /** @type {Uint8Array | null} */
   let connectionId = null;
   let nextMessageId = 1n;
+  /** @type {Set<string>} */
+  const seen = new Set();
 
-  function upsertBodies(list) {
-    const seen = new Set();
-    for (const body of list) {
-      const key = body.bodyId.toString();
-      seen.add(key);
-      const target = new THREE.Vector3(
-        mmToMeters(body.xMm),
-        mmToMeters(body.yMm),
-        mmToMeters(body.zMm),
-      );
-      let entry = bodies.get(key);
-      if (!entry) {
-        const mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(1, 1, 1),
-          new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
-        );
-        mesh.position.copy(target);
-        scene.add(mesh);
-        entry = { mesh, target };
-        bodies.set(key, entry);
-      }
-      entry.target.copy(target);
-    }
+  function removeMissing() {
     for (const [key, entry] of bodies) {
       if (!seen.has(key)) {
         scene.remove(entry.mesh);
@@ -147,6 +89,24 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         bodies.delete(key);
       }
     }
+  }
+
+  function upsertBody(entityId, xMm, yMm, zMm) {
+    const key = entityId.toString();
+    seen.add(key);
+    const target = new THREE.Vector3(mmToMeters(xMm), mmToMeters(yMm), mmToMeters(zMm));
+    let entry = bodies.get(key);
+    if (!entry) {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
+      );
+      mesh.position.copy(target);
+      scene.add(mesh);
+      entry = { mesh, target };
+      bodies.set(key, entry);
+    }
+    entry.target.copy(target);
   }
 
   function requestResync(reason) {
@@ -177,6 +137,15 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     );
   }
 
+  function applyBody(record) {
+    upsertBody(
+      record.entityId,
+      record.positionMm.x,
+      record.positionMm.y,
+      record.positionMm.z,
+    );
+  }
+
   function handleEnvelope(bytes) {
     const envelope = fromBinary(EnvelopeSchema, bytes);
     if (envelope.protocolMajor !== 1) {
@@ -187,11 +156,17 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     if (body.case === "fullSnapshot") {
       baselineId = body.value.baselineId;
       waitingForFull = false;
-      const decoded = decodePlaceholderPayload(body.value.payload);
+      const decoded = decodeWorldSnapshotBody(body.value.payload);
       if (decoded) {
         lastTick = decoded.tick;
-        upsertBodies(decoded.bodies);
-        setStatus(`viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length}`);
+        seen.clear();
+        for (const record of decoded.bodies) {
+          applyBody(record);
+        }
+        removeMissing();
+        setStatus(
+          `viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
+        );
       }
       return;
     }
@@ -203,11 +178,27 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         requestResync("baseline mismatch");
         return;
       }
-      const decoded = decodePlaceholderPayload(body.value.payload);
+      const decoded = decodeWorldSnapshotDelta(body.value.payload);
       if (decoded) {
-        lastTick = decoded.tick;
-        upsertBodies(decoded.bodies);
-        setStatus(`viewer: delta tick=${decoded.tick} bodies=${decoded.bodies.length}`);
+        for (const record of decoded.entered) {
+          applyBody(record);
+        }
+        for (const record of decoded.modified) {
+          applyBody(record);
+        }
+        for (const leftId of decoded.leftIds) {
+          const key = leftId.toString();
+          if (bodies.has(key)) {
+            const entry = bodies.get(key);
+            scene.remove(entry.mesh);
+            entry.mesh.geometry.dispose();
+            entry.mesh.material.dispose();
+            bodies.delete(key);
+          }
+        }
+        setStatus(
+          `viewer: delta tick=${lastTick} bodies=${bodies.size} (real bodies, +${decoded.entered.length}/~${decoded.modified.length}/-${decoded.leftIds.length})`,
+        );
       }
       return;
     }
@@ -261,65 +252,47 @@ export function startLiveViewer(targetCanvas, wsUrl) {
             return;
           }
           if (frame.body.case === "handshakeReject") {
-            setStatus(`viewer: handshake rejected code=${frame.body.value.code}`);
+            setStatus(`viewer: handshake rejected: ${frame.body.value.reason}`);
+            closed = true;
+            socket?.close();
             return;
           }
         } catch {
-          // Fall through to envelope decode only after handshake.
+          setStatus("viewer: malformed handshake frame");
+          return;
         }
         return;
       }
       try {
         handleEnvelope(bytes);
       } catch (error) {
-        setStatus(`viewer: envelope error ${error.message ?? error}`);
+        setStatus(`viewer: envelope decode error: ${error?.message ?? error}`);
       }
     });
     socket.addEventListener("close", () => {
-      setStatus("viewer: disconnected — retrying");
-      baselineId = null;
-      waitingForFull = true;
-      handshakeDone = false;
-      if (!closed) {
-        setTimeout(connect, 1000);
-      }
+      if (closed) return;
+      setStatus("viewer: socket closed — reconnecting");
+      setTimeout(connect, 1000);
     });
     socket.addEventListener("error", () => {
       setStatus("viewer: socket error");
     });
   }
 
-  function animate() {
-    if (closed) {
-      return;
-    }
-    requestAnimationFrame(animate);
+  connect();
+
+  function tick() {
     for (const entry of bodies.values()) {
       entry.mesh.position.lerp(entry.target, 0.2);
     }
     renderer.render(scene, camera);
+    requestAnimationFrame(tick);
   }
-
-  connect();
-  animate();
-
-  return {
-    stop() {
-      closed = true;
-      socket?.close();
-    },
-    getLastTick: () => lastTick,
-    getBodyCount: () => bodies.size,
-  };
+  requestAnimationFrame(tick);
 }
 
 if (canvas instanceof HTMLCanvasElement) {
-  const params = new URLSearchParams(window.location.search);
-  const wsUrl = params.get("ws");
-  if (wsUrl) {
-    startLiveViewer(canvas, wsUrl);
-  } else {
-    createSmokeScene(canvas);
-    setStatus("viewer: smoke ok (add ?ws=ws://127.0.0.1:7600/ws for live)");
-  }
+  const params = new URLSearchParams(location.search);
+  const ws = params.get("ws") ?? "ws://127.0.0.1:7600/ws";
+  startLiveViewer(canvas, ws);
 }

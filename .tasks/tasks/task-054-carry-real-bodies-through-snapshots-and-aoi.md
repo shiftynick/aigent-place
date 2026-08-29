@@ -6,7 +6,7 @@ priority: p1
 tags: [milestone:shape-collision-slice, area:protocol]
 blockedBy: [task-046, task-051]
 createdAt: "2026-08-06T13:25:52Z"
-updatedAt: "2026-08-29T23:12:01Z"
+updatedAt: "2026-08-29T23:26:35Z"
 claimedBy: "shift@Shiftor"
 claimedAt: "2026-08-29T21:34:40Z"
 ---
@@ -641,3 +641,178 @@ Snapshots ship a placeholder body record rather than authoritative entity state.
   | npm notice run npm run smoke -w @aigent-place/viewer
   | npm notice run @aigent-place/viewer@0.1.0 smoke
   | npm notice run node ./scripts/smoke.mjs
+- 2026-08-29T23:22:24Z — run: node scripts/product-check.mjs
+  started 2026-08-29T23:22:24Z, exit 1 in 0.3s
+  output:
+  | product-check: mode=full
+  | product-check: cargo fmt --check
+  | Diff in \\?\N:\aigent-place\crates\world-server\src\wire\snapshot.rs:408:
+  |          std::fs::create_dir_all(&out_dir).expect("create conformance binary dir");
+  |          std::fs::write(
+  |              out_dir.join("world-snapshot-body.hex"),
+  | -            body_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+  | +            body_bytes
+  | +                .iter()
+  | +                .map(|b| format!("{:02x}", b))
+  | +                .collect::<String>(),
+  |          )
+  |          .expect("write body fixture");
+  |          std::fs::write(
+  | Diff in \\?\N:\aigent-place\crates\world-server\src\wire\snapshot.rs:415:
+  |              out_dir.join("world-snapshot-delta.hex"),
+  | -            delta_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+  | +            delta_bytes
+  | +                .iter()
+  | +                .map(|b| format!("{:02x}", b))
+  | +                .collect::<String>(),
+  |          )
+  |          .expect("write delta fixture");
+  |      }
+  | product-check: FAIL (cargo fmt --all -- --check)
+- 2026-08-29T23:22:32Z — run: node scripts/product-check.mjs
+  started 2026-08-29T23:22:30Z, exit 101 in 1.6s
+  output tail (truncated to last 30 lines):
+  |     = note: `-D clippy::format-collect` implied by `-D warnings`
+  |     = help: to override `-D warnings` add `#[allow(clippy::format_collect)]`
+  |
+  | error: use of `format!` to build up a string from an iterator
+  |    --> crates\world-server\src\wire\snapshot.rs:419:13
+  |     |
+  | 419 | /             delta_bytes
+  | 420 | |                 .iter()
+  | 421 | |                 .map(|b| format!("{:02x}", b))
+  | 422 | |                 .collect::<String>(),
+  |     | |____________________________________^
+  |     |
+  | help: call `fold` instead
+  |    --> crates\world-server\src\wire\snapshot.rs:421:18
+  |     |
+  | 421 |                 .map(|b| format!("{:02x}", b))
+  |     |                  ^^^
+  | help: ... and use the `write!` macro here
+  |    --> crates\world-server\src\wire\snapshot.rs:421:26
+  |     |
+  | 421 |                 .map(|b| format!("{:02x}", b))
+  |     |                          ^^^^^^^^^^^^^^^^^^^^
+  |     = note: this can be written more efficiently by appending to a `String` directly
+  |     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#format_collect
+  |
+  |     Checking protocol-conformance v0.1.0 (N:\aigent-place\crates\protocol-conformance)
+  |     Checking workload-harness v0.1.0 (N:\aigent-place\crates\workload-harness)
+  | error: could not compile `world-server` (lib test) due to 2 previous errors
+  | warning: build failed, waiting for other jobs to finish...
+  | product-check: FAIL (cargo clippy --workspace --all-targets -- -D warnings)
+- 2026-08-29T23:24:12Z — run: node scripts/product-check.mjs
+  started 2026-08-29T23:24:11Z, exit 101 in 1.5s
+  output:
+  | product-check: mode=full
+  | product-check: cargo fmt --check
+  | product-check: cargo clippy -D warnings
+  |     Checking world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  | error[E0599]: cannot write into `std::string::String`
+  |    --> crates\world-server\src\wire\snapshot.rs:412:32
+  |     |
+  | 412 |                 let _ = write!(out, "{:02x}", b);
+  |     |                                ^^^
+  |    --> /rustc/4d91de4e48198da2e33413efdcd9cd2cc0c46688\library\core\src\fmt\mod.rs:218:8
+  |     |
+  |     = note: the method is available for `std::string::String` here
+  |     |
+  | note: must implement `io::Write`, `fmt::Write`, or have a `write_fmt` method
+  |    --> crates\world-server\src\wire\snapshot.rs:412:32
+  |     |
+  | 412 |                 let _ = write!(out, "{:02x}", b);
+  |     |                                ^^^
+  |     = help: items from traits can only be used if the trait is in scope
+  | help: trait `Write` which provides `write_fmt` is implemented but not in scope; perhaps you want to import it
+  |     |
+  | 254 +     use std::fmt::Write;
+  |     |
+  |
+  | For more information about this error, try `rustc --explain E0599`.
+  | error: could not compile `world-server` (lib test) due to 1 previous error
+  | warning: build failed, waiting for other jobs to finish...
+  | product-check: FAIL (cargo clippy --workspace --all-targets -- -D warnings)
+- 2026-08-29T23:25:01Z — run: node scripts/product-check.mjs
+  started 2026-08-29T23:25:00Z, exit 1 in 0.3s
+  output:
+  | product-check: mode=full
+  | product-check: cargo fmt --check
+  | Diff in \\?\N:\aigent-place\crates\world-server\src\wire\snapshot.rs:253:
+  |  mod tests {
+  |      use super::*;
+  |      use crate::entity::Position;
+  | -    use std::fmt::Write;
+  |      use aigent_protocol::shape_node::Primitive;
+  |      use aigent_protocol::BoxPrimitive;
+  | +    use std::fmt::Write;
+  |
+  |      fn sample_shape() -> ShapeTree {
+  |          ShapeTree {
+  | product-check: FAIL (cargo fmt --all -- --check)
+- 2026-08-29T23:25:38Z — run: node scripts/product-check.mjs
+  started 2026-08-29T23:25:05Z, exit 0 in 32.3s
+  output tail (truncated to last 30 lines):
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+- 2026-08-29T23:26:35Z — run: node scripts/product-check.mjs
+  started 2026-08-29T23:26:19Z, exit 0 in 15.7s
+  output tail (truncated to last 30 lines):
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+  | npm notice run @aigent-place/viewer@0.1.0 test:real-snapshot
+  | npm notice run node --test ./test/real-snapshot.test.mjs

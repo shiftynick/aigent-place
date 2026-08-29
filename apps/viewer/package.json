@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "smoke": "node ./scripts/smoke.mjs"
+    "smoke": "node ./scripts/smoke.mjs",
+    "test:real-snapshot": "node --test ./test/real-snapshot.test.mjs"
   },
   "engines": {
     "node": ">=20"

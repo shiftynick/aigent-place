@@ -255,6 +255,7 @@ mod tests {
     use crate::entity::Position;
     use aigent_protocol::shape_node::Primitive;
     use aigent_protocol::BoxPrimitive;
+    use std::fmt::Write;
 
     fn sample_shape() -> ShapeTree {
         ShapeTree {
@@ -380,5 +381,42 @@ mod tests {
         };
         proto.version = 999;
         assert!(WorldSnapshotDelta::decode(&proto).is_none());
+    }
+    /// Produce the shared Rust+TypeScript fixture bytes. This is run by
+    /// `cargo test` and the bytes are regenerated into
+    /// `protocol/v1/conformance/binary/`. The TypeScript side reads the
+    /// same files in `apps/viewer/test/real-snapshot.test.mjs`.
+    #[test]
+    fn write_conformance_fixtures() {
+        let body = WorldSnapshotBody {
+            tick: 42,
+            generation_digest: [0xAB; 32],
+            bodies: vec![
+                RealEntityRecord::from_snapshot(&sample_record(1)),
+                RealEntityRecord::from_snapshot(&sample_record(2)),
+            ],
+        };
+        let body_bytes = encode_world_snapshot_body(&body);
+        let delta = WorldSnapshotDelta {
+            generation_digest: [0xCD; 32],
+            entered: vec![RealEntityRecord::from_snapshot(&sample_record(10))],
+            modified: Vec::new(),
+            left_ids: vec![13],
+        };
+        let delta_bytes = encode_world_snapshot_delta(&delta);
+        let out_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../protocol/v1/conformance/binary");
+        std::fs::create_dir_all(&out_dir).expect("create conformance binary dir");
+        fn hex(bytes: &[u8]) -> String {
+            let mut out = String::with_capacity(bytes.len() * 2);
+            for b in bytes {
+                let _ = write!(out, "{:02x}", b);
+            }
+            out
+        }
+        std::fs::write(out_dir.join("world-snapshot-body.hex"), hex(&body_bytes))
+            .expect("write body fixture");
+        std::fs::write(out_dir.join("world-snapshot-delta.hex"), hex(&delta_bytes))
+            .expect("write delta fixture");
     }
 }
