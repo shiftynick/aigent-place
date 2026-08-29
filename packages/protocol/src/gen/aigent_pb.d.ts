@@ -1135,6 +1135,118 @@ export declare type SnapshotDelta = Message<"aigent.protocol.v1.SnapshotDelta"> 
 export declare const SnapshotDeltaSchema: GenMessage<SnapshotDelta>;
 
 /**
+ * Inner snapshot body carried inside FullSnapshot.payload and SnapshotDelta.payload.
+ * Versioned at the message level: a decoder that sees an unknown `version` must
+ * treat the frame as resync-required rather than guess. Real bodies replace the
+ * legacy `AIGB` placeholder; see task-054 and ARCHITECTURE §4.
+ *
+ * @generated from message aigent.protocol.v1.RealEntityRecord
+ */
+export declare type RealEntityRecord = Message<"aigent.protocol.v1.RealEntityRecord"> & {
+  /**
+   * @generated from field: uint64 entity_id = 1;
+   */
+  entityId: bigint;
+
+  /**
+   * @generated from field: uint64 revision = 2;
+   */
+  revision: bigint;
+
+  /**
+   * @generated from field: aigent.protocol.v1.Vector3Millimeters position_mm = 3;
+   */
+  positionMm?: Vector3Millimeters | undefined;
+
+  /**
+   * @generated from field: aigent.protocol.v1.ShapeTree shape = 4;
+   */
+  shape?: ShapeTree | undefined;
+};
+
+/**
+ * Describes the message aigent.protocol.v1.RealEntityRecord.
+ * Use `create(RealEntityRecordSchema)` to create a new message.
+ */
+export declare const RealEntityRecordSchema: GenMessage<RealEntityRecord>;
+
+/**
+ * Full-snapshot body: every authoritative entity that survived AOI truncation,
+ * in ascending entity_id order. The entity_id order is canonical so the wire
+ * is deterministic across same-build replays.
+ *
+ * @generated from message aigent.protocol.v1.WorldSnapshotBodyProto
+ */
+export declare type WorldSnapshotBodyProto = Message<"aigent.protocol.v1.WorldSnapshotBodyProto"> & {
+  /**
+   * @generated from field: uint32 version = 1;
+   */
+  version: number;
+
+  /**
+   * @generated from field: uint64 tick = 2;
+   */
+  tick: bigint;
+
+  /**
+   * @generated from field: bytes generation_digest = 3;
+   */
+  generationDigest: Uint8Array;
+
+  /**
+   * @generated from field: repeated aigent.protocol.v1.RealEntityRecord bodies = 4;
+   */
+  bodies: RealEntityRecord[];
+};
+
+/**
+ * Describes the message aigent.protocol.v1.WorldSnapshotBodyProto.
+ * Use `create(WorldSnapshotBodyProtoSchema)` to create a new message.
+ */
+export declare const WorldSnapshotBodyProtoSchema: GenMessage<WorldSnapshotBodyProto>;
+
+/**
+ * Delta body: explicit enter / modified / left sets. Absence from the wire is
+ * never a leave signal; a left record is always carried so the decoder can
+ * remove it deterministically without holding the prior baseline. Coalesce
+ * may collapse repeated modified records of the same entity_id within a tick.
+ *
+ * @generated from message aigent.protocol.v1.WorldSnapshotDeltaProto
+ */
+export declare type WorldSnapshotDeltaProto = Message<"aigent.protocol.v1.WorldSnapshotDeltaProto"> & {
+  /**
+   * @generated from field: uint32 version = 1;
+   */
+  version: number;
+
+  /**
+   * @generated from field: bytes generation_digest = 2;
+   */
+  generationDigest: Uint8Array;
+
+  /**
+   * @generated from field: repeated aigent.protocol.v1.RealEntityRecord entered = 3;
+   */
+  entered: RealEntityRecord[];
+
+  /**
+   * @generated from field: repeated aigent.protocol.v1.RealEntityRecord modified = 4;
+   */
+  modified: RealEntityRecord[];
+
+  /**
+   * @generated from field: repeated uint64 left_ids = 5;
+   */
+  leftIds: bigint[];
+};
+
+/**
+ * Describes the message aigent.protocol.v1.WorldSnapshotDeltaProto.
+ * Use `create(WorldSnapshotDeltaProtoSchema)` to create a new message.
+ */
+export declare const WorldSnapshotDeltaProtoSchema: GenMessage<WorldSnapshotDeltaProto>;
+
+/**
  * @generated from message aigent.protocol.v1.SnapshotResyncRequest
  */
 export declare type SnapshotResyncRequest = Message<"aigent.protocol.v1.SnapshotResyncRequest"> & {

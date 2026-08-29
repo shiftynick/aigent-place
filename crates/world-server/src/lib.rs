@@ -24,6 +24,7 @@ mod shape;
 mod snapshot;
 mod tick;
 mod transport;
+mod wire;
 mod world;
 
 pub use aoi::{

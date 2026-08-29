@@ -414,6 +414,39 @@ message SnapshotDelta {
   bytes payload = 2;
 }
 
+// Inner snapshot body carried inside FullSnapshot.payload and SnapshotDelta.payload.
+// Versioned at the message level: a decoder that sees an unknown `version` must
+// treat the frame as resync-required rather than guess. Real bodies replace the
+// legacy `AIGB` placeholder; see task-054 and ARCHITECTURE §4.
+message RealEntityRecord {
+  uint64 entity_id = 1;
+  uint64 revision = 2;
+  Vector3Millimeters position_mm = 3;
+  ShapeTree shape = 4;
+}
+
+// Full-snapshot body: every authoritative entity that survived AOI truncation,
+// in ascending entity_id order. The entity_id order is canonical so the wire
+// is deterministic across same-build replays.
+message WorldSnapshotBodyProto {
+  uint32 version = 1;
+  uint64 tick = 2;
+  bytes generation_digest = 3;
+  repeated RealEntityRecord bodies = 4;
+}
+
+// Delta body: explicit enter / modified / left sets. Absence from the wire is
+// never a leave signal; a left record is always carried so the decoder can
+// remove it deterministically without holding the prior baseline. Coalesce
+// may collapse repeated modified records of the same entity_id within a tick.
+message WorldSnapshotDeltaProto {
+  uint32 version = 1;
+  bytes generation_digest = 2;
+  repeated RealEntityRecord entered = 3;
+  repeated RealEntityRecord modified = 4;
+  repeated uint64 left_ids = 5;
+}
+
 message SnapshotResyncRequest {
   optional uint64 baseline_id = 1;
 }
