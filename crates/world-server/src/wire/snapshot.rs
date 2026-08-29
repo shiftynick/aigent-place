@@ -226,6 +226,29 @@ pub fn half_to_even_i64(value: f64) -> i64 {
     }
 }
 
+/// Test-only helper: decode the wire bytes of a `WorldSnapshotBodyProto` and
+/// return the entity ids of every body, in the order the wire carries them.
+///
+/// Used by the integration tests that want to assert the bodies that arrived
+/// without having to construct the full protobuf.
+pub fn decode_world_snapshot_body_ids(bytes: &[u8]) -> Option<Vec<u64>> {
+    let proto = WorldSnapshotBodyProto::decode(bytes).ok()?;
+    if proto.version != BODY_VERSION {
+        return None;
+    }
+    Some(proto.bodies.iter().map(|b| b.entity_id).collect())
+}
+
+/// Test-only helper: decode a `WorldSnapshotDeltaProto` and return the
+/// explicit `left_ids` list.
+pub fn decode_world_snapshot_delta_left_ids(bytes: &[u8]) -> Option<Vec<u64>> {
+    let proto = WorldSnapshotDeltaProto::decode(bytes).ok()?;
+    if proto.version != DELTA_VERSION {
+        return None;
+    }
+    Some(proto.left_ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

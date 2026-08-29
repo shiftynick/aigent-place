@@ -188,6 +188,17 @@ pub struct SnapshotResyncRequired {
     pub requested_baseline_id: Option<u64>,
 }
 
+/// Last real-body frame on a connection (task-054).
+///
+/// Holds either the most recent full snapshot or the most recent delta;
+/// the channel never needs both at once, and the wire layer rebuilds the
+/// world from the current full body plus the deltas received since.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LastRealFrame {
+    Full(crate::wire::WorldSnapshotBody),
+    Delta(crate::wire::WorldSnapshotDelta),
+}
+
 /// Per-connection snapshot baseline channel.
 #[derive(Debug, Clone)]
 pub struct SnapshotChannel {
@@ -195,6 +206,12 @@ pub struct SnapshotChannel {
     retained_baselines: BTreeSet<u64>,
     status: SnapshotStatus,
     last_payload: Option<StubSnapshotPayload>,
+    /// Last real-body frame on this channel (task-054).
+    ///
+    /// A full snapshot here means a delta can be applied against the
+    /// connection's live baseline; a delta is informational only because a
+    /// delta does not change the baseline id.
+    last_real_frame: Option<LastRealFrame>,
 }
 
 impl Default for SnapshotChannel {
@@ -211,6 +228,7 @@ impl SnapshotChannel {
             retained_baselines: BTreeSet::new(),
             status: SnapshotStatus::Live,
             last_payload: None,
+            last_real_frame: None,
         }
     }
 
@@ -288,6 +306,42 @@ impl SnapshotChannel {
             return Err(required);
         }
         self.last_payload = Some(payload);
+        Ok(())
+    }
+    /// The last real-body frame the channel retained, if any.
+    #[must_use]
+    pub fn last_real_frame(&self) -> Option<&LastRealFrame> {
+        self.last_real_frame.as_ref()
+    }
+
+    /// Install a real-body full snapshot under a fresh baseline id.
+    pub fn install_real_full(
+        &mut self,
+        new_baseline_id: u64,
+        body: crate::wire::WorldSnapshotBody,
+    ) -> crate::wire::WorldSnapshotBody {
+        self.baseline_id = Some(new_baseline_id);
+        self.retained_baselines = BTreeSet::from([new_baseline_id]);
+        self.status = SnapshotStatus::Live;
+        self.last_real_frame = Some(LastRealFrame::Full(body.clone()));
+        body
+    }
+
+    /// Attempt to deliver a real-body delta against baseline_id.
+    ///
+    /// Updates the channel last real frame to the delivered delta on
+    /// success; on a baseline rejection, marks the channel resync-required
+    /// and returns the typed reason.
+    pub fn deliver_real_delta(
+        &mut self,
+        baseline_id: Option<u64>,
+        delta: crate::wire::WorldSnapshotDelta,
+    ) -> Result<(), SnapshotResyncRequired> {
+        if let Some(required) = self.delta_rejection(baseline_id) {
+            self.require_resync();
+            return Err(required);
+        }
+        self.last_real_frame = Some(LastRealFrame::Delta(delta));
         Ok(())
     }
 }

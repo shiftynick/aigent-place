@@ -14,8 +14,8 @@
 
 pub mod snapshot;
 
-#[allow(unused_imports)] // Call-sites in fanout.rs/transport.rs land in this commit.
 pub use snapshot::{
+    decode_world_snapshot_body_ids, decode_world_snapshot_delta_left_ids,
     encode_world_snapshot_body, encode_world_snapshot_delta, metres_to_mm_i64, RealEntityRecord,
     WorldSnapshotBody, WorldSnapshotDelta, BODY_VERSION, DELTA_VERSION,
 };

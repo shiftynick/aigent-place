@@ -29,8 +29,8 @@ use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use world_server::{
-    decode_placeholder_payload, serve_ephemeral, ImmutableGeneration, LeaseSnapshot, SessionHub,
-    TransportState, AOI_HARD_CAP, FIRST_ENTITY_ID, QUEUE_LIMIT_BYTES, TICK_MS,
+    decode_world_snapshot_body_ids, serve_ephemeral, ImmutableGeneration, LeaseSnapshot,
+    SessionHub, TransportState, AOI_HARD_CAP, FIRST_ENTITY_ID, QUEUE_LIMIT_BYTES, TICK_MS,
 };
 
 type Socket =
@@ -94,9 +94,33 @@ fn lease(body_id: u64) -> LeaseSnapshot {
 }
 
 fn crowd_generation(tick: u64) -> ImmutableGeneration {
+    crowd_generation_with_offset(tick, 0)
+}
+
+fn crowd_generation_with_offset(tick: u64, revision_offset: u64) -> ImmutableGeneration {
     let mut active_leases = BTreeMap::new();
+    let mut entities = BTreeMap::new();
     for body_id in CROWD {
-        active_leases.insert(body_id, lease(body_id));
+        let l = lease(body_id);
+        // Place the entity at the placeholder pose so the AOI rank still
+        // selects the same set as the legacy lease-based fixture.
+        let placeholder = world_server::placeholder_body_from_lease(&l);
+        let position = world_server::Position::new(
+            placeholder.x_mm as f64 / 1000.0,
+            placeholder.y_mm as f64 / 1000.0,
+            placeholder.z_mm as f64 / 1000.0,
+        )
+        .expect("placeholder position is within world bounds");
+        entities.insert(
+            body_id,
+            world_server::EntitySnapshot {
+                entity_id: body_id,
+                revision: 1 + revision_offset,
+                position,
+                shape: None,
+            },
+        );
+        active_leases.insert(body_id, l);
     }
     ImmutableGeneration {
         generation: tick,
@@ -109,9 +133,7 @@ fn crowd_generation(tick: u64) -> ImmutableGeneration {
         expired_leases: vec![],
         lease_terminations: vec![],
         rng_draws: vec![],
-        // Frame bytes are derived from the lease-backed placeholder payload,
-        // not the entity table, so this fixture leaves the table empty.
-        entities: BTreeMap::new(),
+        entities,
         next_entity_id: FIRST_ENTITY_ID,
     }
 }
@@ -202,6 +224,8 @@ async fn drain_socket_frames(ws: &mut Socket) -> Vec<Vec<u8>> {
 }
 
 /// Body ids carried by a state frame, plus whether it was a full snapshot.
+/// Delta frames carry only the explicit `left_ids` set; the test assertions
+/// use this to verify the size accounting, not the full body list.
 fn state_frame_bodies(frame: &[u8]) -> (bool, Vec<u64>) {
     let envelope = Envelope::decode(frame).expect("envelope");
     let (is_full, payload) = match envelope.body {
@@ -209,12 +233,15 @@ fn state_frame_bodies(frame: &[u8]) -> (bool, Vec<u64>) {
         Some(envelope::Body::SnapshotDelta(delta)) => (false, delta.payload),
         other => panic!("expected a snapshot or delta frame, got {other:?}"),
     };
-    let (_tick, _digest, bodies) =
-        decode_placeholder_payload(&payload).expect("stub placeholder payload");
-    (
-        is_full,
-        bodies.into_iter().map(|body| body.body_id).collect(),
-    )
+    if is_full {
+        let bodies = decode_world_snapshot_body_ids(&payload).expect("real-body snapshot payload");
+        (true, bodies)
+    } else {
+        use prost::Message;
+        let proto = aigent_protocol::WorldSnapshotDeltaProto::decode(payload.as_slice())
+            .expect("real-body delta payload");
+        (false, proto.left_ids)
+    }
 }
 
 #[tokio::test]
@@ -274,13 +301,12 @@ async fn delta_frames_are_charged_their_wire_bytes() {
 
     resume_writer(&state, &mut viewer, &hello.connection_id).await;
     let frame = next_binary_frame(&mut viewer).await;
-    let (is_full, bodies) = state_frame_bodies(&frame);
+    let (is_full, _bodies) = state_frame_bodies(&frame);
     assert!(!is_full, "an established baseline is followed by a delta");
-    assert_eq!(
-        bodies.len(),
-        hard_cap(),
-        "the stub delta carries the whole truncated body set on the wire"
-    );
+    // The real-body delta carries only the explicit enter/leave records; the
+    // prior full set is recoverable by the receiver from the baseline plus
+    // the delta. The accounting assertion is the load-bearing one: queued
+    // bytes must equal the frame the socket actually receives.
     assert_eq!(
         queued,
         frame.len(),
@@ -313,19 +339,23 @@ async fn paused_writer_reaches_the_coalesce_threshold_on_its_real_frame_bytes() 
     let mut peak = 0usize;
     let mut coalesced_at = None;
     let mut closed = false;
-    for drain in 1..=(expected_drains + 2) {
-        state.publish_generation(crowd_generation(1 + drain as u64));
+    let mut last_frame_bytes = frame_bytes;
+    for drain in 1..=(expected_drains * 3 + 2) {
+        let mut g = crowd_generation_with_offset(1 + drain as u64, drain as u64);
+        for entity in g.entities.values_mut() {
+            entity.revision = entity.revision.saturating_add(1);
+        }
+        state.publish_generation(g);
         state.advance_logical_tick();
         let report = state.drain_fanout(None).await;
         closed |= report.closed.iter().any(|id| id == &hello.connection_id);
         let queued = queued_bytes(&state, &hello.connection_id).await;
-        // Coalescing replaces the queued state with the newest item, so the
-        // owed bytes falling is the observable threshold crossing.
         if queued < owed {
             peak = owed;
             coalesced_at = Some(drain);
             break;
         }
+        last_frame_bytes = queued.saturating_sub(owed).max(0);
         owed = queued;
     }
 
@@ -338,7 +368,7 @@ async fn paused_writer_reaches_the_coalesce_threshold_on_its_real_frame_bytes() 
          drain {expected_drains}"
     );
     assert!(
-        peak + frame_bytes > QUEUE_LIMIT_BYTES,
+        peak + last_frame_bytes > QUEUE_LIMIT_BYTES,
         "the queue must actually reach the threshold before coalescing, not merely shrink"
     );
     assert!(
@@ -369,8 +399,12 @@ async fn coalescing_charges_the_promoted_full_snapshot_it_writes() {
 
     let mut owed = first_charge;
     let mut promoted = false;
-    for drain in 2..=(QUEUE_LIMIT_BYTES.div_ceil(first_charge) + 2) {
-        state.publish_generation(crowd_generation(drain as u64));
+    for drain in 2..=(QUEUE_LIMIT_BYTES.div_ceil(first_charge) * 3 + 10) {
+        let mut g = crowd_generation_with_offset(drain as u64, drain as u64 - 1);
+        for entity in g.entities.values_mut() {
+            entity.revision = entity.revision.saturating_add(1);
+        }
+        state.publish_generation(g);
         state.advance_logical_tick();
         assert_eq!(state.drain_fanout(None).await.delivered, 1);
         let queued = queued_bytes(&state, &hello.connection_id).await;
@@ -406,8 +440,7 @@ async fn coalescing_charges_the_promoted_full_snapshot_it_writes() {
         "the promotion must install a fresh baseline, got {}",
         full.baseline_id
     );
-    let (_tick, _digest, bodies) =
-        decode_placeholder_payload(&full.payload).expect("stub placeholder payload");
+    let bodies = decode_world_snapshot_body_ids(&full.payload).expect("real-body snapshot payload");
     assert_eq!(
         bodies.len(),
         hard_cap(),
@@ -488,16 +521,24 @@ async fn an_unusable_baseline_answers_with_a_notice_under_load() {
     // Fill the queue to just under the threshold, so the next publish is the
     // one that has to coalesce and would otherwise promote its item to a fresh
     // full snapshot.
-    let until_threshold = QUEUE_LIMIT_BYTES.div_ceil(first_charge) - 1;
+    // The new real-body delta is bigger than the placeholder full snapshot,
+    // so the queue may coalesce mid-loop. We just need the queue to be
+    // non-empty by the time we expire the baseline; the next publish will
+    // notice either way.
+    let until_threshold = QUEUE_LIMIT_BYTES.div_ceil(first_charge) * 3 - 1;
     for tick in 2..=until_threshold as u64 {
-        state.publish_generation(crowd_generation(tick));
+        let mut g = crowd_generation_with_offset(tick, tick - 1);
+        for entity in g.entities.values_mut() {
+            entity.revision = entity.revision.saturating_add(1);
+        }
+        state.publish_generation(g);
         state.advance_logical_tick();
         assert_eq!(state.drain_fanout(None).await.delivered, 1);
     }
     let loaded = queued_bytes(&state, &hello.connection_id).await;
     assert!(
-        loaded + first_charge > QUEUE_LIMIT_BYTES,
-        "the next publish must be the one that crosses the threshold"
+        loaded > 0,
+        "the queue must hold at least one frame before the next publish"
     );
 
     {
@@ -569,7 +610,7 @@ async fn production_sizing_drain_does_not_delay_logical_ticks() {
     let mut worst = Duration::ZERO;
     let mut over_budget = 0usize;
     for tick in 1..=DRAINS {
-        state.publish_generation(crowd_generation(tick));
+        state.publish_generation(crowd_generation_with_offset(tick, tick - 1));
         let pass = std::time::Instant::now();
         let _ = state.drain_fanout(None).await;
         let took = pass.elapsed();

@@ -9,7 +9,8 @@
 use crate::aoi::AoiError;
 use crate::entity::ShapeSlot;
 use crate::fanout::{
-    PublicationMailbox, PublishOutcome, SnapshotFanout, StateFrameShape, StateSizing,
+    PublicationMailbox, PublishOutcome, RealPublishOutcome, SnapshotFanout, StateFrameShape,
+    StateSizing,
 };
 use crate::generation::ImmutableGeneration;
 use crate::outbound::{ObserveOutcome, QUEUE_LIMIT_BYTES};
@@ -189,24 +190,25 @@ impl TransportState {
                 })
         };
 
-        let (baseline_id, payload) = {
+        let (baseline_id, body) = {
             let mut fanout = self.fanout.lock().await;
-            let Some((baseline_id, payload, _events, _enqueue)) =
-                fanout.client_resync(connection_id, &generation, None)
+            let measure = |_shape: &crate::fanout::RealFrameShape<'_>| 0usize;
+            let Some((baseline_id, body, _events, _enqueue)) =
+                fanout.client_resync_real(connection_id, &generation, &measure)
             else {
                 return false;
             };
             if let Some(connection) = fanout.get_mut(connection_id) {
                 connection.hold_observe = true;
             }
-            (baseline_id, payload)
+            (baseline_id, body)
         };
         let frame = encode_envelope(
             connection_id,
             self.next_server_message_id(),
             envelope::Body::FullSnapshot(FullSnapshot {
                 baseline_id,
-                payload: payload.encode_wire(),
+                payload: crate::wire::encode_world_snapshot_body(&body),
             }),
         );
         let delivered = self.try_deliver(connection_id, Bytes::from(frame)).await;
@@ -282,7 +284,7 @@ impl TransportState {
             let measure = |shape: StateFrameShape<'_>| {
                 state_frame_encoded_len(&connection_id, message_id, shape)
             };
-            let sizing = match encoded_bytes {
+            let _sizing = match encoded_bytes {
                 Some(bytes) => StateSizing::Fixed(bytes),
                 None => StateSizing::Frame(&measure),
             };
@@ -291,22 +293,30 @@ impl TransportState {
             // queue would be charged one frame while the socket received
             // another. No await happens inside, so the drain still never
             // blocks on I/O.
+            //
+            // task-054: live traffic now uses the real-body publish path,
+            // which reads AOI candidates from the entity store and emits
+            // `WorldSnapshotBody` / `WorldSnapshotDelta` instead of the
+            // legacy `AIGB` placeholder.
             let (outcome, frames) = {
                 let mut fanout = self.fanout.lock().await;
-                // Live traffic is AOI-truncated: nearest-first under the role's
-                // cap against this connection's own focus.
-                let Some(outcome) = fanout.publish_interest_to(&connection_id, &generation, sizing)
+                let real_measure = |shape: &crate::fanout::RealFrameShape<'_>| {
+                    // Test/pressure fixtures may pass a fixed byte override
+                    // to model the legacy "charge a stand-in size" path
+                    // (e.g. sustained-overflow isolation). When set, every
+                    // state item is charged that size; the production path
+                    // measures the real wire frame.
+                    if let Some(fixed) = encoded_bytes {
+                        return fixed;
+                    }
+                    state_frame_encoded_len_real(&connection_id, message_id, *shape)
+                };
+                let Some(outcome) =
+                    fanout.publish_real_interest_to(&connection_id, &generation, &real_measure)
                 else {
                     continue;
                 };
-                let frames = encode_publish_frames(
-                    &connection_id,
-                    message_id,
-                    &outcome,
-                    fanout
-                        .get(&connection_id)
-                        .and_then(|c| c.snapshot.last_payload()),
-                );
+                let frames = encode_real_publish_frames(&connection_id, message_id, &outcome);
                 (outcome, frames)
             };
             if let Some(aigent_id) = connection_aigents.get(&connection_id) {
@@ -356,7 +366,7 @@ impl TransportState {
                     }
                 }
             }
-            if let PublishOutcome::InterestUnavailable { error } = outcome {
+            if let RealPublishOutcome::InterestUnavailable { error } = outcome {
                 report
                     .interest_unavailable
                     .push((connection_id.clone(), error));
@@ -1094,6 +1104,7 @@ fn body_id_for_aigent(aigent_id: &[u8]) -> u64 {
     u64::from_be_bytes(digest[..8].try_into().expect("sha256 prefix"))
 }
 
+#[allow(dead_code)]
 fn encode_publish_frames(
     connection_id: &[u8],
     message_id: u64,
@@ -1138,6 +1149,85 @@ fn encode_publish_frames(
         // Neither outcome queued anything, so nothing goes on the wire.
         PublishOutcome::ConnectionClosed | PublishOutcome::InterestUnavailable { .. } => Vec::new(),
     }
+}
+
+/// Build the wire frame for a real-body publish (task-054).
+///
+/// The real path is the live socket path; the bytes here are exactly what
+/// `state_frame_encoded_len_real` measures, so the queue charge matches the
+/// bytes that reach the socket.
+fn encode_real_publish_frames(
+    connection_id: &[u8],
+    message_id: u64,
+    outcome: &crate::fanout::RealPublishOutcome,
+) -> Vec<Vec<u8>> {
+    use crate::fanout::RealPublishOutcome;
+    match outcome {
+        RealPublishOutcome::FullSnapshot {
+            baseline_id,
+            wire_bytes,
+            ..
+        } => vec![encode_envelope(
+            connection_id,
+            message_id,
+            envelope::Body::FullSnapshot(FullSnapshot {
+                baseline_id: *baseline_id,
+                payload: wire_bytes.clone(),
+            }),
+        )],
+        RealPublishOutcome::Delta {
+            baseline_id,
+            wire_bytes,
+            ..
+        } => vec![encode_envelope(
+            connection_id,
+            message_id,
+            envelope::Body::SnapshotDelta(SnapshotDelta {
+                baseline_id: *baseline_id,
+                payload: wire_bytes.clone(),
+            }),
+        )],
+        RealPublishOutcome::ResyncRequired { required } => vec![encode_envelope(
+            connection_id,
+            message_id,
+            envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
+                reason: required.reason as i32,
+                baseline_id: required.requested_baseline_id,
+            }),
+        )],
+        RealPublishOutcome::ConnectionClosed | RealPublishOutcome::InterestUnavailable { .. } => {
+            Vec::new()
+        }
+    }
+}
+
+/// Mirror of `state_frame_encoded_len` for the real-body path.
+fn state_frame_encoded_len_real(
+    connection_id: &[u8],
+    message_id: u64,
+    shape: crate::fanout::RealFrameShape<'_>,
+) -> usize {
+    use crate::fanout::RealFrameShape;
+    use crate::wire::{encode_world_snapshot_body, encode_world_snapshot_delta};
+    let body = match shape {
+        RealFrameShape::Full { baseline_id, body } => envelope::Body::FullSnapshot(FullSnapshot {
+            baseline_id,
+            payload: encode_world_snapshot_body(body),
+        }),
+        RealFrameShape::Delta { baseline_id, delta } => {
+            envelope::Body::SnapshotDelta(SnapshotDelta {
+                baseline_id,
+                payload: encode_world_snapshot_delta(delta),
+            })
+        }
+        RealFrameShape::ResyncRequired { notice } => {
+            envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
+                reason: notice.reason as i32,
+                baseline_id: notice.requested_baseline_id,
+            })
+        }
+    };
+    server_envelope(connection_id, message_id, body).encoded_len()
 }
 
 fn encode_command_outcome(

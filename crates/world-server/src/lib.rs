@@ -50,7 +50,8 @@ pub use entity::{
     WORLD_BOUND_METRES,
 };
 pub use fanout::{
-    ConnectionOutbound, EventStreamCursor, PublicationMailbox, PublishOutcome, SnapshotFanout,
+    ConnectionOutbound, EventStreamCursor, PublicationMailbox, PublishOutcome, RealFrameShape,
+    RealInterestDiff, RealPublishOutcome, SnapshotFanout,
 };
 pub use generation::{AppliedCommand, ImmutableGeneration};
 pub use lease::{LeaseSnapshot, LeaseTable, LeaseTermination, LeaseTerminationReason};
@@ -95,6 +96,11 @@ pub use tick::{ms_to_ticks, ticks_to_ms, TickClock, DEFAULT_LEASE_TTL_MS, TICK_H
 pub use transport::{
     outbound_channel_cap, outbound_queue_limit_bytes, serve, serve_ephemeral,
     spawn_simulation_loop, DrainReport, TransportState, DEFAULT_LISTEN_JOURNAL_PATH,
+};
+pub use wire::{
+    decode_world_snapshot_body_ids, decode_world_snapshot_delta_left_ids,
+    encode_world_snapshot_body, encode_world_snapshot_delta, RealEntityRecord, WorldSnapshotBody,
+    WorldSnapshotDelta, BODY_VERSION, DELTA_VERSION,
 };
 pub use world::{
     replay_log, CommandEffect, QueuedCommand, TickAdvance, World, WorldConfig, WorldError,

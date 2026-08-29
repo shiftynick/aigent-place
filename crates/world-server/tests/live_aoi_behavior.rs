@@ -23,9 +23,10 @@ use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use world_server::{
-    decode_placeholder_payload, placeholder_body_from_lease, serve_ephemeral, AoiError,
-    ImmutableGeneration, LeaseSnapshot, SessionHub, SnapshotFanout, TransportState, AOI_HARD_CAP,
-    FIRST_ENTITY_ID, VIEWER_AOI_CAPS,
+    decode_world_snapshot_body_ids, decode_world_snapshot_delta_left_ids,
+    placeholder_body_from_lease, serve_ephemeral, AoiError, EntitySnapshot, ImmutableGeneration,
+    LeaseSnapshot, Position, RealFrameShape, SessionHub, ShapeSlot, SnapshotFanout, TransportState,
+    AOI_HARD_CAP, FIRST_ENTITY_ID, VIEWER_AOI_CAPS,
 };
 
 type Socket =
@@ -94,23 +95,62 @@ async fn next_envelope(ws: &mut Socket) -> Envelope {
 }
 
 /// Whether an observe frame was a full snapshot, plus the body ids it carried
-/// in wire order. Command results and other traffic are skipped.
-async fn next_state_body_ids(ws: &mut Socket) -> (bool, Vec<u64>) {
-    for _ in 0..32 {
-        let payload = match next_envelope(ws).await.body {
-            Some(envelope::Body::FullSnapshot(full)) => (true, full.payload),
-            Some(envelope::Body::SnapshotDelta(delta)) => (false, delta.payload),
+/// in wire order, given the prior cumulative set. Command results and other
+/// traffic are skipped.
+///
+/// A full snapshot replaces `prior`. A delta subtracts the explicit `left_ids`
+/// and merges the union of `entered` and `modified`; the returned set is
+/// `prior` updated with that diff.
+async fn next_state_body_ids(ws: &mut Socket, prior: &[u64]) -> (bool, Vec<u64>) {
+    for _ in 0..64 {
+        match next_envelope(ws).await.body {
+            Some(envelope::Body::FullSnapshot(full)) => {
+                let ids = decode_world_snapshot_body_ids(&full.payload)
+                    .expect("real-body snapshot payload");
+                return (true, ids);
+            }
+            Some(envelope::Body::SnapshotDelta(delta)) => {
+                let left = decode_world_snapshot_delta_left_ids(&delta.payload)
+                    .expect("real-body delta payload");
+                let em = decode_world_snapshot_entered_modified_ids(&delta.payload);
+                let mut next: Vec<u64> = prior
+                    .iter()
+                    .copied()
+                    .filter(|id| !left.contains(id))
+                    .collect();
+                if let Some(em) = em {
+                    for id in em {
+                        if !next.contains(&id) {
+                            next.push(id);
+                        }
+                    }
+                    next.sort();
+                }
+                return (false, next);
+            }
             _ => continue,
-        };
-        let (is_full, bytes) = payload;
-        let (_tick, _digest, bodies) =
-            decode_placeholder_payload(&bytes).expect("stub placeholder payload");
-        return (
-            is_full,
-            bodies.into_iter().map(|body| body.body_id).collect(),
-        );
+        }
     }
     panic!("no snapshot or delta frame arrived");
+}
+
+/// Extract the union of `entered` and `modified` entity ids from a delta wire
+/// payload. Returns `None` if the payload is not a `WorldSnapshotDeltaProto`.
+fn decode_world_snapshot_entered_modified_ids(bytes: &[u8]) -> Option<Vec<u64>> {
+    use prost::Message;
+    let proto = aigent_protocol::WorldSnapshotDeltaProto::decode(bytes).ok()?;
+    if proto.version != 1 {
+        return None;
+    }
+    let mut ids: Vec<u64> = proto
+        .entered
+        .iter()
+        .map(|b| b.entity_id)
+        .chain(proto.modified.iter().map(|b| b.entity_id))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    Some(ids)
 }
 
 fn lease(body_id: u64) -> LeaseSnapshot {
@@ -132,7 +172,26 @@ fn generation_of(
     leases: impl IntoIterator<Item = LeaseSnapshot>,
 ) -> ImmutableGeneration {
     let mut active_leases = BTreeMap::new();
+    let mut entities = BTreeMap::new();
     for lease in leases {
+        let body = placeholder_body_from_lease(&lease);
+        let position = Position::new(
+            body.x_mm as f64 / 1000.0,
+            body.y_mm as f64 / 1000.0,
+            body.z_mm as f64 / 1000.0,
+        )
+        .expect("placeholder position is within world bounds");
+        entities.insert(
+            lease.body_id,
+            EntitySnapshot {
+                entity_id: lease.body_id,
+                revision: 1,
+                position,
+                shape: Some(ShapeSlot::from_encoded(
+                    aigent_protocol::ShapeTree { nodes: Vec::new() }.encode_to_vec(),
+                )),
+            },
+        );
         active_leases.insert(lease.body_id, lease);
     }
     ImmutableGeneration {
@@ -146,9 +205,7 @@ fn generation_of(
         expired_leases: vec![],
         lease_terminations: vec![],
         rng_draws: vec![],
-        // AOI interest ranks from lease poses, not the entity table, so this
-        // fixture leaves the table empty on purpose.
-        entities: BTreeMap::new(),
+        entities,
         next_entity_id: FIRST_ENTITY_ID,
     }
 }
@@ -157,18 +214,17 @@ fn crowd_generation(tick: u64) -> ImmutableGeneration {
     generation_of(tick, CROWD.map(lease))
 }
 
-/// Placeholder pose in canonical metres, converted here from the millimetre
-/// wire units so the oracle does not borrow the production conversion.
+/// Pose in canonical metres, read from the entity table so the oracle does
+/// not borrow the production AOI ranking helper.
 fn pose_of(generation: &ImmutableGeneration, body_id: u64) -> (f64, f64, f64) {
-    let lease = generation
-        .active_leases
+    let entity = generation
+        .entities
         .get(&body_id)
-        .expect("body has a live lease in this generation");
-    let body = placeholder_body_from_lease(lease);
+        .expect("body has an entity record in this generation");
     (
-        body.x_mm as f64 / 1000.0,
-        body.y_mm as f64 / 1000.0,
-        body.z_mm as f64 / 1000.0,
+        entity.position.x(),
+        entity.position.y(),
+        entity.position.z(),
     )
 }
 
@@ -267,7 +323,7 @@ async fn live_viewer_snapshot_truncates_to_the_hard_cap_nearest_first() {
     let report = state.drain_fanout(None).await;
     assert_eq!(report.delivered, 1, "the viewer should receive one frame");
 
-    let (is_full, delivered) = next_state_body_ids(&mut viewer).await;
+    let (is_full, delivered) = next_state_body_ids(&mut viewer, &[]).await;
     assert!(is_full, "the first observe frame is a full snapshot");
     assert_eq!(
         delivered.len(),
@@ -318,7 +374,7 @@ async fn live_aigent_interest_ranks_from_its_own_body() {
     let report = state.drain_fanout(None).await;
     assert_eq!(report.delivered, 1);
 
-    let (is_full, delivered) = next_state_body_ids(&mut aigent).await;
+    let (is_full, delivered) = next_state_body_ids(&mut aigent, &[]).await;
     assert!(is_full, "the first observe frame is a full snapshot");
     assert_eq!(
         delivered.first().copied(),
@@ -339,7 +395,7 @@ async fn bodies_leaving_the_interest_set_stop_appearing_in_deltas() {
     let first = crowd_generation(1);
     state.publish_generation(first.clone());
     let _ = state.drain_fanout(None).await;
-    let (is_full, delivered_first) = next_state_body_ids(&mut viewer).await;
+    let (is_full, delivered_first) = next_state_body_ids(&mut viewer, &[]).await;
     assert!(is_full, "the first observe frame is a full snapshot");
     assert_eq!(
         delivered_first,
@@ -361,18 +417,26 @@ async fn bodies_leaving_the_interest_set_stop_appearing_in_deltas() {
 
     state.publish_generation(second.clone());
     let _ = state.drain_fanout(None).await;
-    let (is_full, delivered_second) = next_state_body_ids(&mut viewer).await;
+    let (is_full, delivered_second) = next_state_body_ids(&mut viewer, &delivered_first).await;
     assert!(
         !is_full,
         "an established baseline should be followed by a delta"
     );
+    // The new real-body delta carries explicit enter/modify/leave records, not
+    // a full body list. After the test helper applies the diff to the prior
+    // set, the cumulative set must match the expected AOI rank; the helper
+    // returns it in ascending order, so compare via a sorted equal.
+    let mut sorted_second = delivered_second.clone();
+    sorted_second.sort();
+    let mut sorted_expected = expected_second.clone();
+    sorted_expected.sort();
     assert_eq!(
-        delivered_second, expected_second,
-        "delta payloads must carry the same truncated interest set as the baseline"
+        sorted_second, sorted_expected,
+        "after applying the delta, the cumulative interest set must match the truncated baseline"
     );
     for body_id in leaving {
         assert!(
-            !delivered_second.contains(&body_id),
+            !sorted_second.contains(&body_id),
             "body {body_id} left the interest set and must stop being delivered"
         );
     }
@@ -388,10 +452,11 @@ async fn client_resync_baseline_is_truncated() {
     let mut fanout = SnapshotFanout::new();
     fanout.attach(b"c1".to_vec());
 
-    let (_baseline, payload, _events, _enqueue) = fanout
-        .client_resync(b"c1", &generation, None)
+    let measure = |_shape: &RealFrameShape<'_>| 0usize;
+    let (_baseline, body, _events, _enqueue) = fanout
+        .client_resync_real(b"c1", &generation, &measure)
         .expect("resync delivered");
-    let delivered: Vec<u64> = payload.bodies.iter().map(|body| body.body_id).collect();
+    let delivered: Vec<u64> = body.bodies.iter().map(|r| r.entity_id).collect();
     assert_eq!(
         delivered,
         expected_interest(&generation, WORLD_ORIGIN, hard_cap()),
@@ -458,7 +523,7 @@ async fn socket_resync_request_delivers_the_truncated_set() {
         .await
         .expect("send resync request");
 
-    let (is_full, delivered) = next_state_body_ids(&mut viewer).await;
+    let (is_full, delivered) = next_state_body_ids(&mut viewer, &[]).await;
     assert!(is_full, "a resync request must answer with a full snapshot");
     assert_eq!(
         delivered, expected,
@@ -533,7 +598,7 @@ async fn unusable_aoi_cap_publishes_nothing_rather_than_the_whole_world() {
     assert_eq!(report.delivered, 1, "delivery must resume after recovery");
     assert!(report.interest_unavailable.is_empty());
 
-    let (is_full, delivered) = next_state_body_ids(&mut viewer).await;
+    let (is_full, delivered) = next_state_body_ids(&mut viewer, &[]).await;
     assert!(
         is_full,
         "the first frame after recovery is still a full snapshot baseline"
