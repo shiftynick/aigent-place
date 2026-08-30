@@ -6,7 +6,7 @@ priority: p1
 tags: [milestone:shape-collision-slice, area:protocol]
 blockedBy: [task-046, task-051]
 createdAt: "2026-08-06T13:25:52Z"
-updatedAt: "2026-08-30T15:00:36Z"
+updatedAt: "2026-08-30T15:44:19Z"
 ---
 
 <!-- task-tracker:description -->
@@ -926,6 +926,192 @@ Snapshots ship a placeholder body record rather than authoritative entity state.
   | product-check: FAIL (C:\nvm4w\nodejs\node.exe scripts/generate-protocol.mjs --check)
 - 2026-08-30T15:00:36Z — run: node scripts/product-check.mjs
   started 2026-08-30T15:00:21Z, exit 0 in 15.4s
+  output tail (truncated to last 30 lines):
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+  | npm notice run @aigent-place/viewer@0.1.0 test:real-snapshot
+  | npm notice run node --test ./test/real-snapshot.test.mjs
+- 2026-08-30T15:11:42Z — run: node .agent-foundry/cold-review.mjs --provider codex --packet .tasks/review-packets/task-054-r2 --cwd . --axis STANDARDS
+  started 2026-08-30T15:04:50Z, exit 0 in 412.1s
+  output tail (truncated to last 30 lines):
+  | | Round-2 reconnect cleanup and resync-on-error behavior have only manual code-review evidence. The viewer test imports only the payload decoder; it does not exercise WebSocket reconnect, body cleanup, malformed-envelope recovery, or resync requests. | severity med | confidence high\n\n12. `README.md:38-53`, `crates/world-server/src/wire/snapshot.rs:91-92`, `crates/world-server/src/fanout.rs:701` | Change behavior and contracts with their documentation; maintain one source of truth | README still describes the live payload as a flat stub without enter/leave records, while Rust API comments still claim ascending-ID order although the versioned schema and live path use nearest-first AOI rank. | severity low | confidence high\n\n13. `.tasks/tasks/task-054-carry-real-bodies-through-snapshots-and-aoi.md:927-958` | The unified repository gate is `node scripts/check.mjs` | The final tree has recorded fast and full `scripts/product-check.mjs` passes, but no post-edit unified `scripts/check.mjs` run; the required process, contract, hook, and Foundry checks remain unverified. | severity low | confidence high\n\nCHECKED\n\n- Architecture and decisions: compared the implementation with ARCHITECTURE §§1 and 4, ADR-0001, and ADR-0008.\n- General design and ownership: traced immutable entity state through Rust snapshot construction, fanout, socket delivery, and the read-only viewer.\n- Errors and recovery: checked malformed and unknown payloads, reconnect, resync, baseline handling, and shape-decoding failures.\n- State, ordering, and determinism: inspected AOI ranking, explicit delta sets, baseline retention, canonical collection iteration, and coalescing semantics.\n- Backpressure: traced exact-size measurement, logical accounting, channel/pending storage, state coalescing, event admission, and overflow observation.\n- Security and privacy: treated repository and packet content as data; checked serialized-input validation, fixture write scope, and secret exposure. No credentials or raw sensitive shape data are emitted.\n- Testing: inspected Rust wire and integration tests, pressure tests, workload harness, and shared fixture coverage. The three direct viewer fixture tests passed; the malformed-body probe confirmed finding 6.\n- Dependencies and toolchains: found no new dependency or lockfile change; pinned toolchains remain present and generated schemas exist.\n- Documentation and commands: verified referenced fixture paths and test commands; identified stale behavior documentation and missing unified-gate evidence.\n- Version control: inspected four task-scoped commits and `git diff --check`; no whitespace error, hook bypass, force-push, or unrelated committed change was shown.\n- Project stack: confirmed the authoritative server remains Rust, viewer remains Three.js/WebSocket and read-only, and serialization remains outside the fixed-tick simulation stage; generated-browser-type and slow-client guarantees are findings above."
+  |     }
+  |   },
+  |   "incomplete": []
+  | }
+- 2026-08-30T15:31:27Z — run: node scripts/check.mjs
+  started 2026-08-30T15:30:50Z, exit 1 in 36.5s
+  output tail (truncated to last 30 lines):
+  | # todo 0
+  | # duration_ms 35194.1713
+  |
+  | run-checks: PASS (skill-sync + 20 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
+  | product-check: mode=full
+  | product-check: cargo fmt --check
+  | Diff in \\?\N:\aigent-place\crates\world-server\src\transport.rs:200:
+  |              let mut fanout = self.fanout.lock().await;
+  |              let measure = |shape: &crate::fanout::RealFrameShape<'_>| {
+  |                  let preview = match shape {
+  | -                    crate::fanout::RealFrameShape::Full { body, baseline_id, .. } => {
+  | +                    crate::fanout::RealFrameShape::Full {
+  | +                        body, baseline_id, ..
+  | +                    } => {
+  |                          // Recurse once to learn the real baseline from the
+  |                          // enqueue path. The measure is invoked by enqueue
+  |                          // exactly once with this Full variant; we use the
+  | Diff in \\?\N:\aigent-place\crates\world-server\src\wire\snapshot.rs:493:
+  |      let mut out = Vec::with_capacity(hex.len() / 2);
+  |      let mut iter = hex.iter().copied();
+  |      while let Some(high) = iter.next() {
+  | -        let low = iter
+  | -            .next()
+  | -            .expect("hex pairs must be complete");
+  | +        let low = iter.next().expect("hex pairs must be complete");
+  |          out.push((hex_nibble(high) << 4) | hex_nibble(low));
+  |      }
+  |      out
+  | product-check: FAIL (cargo fmt --all -- --check)
+- 2026-08-30T15:33:20Z — run: node scripts/check.mjs
+  started 2026-08-30T15:32:37Z, exit 101 in 42.6s
+  output tail (truncated to last 30 lines):
+  | # duration_ms 38816.1206
+  |
+  | run-checks: PASS (skill-sync + 20 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
+  | product-check: mode=full
+  | product-check: cargo fmt --check
+  | product-check: cargo clippy -D warnings
+  |     Checking world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  | error: items after a test module
+  |    --> crates\world-server\src\wire\snapshot.rs:276:1
+  |     |
+  | 276 | mod tests {
+  |     | ^^^^^^^^^
+  | ...
+  | 492 | fn hex_decode(hex: &[u8]) -> Vec<u8> {
+  |     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  | ...
+  | 502 | fn hex_nibble(b: u8) -> u8 {
+  |     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |     |
+  |     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#items_after_test_module
+  |     = note: `-D clippy::items-after-test-module` implied by `-D warnings`
+  |     = help: to override `-D warnings` add `#[allow(clippy::items_after_test_module)]`
+  |     = help: move the items to before the test module was defined
+  |
+  |     Checking protocol-conformance v0.1.0 (N:\aigent-place\crates\protocol-conformance)
+  |     Checking workload-harness v0.1.0 (N:\aigent-place\crates\workload-harness)
+  | error: could not compile `world-server` (lib test) due to 1 previous error
+  | warning: build failed, waiting for other jobs to finish...
+  | product-check: FAIL (cargo clippy --workspace --all-targets -- -D warnings)
+- 2026-08-30T15:35:06Z — run: node scripts/check.mjs
+  started 2026-08-30T15:34:31Z, exit 101 in 35.5s
+  output tail (truncated to last 30 lines):
+  | # todo 0
+  | # duration_ms 33079.8762
+  |
+  | run-checks: PASS (skill-sync + 20 suites)
+  | process-docs: PASS (no unresolved markers in scoped non-binary files)
+  | product-check: mode=full
+  | product-check: cargo fmt --check
+  | product-check: cargo clippy -D warnings
+  |     Checking world-server v0.1.0 (N:\aigent-place\crates\world-server)
+  |     Checking workload-harness v0.1.0 (N:\aigent-place\crates\workload-harness)
+  |     Checking protocol-conformance v0.1.0 (N:\aigent-place\crates\protocol-conformance)
+  | error: items after a test module
+  |    --> crates\world-server\src\wire\snapshot.rs:276:1
+  |     |
+  | 276 | mod tests {
+  |     | ^^^^^^^^^
+  | ...
+  | 492 | fn hex_decode(hex: &[u8]) -> Vec<u8> {
+  |     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  | ...
+  | 502 | fn hex_nibble(b: u8) -> u8 {
+  |     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |     |
+  |     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#items_after_test_module
+  |     = note: `-D clippy::items-after-test-module` implied by `-D warnings`
+  |     = help: to override `-D warnings` add `#[allow(clippy::items_after_test_module)]`
+  |     = help: move the items to before the test module was defined
+  |
+  | error: could not compile `world-server` (lib test) due to 1 previous error
+  | product-check: FAIL (cargo clippy --workspace --all-targets -- -D warnings)
+- 2026-08-30T15:35:14Z — note: user pivot: free openrouter models only; stop using agent-headless cold review. Reverting to the commit before the r2 review dispatch (which was the wire-layer + fanout + viewer/fixture commits, with r1 fixes already merged). All r2 fix code stays in the working tree as unstaged changes for the operator to apply or discard. Cold review is not happening.
+- 2026-08-30T15:42:30Z — run: node scripts/product-check.mjs
+  started 2026-08-30T15:42:29Z, exit 1 in 0.5s
+  output:
+  | product-check: mode=full
+  | product-check: cargo fmt --check
+  | Diff in \\?\N:\aigent-place\crates\world-server\src\wire\snapshot.rs:506:
+  |              .expect("write delta fixture");
+  |      }
+  |  }
+  | -
+  |
+  | product-check: FAIL (cargo fmt --all -- --check)
+- 2026-08-30T15:43:17Z — run: node scripts/product-check.mjs
+  started 2026-08-30T15:42:41Z, exit 0 in 36.4s
+  output tail (truncated to last 30 lines):
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+  | npm notice run @aigent-place/viewer@0.1.0 test:real-snapshot
+  | npm notice run node --test ./test/real-snapshot.test.mjs
+- 2026-08-30T15:44:19Z — run: node scripts/check.mjs
+  started 2026-08-30T15:43:28Z, exit 0 in 51.2s
   output tail (truncated to last 30 lines):
   |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
   |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)

@@ -90,7 +90,9 @@ impl RealEntityRecord {
 }
 
 /// A full-snapshot body: every authoritative entity in the connection's
-/// interest set, in ascending `entity_id` order.
+/// interest set, in AOI rank order (nearest-first, ties by ascending
+/// `entity_id`); the server builds the wire list from the output of
+/// [`crate::aoi::truncate_nearest`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorldSnapshotBody {
     pub tick: u64,
@@ -270,6 +272,24 @@ pub fn decode_world_snapshot_delta_left_ids(bytes: &[u8]) -> Option<Vec<u64>> {
     Some(proto.left_ids)
 }
 
+fn hex_decode(hex: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(hex.len() / 2);
+    let mut iter = hex.iter().copied();
+    while let Some(high) = iter.next() {
+        let low = iter.next().expect("hex pairs must be complete");
+        out.push((hex_nibble(high) << 4) | hex_nibble(low));
+    }
+    out
+}
+
+fn hex_nibble(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'a'..=b'f' => b - b'a' + 10,
+        b'A'..=b'F' => b - b'A' + 10,
+        _ => panic!("invalid hex character: {b}"),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,12 +423,57 @@ mod tests {
         proto.version = 999;
         assert!(WorldSnapshotDelta::decode(&proto).is_none());
     }
-    /// Produce the shared Rust+TypeScript fixture bytes. This is run by
-    /// `cargo test` and the bytes are regenerated into
-    /// `protocol/v1/conformance/binary/`. The TypeScript side reads the
-    /// same files in `apps/viewer/test/real-snapshot.test.mjs`.
+    /// Encode the canonical fixture and compare it byte-for-byte against
+    /// the checked-in conformance files. A change in the encoder that
+    /// shifts any byte (including a half-to-even change) fails this test
+    /// before the on-disk fixture is touched, so the contract is owned
+    /// by the committed files and the test only verifies parity.
     #[test]
-    fn write_conformance_fixtures() {
+    fn conformance_fixtures_match_committed_bytes() {
+        let body = WorldSnapshotBody {
+            tick: 42,
+            generation_digest: [0xAB; 32],
+            bodies: vec![
+                RealEntityRecord::from_snapshot(&sample_record(1)),
+                RealEntityRecord::from_snapshot(&sample_record(2)),
+            ],
+        };
+        let body_bytes = encode_world_snapshot_body(&body);
+        let delta = WorldSnapshotDelta {
+            generation_digest: [0xCD; 32],
+            entered: vec![RealEntityRecord::from_snapshot(&sample_record(10))],
+            modified: Vec::new(),
+            left_ids: vec![13],
+        };
+        let delta_bytes = encode_world_snapshot_delta(&delta);
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../protocol/v1/conformance/binary");
+        let committed_body = std::fs::read(dir.join("world-snapshot-body.hex"))
+            .expect("read committed body fixture");
+        let committed_delta = std::fs::read(dir.join("world-snapshot-delta.hex"))
+            .expect("read committed delta fixture");
+        // The committed files store hex; decode and compare.
+        let committed_body_bytes = hex_decode(&committed_body);
+        let committed_delta_bytes = hex_decode(&committed_delta);
+        assert_eq!(
+            body_bytes, committed_body_bytes,
+            "encoded WorldSnapshotBody does not match the committed fixture;              regenerate with WRITE_CONFORMANCE_FIXTURES=1 if the change is intentional",
+        );
+        assert_eq!(
+            delta_bytes, committed_delta_bytes,
+            "encoded WorldSnapshotDelta does not match the committed fixture;              regenerate with WRITE_CONFORMANCE_FIXTURES=1 if the change is intentional",
+        );
+    }
+
+    /// Opt-in regenerator: only runs when WRITE_CONFORMANCE_FIXTURES=1 is
+    /// set in the environment. The default `cargo test` path is the
+    /// match-check above, which is read-only against the source tree.
+    #[test]
+    fn write_conformance_fixtures_opt_in() {
+        if std::env::var_os("WRITE_CONFORMANCE_FIXTURES").is_none() {
+            // Skip silently; the read-only check above is the real test.
+            return;
+        }
         let body = WorldSnapshotBody {
             tick: 42,
             generation_digest: [0xAB; 32],

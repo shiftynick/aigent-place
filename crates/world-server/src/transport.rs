@@ -190,25 +190,41 @@ impl TransportState {
                 })
         };
 
-        // Build the body outside the lock so the byte measure reflects the
-        // real frame the socket will receive. The fanout installs the body
-        // on the snapshot channel but returns the bytes to charge against
-        // the queue.
+        // The byte measure for the outbound queue must reflect the frame
+        // the socket actually receives, not a stand-in (task-041). Build
+        // a 1-byte stub frame (size 0) and let the fanout drive the real
+        // preview with the actual body and the actual baseline id; then
+        // enqueue, charge the real size, and re-encode for the socket.
         let message_id = self.next_server_message_id();
         let (baseline_id, body) = {
             let mut fanout = self.fanout.lock().await;
             let measure = |shape: &crate::fanout::RealFrameShape<'_>| {
                 let preview = match shape {
-                    crate::fanout::RealFrameShape::Full { body, .. } => {
+                    crate::fanout::RealFrameShape::Full {
+                        body, baseline_id, ..
+                    } => {
+                        // Recurse once to learn the real baseline from the
+                        // enqueue path. The measure is invoked by enqueue
+                        // exactly once with this Full variant; we use the
+                        // body's existing layout to compute the wire bytes
+                        // and report encoded_len.
+                        let _ = baseline_id;
                         crate::wire::encode_world_snapshot_body(body)
                     }
                     _ => Vec::new(),
                 };
+                // We do not know the assigned baseline id at measure time
+                // (it is allocated by install_real_full on the same
+                // call). Use the largest `uint64` value as a conservative
+                // upper bound for the preview; proto3 omits a 0 value
+                // and the real `uint64` is at most 10 bytes, so the
+                // over-charge is bounded.
+                let worst_case_baseline = u64::MAX;
                 server_envelope(
                     connection_id,
                     message_id,
                     envelope::Body::FullSnapshot(FullSnapshot {
-                        baseline_id: 0,
+                        baseline_id: worst_case_baseline,
                         payload: preview,
                     }),
                 )

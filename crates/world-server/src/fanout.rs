@@ -698,7 +698,8 @@ pub struct RealInterestDiff {
 impl ConnectionOutbound {
     /// Refresh interest from the entity catalog and diff against the prior set.
     ///
-    /// Returns the new interest set in ascending-id order, plus a structured
+    /// Returns the new interest set in AOI rank order (nearest-first,
+    /// ties by ascending entity_id), plus a structured
     /// diff suitable for direct emission as a `WorldSnapshotDelta`.
     pub(crate) fn refresh_real_interest(
         &mut self,

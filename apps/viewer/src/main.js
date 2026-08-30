@@ -184,27 +184,33 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         return;
       }
       const decoded = decodeWorldSnapshotDelta(body.value.payload);
-      if (decoded) {
-        for (const record of decoded.entered) {
-          applyBody(record);
-        }
-        for (const record of decoded.modified) {
-          applyBody(record);
-        }
-        for (const leftId of decoded.leftIds) {
-          const key = leftId.toString();
-          if (bodies.has(key)) {
-            const entry = bodies.get(key);
-            scene.remove(entry.mesh);
-            entry.mesh.geometry.dispose();
-            entry.mesh.material.dispose();
-            bodies.delete(key);
-          }
-        }
-        setStatus(
-          `viewer: delta tick=${lastTick} bodies=${bodies.size} (real bodies, +${decoded.entered.length}/~${decoded.modified.length}/-${decoded.leftIds.length})`,
-        );
+      if (!decoded) {
+        // Unknown version or malformed payload: do not trust the
+        // diff and ask for a resync, otherwise a missed transition
+        // would silently keep the prior state.
+        setStatus("viewer: snapshot delta version unknown or payload malformed — requesting resync");
+        requestResync("delta version unknown");
+        return;
       }
+      for (const record of decoded.entered) {
+        applyBody(record);
+      }
+      for (const record of decoded.modified) {
+        applyBody(record);
+      }
+      for (const leftId of decoded.leftIds) {
+        const key = leftId.toString();
+        if (bodies.has(key)) {
+          const entry = bodies.get(key);
+          scene.remove(entry.mesh);
+          entry.mesh.geometry.dispose();
+          entry.mesh.material.dispose();
+          bodies.delete(key);
+        }
+      }
+      setStatus(
+        `viewer: delta tick=${lastTick} bodies=${bodies.size} (real bodies, +${decoded.entered.length}/~${decoded.modified.length}/-${decoded.leftIds.length})`,
+      );
       return;
     }
     if (body.case === "snapshotResyncRequired") {
