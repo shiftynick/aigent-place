@@ -58,7 +58,28 @@ impl RealEntityRecord {
     #[must_use]
     pub fn from_snapshot(snapshot: &EntitySnapshot) -> Self {
         let position_mm = position_to_mm(snapshot.position);
-        let shape = snapshot.shape.as_ref().and_then(decode_shape_slot);
+        let shape = match snapshot.shape.as_ref() {
+            None => None,
+            Some(slot) => match decode_shape_slot(slot) {
+                Ok(tree) => Some(tree),
+                Err(error) => {
+                    // The entity store carries `ShapeSlot` as opaque bytes
+                    // (task-046), so a decode failure here is a stored-
+                    // state defect, not an input error. The wire still
+                    // carries the body (entity_id, revision, position);
+                    // losing the shape tree means the viewer renders a
+                    // generic body for this entity until the slot is
+                    // repaired. Log so the failure is visible.
+                    eprintln!(
+                        "world-server: shape slot did not decode for entity {} ({} bytes): {}; emitting body without shape tree",
+                        snapshot.entity_id,
+                        slot.len(),
+                        error,
+                    );
+                    None
+                }
+            },
+        };
         Self {
             entity_id: snapshot.entity_id,
             revision: snapshot.revision,
@@ -189,11 +210,11 @@ fn record_from_proto(proto: &RealEntityRecordProto) -> RealEntityRecord {
     }
 }
 
-fn decode_shape_slot(slot: &ShapeSlot) -> Option<ShapeTree> {
+fn decode_shape_slot(slot: &ShapeSlot) -> Result<ShapeTree, String> {
     if slot.is_empty() {
-        return None;
+        return Err("empty slot".to_string());
     }
-    ShapeTree::decode(slot.as_bytes()).ok()
+    ShapeTree::decode(slot.as_bytes()).map_err(|e| format!("prost decode: {e}"))
 }
 
 /// IEEE-754 round-to-nearest, ties to even (`banker's rounding`).

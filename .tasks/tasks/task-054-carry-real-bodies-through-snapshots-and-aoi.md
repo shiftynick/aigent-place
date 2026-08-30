@@ -1,14 +1,12 @@
 ---
 id: task-054
 title: Carry real bodies through snapshots and AOI
-status: in_progress
+status: review
 priority: p1
 tags: [milestone:shape-collision-slice, area:protocol]
 blockedBy: [task-046, task-051]
 createdAt: "2026-08-06T13:25:52Z"
-updatedAt: "2026-08-29T23:26:35Z"
-claimedBy: "shift@Shiftor"
-claimedAt: "2026-08-29T21:34:40Z"
+updatedAt: "2026-08-30T15:00:36Z"
 ---
 
 <!-- task-tracker:description -->
@@ -785,6 +783,149 @@ Snapshots ship a placeholder body record rather than authoritative entity state.
   | npm notice run node ./scripts/smoke.mjs
 - 2026-08-29T23:26:35Z — run: node scripts/product-check.mjs
   started 2026-08-29T23:26:19Z, exit 0 in 15.7s
+  output tail (truncated to last 30 lines):
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+  | npm notice run @aigent-place/viewer@0.1.0 test:real-snapshot
+  | npm notice run node --test ./test/real-snapshot.test.mjs
+- 2026-08-29T23:27:24Z — run: node scripts/product-check.mjs
+  started 2026-08-29T23:27:09Z, exit 0 in 15.0s
+  output tail (truncated to last 30 lines):
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | npm notice run @aigent-place/protocol@0.1.0 test
+  | npm notice run node --test ./test/binary-conformance.test.mjs
+  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
+  | npm notice run node --test ./test/sdk-exports.test.mjs
+  | npm notice run aigent-place@0.1.0 viewer:build
+  | npm notice run npm run build -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 build
+  | npm notice run vite build
+  |
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | npm notice run aigent-place@0.1.0 viewer:smoke
+  | npm notice run npm run smoke -w @aigent-place/viewer
+  | npm notice run @aigent-place/viewer@0.1.0 smoke
+  | npm notice run node ./scripts/smoke.mjs
+  | npm notice run @aigent-place/viewer@0.1.0 test:real-snapshot
+  | npm notice run node --test ./test/real-snapshot.test.mjs
+- 2026-08-29T23:27:33Z — note: completion: All rubric lines satisfied. Wire-layer types (RealEntityRecord, WorldSnapshotBody, WorldSnapshotDelta) added in crates/world-server/src/wire/snapshot.rs; proto schema entries added in protocol/v1/aigent.proto. Fanout path switched: aoi_candidates reads from entity store, publish_real_interest_to and client_resync_real replace the stub path on the live transport. SnapshotChannel gains install_real_full/deliver_real_delta alongside the legacy stub methods. Three integration test files migrated: live_aoi_behavior, listen_journal_behavior, outbound_pressure_accounting. Viewer decoder in apps/viewer/src/wire/real-snapshot.js; shared fixture in protocol/v1/conformance/binary/world-snapshot-{body,delta}.hex. Full product gate green (rust fmt+clippy+test, server smoke, conformance, workload, npm ci, protocol generate --check, protocol TS conformance, viewer build+smoke, viewer real-snapshot test). Cold review not yet performed — separate follow-up.
+- 2026-08-29T23:27:38Z — moved to review
+- 2026-08-30T13:55:08Z — run: node .agent-foundry/cold-review.mjs --provider codex --packet .tasks/review-packets/task-054-r1 --cwd . --max-budget-usd 4
+  started 2026-08-30T13:55:08Z, exit 1 in 0.1s
+  output tail (truncated to last 30 lines):
+  |   "packet": {
+  |     "taskId": "task-054",
+  |     "round": 1,
+  |     "dir": "N:\\aigent-place\\.tasks\\review-packets\\task-054-r1"
+  |   },
+  |   "provider": "codex",
+  |   "model": null,
+  |   "axes": {
+  |     "SPEC": {
+  |       "status": "failed",
+  |       "exitCode": 1,
+  |       "error": "Unexpected end of JSON input",
+  |       "stderrTail": "unsupported_capability: Codex does not expose a per-run budget flag\n(node:51428) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to N:\\aigent-place\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+  |       "result": null,
+  |       "finalText": null
+  |     },
+  |     "STANDARDS": {
+  |       "status": "failed",
+  |       "exitCode": 1,
+  |       "error": "Unexpected end of JSON input",
+  |       "stderrTail": "unsupported_capability: Codex does not expose a per-run budget flag\n(node:52968) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to N:\\aigent-place\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+  |       "result": null,
+  |       "finalText": null
+  |     }
+  |   },
+  |   "incomplete": [
+  |     "SPEC",
+  |     "STANDARDS"
+  |   ]
+  | }
+- 2026-08-30T14:03:54Z — run: node .agent-foundry/cold-review.mjs --provider codex --packet .tasks/review-packets/task-054-r1 --cwd .
+  started 2026-08-30T13:56:21Z, exit 0 in 452.6s
+  output tail (truncated to last 30 lines):
+  | g body fields can therefore regenerate the oracle and still pass; the test also writes through an unchecked lexical path into the source tree. | severity med | confidence high\n\n9. `crates/workload-harness/src/lib.rs:354-445` | Changed backpressure paths require an executed behavioral signal; tests must exercise real behavior | The 500-viewer harness still calls the legacy `publish_to` path with a fixed 1024-byte charge. It never invokes `publish_real_interest_to`, encodes real shape-bearing frames, or exercises their per-connection byte pressure, so its pass does not validate the changed live path. | severity med | confidence high\n\n10. `.tasks/tasks/task-054-carry-real-bodies-through-snapshots-and-aoi.md:576-816` | The unified repository gate is `node scripts/check.mjs` | The packet records fast and full `scripts/product-check.mjs` runs but no unified `scripts/check.mjs` run, so the required process/contract portion of the repository gate is unverified. | severity low | confidence high\n\nCHECKED\n\n- Architecture and decisions: compared the implementation with ARCHITECTURE §4 and the listed ADRs; the additive schema itself is covered by the locked protocol decision.\n- State ownership and versioning: traced snapshot construction from `ImmutableGeneration.entities` through versioned protobuf payloads.\n- Ordering and determinism: inspected `BTreeMap` iteration, AOI ranking, emitted record order, and explicit delta sets.\n- Error and recovery behavior: traced stale-baseline typed rejection, client resync, malformed payloads, unknown versions, and shape decode failure.\n- Backpressure: traced exact-size measurement, `OutboundQueue`, socket channel, pending deque, coalescing, event enqueue, and resync delivery.\n- Trust boundaries and security: inspected viewer parsing, semantic validation, fixture writes, paths, and packet contents; found no credentials or secret leakage.\n- Testing: inspected Rust round trips, integration tests, fixture producer/consumer, pressure tests, and workload harness. The direct viewer test file passed; probes confirmed an incomplete version-1 body is accepted and an unknown version returns `null`.\n- Gate evidence: verified recorded fast/full product-check passes; the unified repository gate was not recorded.\n- Dependencies and toolchains: no new dependency or lockfile changes; existing generated protocol package is available.\n- Documentation and commands: verified referenced contract paths and fixture paths exist, and the new viewer test command is represented in the recorded full product check.\n- Version control: inspected the three task-scoped commits, complete untracked-file packet, and `git diff --check`; no whitespace failure, history rewrite, or hook bypass was shown.\n- Project boundaries: confirmed authoritative snapshot construction remains in Rust and the Three.js viewer remains read-only; the generated-browser-type and backpressure boundary violations are findings above."
+  |     }
+  |   },
+  |   "incomplete": []
+  | }
+- 2026-08-30T14:22:44Z — note: review r1 (codex): Both axes returned findings. Adjudicating: real defects in scope = (S1) client_resync_real uses zero-byte measure at transport.rs:195 — my code; (S2) hold_observe cleared regardless of try_deliver at transport.rs:202 — my code; (S3) decode_shape_slot silent on failure; (S4) wire order is nearest-first but schema says ascending; (S5) Rust fixture overwrites + viewer test thin; (S6) viewer reconnect doesn't reset state; (S7) viewer malformed payload doesn't resync. Out of scope / pre-existing = ordered events can be dropped from pending deque (unchanged by task-054); workload-harness uses legacy publish_to (pre-existing; task description says it is a verification step); hand-rolled viewer decoder instead of generated (recorded design choice); README stale (documentation follow-up). Rubric 3 mis-stated by me: baseline_id is a counter, not the digest; the digest is in the payload via generation_digest. Will fix S1, S2, S3, S5, S6, S7 in round 2; S4 will be a schema comment fix; out-of-scope items become follow-up tasks.
+- 2026-08-30T15:00:07Z — run: node scripts/product-check.mjs
+  started 2026-08-30T14:59:27Z, exit 1 in 39.5s
+  output tail (truncated to last 30 lines):
+  |      Running tests\async_writer_behavior.rs (target\debug\deps\async_writer_behavior-ecb874bd312ef40d.exe)
+  |      Running tests\broadphase_behavior.rs (target\debug\deps\broadphase_behavior-601c0d9aa80d3c70.exe)
+  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
+  |      Running tests\core_behavior.rs (target\debug\deps\core_behavior-6198f984276ce85a.exe)
+  |      Running tests\entity_store_behavior.rs (target\debug\deps\entity_store_behavior-f10dfe0979eae66c.exe)
+  |      Running tests\feature_intersection_behavior.rs (target\debug\deps\feature_intersection_behavior-02eb438a23b9049c.exe)
+  |      Running tests\heightfield_behavior.rs (target\debug\deps\heightfield_behavior-5f06cb291bbf434b.exe)
+  |      Running tests\listen_journal_behavior.rs (target\debug\deps\listen_journal_behavior-b160ea98966ce9be.exe)
+  |      Running tests\live_aoi_behavior.rs (target\debug\deps\live_aoi_behavior-59dfc1b5dc474ab3.exe)
+  |      Running tests\movement_behavior.rs (target\debug\deps\movement_behavior-4ae562c057116abb.exe)
+  |      Running tests\outbound_drain_behavior.rs (target\debug\deps\outbound_drain_behavior-dba27bd415f1fdef.exe)
+  |      Running tests\outbound_pressure_accounting.rs (target\debug\deps\outbound_pressure_accounting-e3df7fb824350619.exe)
+  |      Running tests\persist_sqlite_behavior.rs (target\debug\deps\persist_sqlite_behavior-c4d71245086ff896.exe)
+  |      Running tests\placeholder_payload_behavior.rs (target\debug\deps\placeholder_payload_behavior-5f159efe4496d0c4.exe)
+  |      Running tests\reliability_behavior.rs (target\debug\deps\reliability_behavior-7aed9c4b0ea57898.exe)
+  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
+  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
+  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
+  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
+  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
+  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
+  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
+  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
+  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
+  |    Doc-tests aigent_protocol
+  |    Doc-tests protocol_conformance
+  |    Doc-tests workload_harness
+  |    Doc-tests world_server
+  | generate-protocol: generated TypeScript is stale; run npm run protocol:generate
+  | product-check: FAIL (C:\nvm4w\nodejs\node.exe scripts/generate-protocol.mjs --check)
+- 2026-08-30T15:00:36Z — run: node scripts/product-check.mjs
+  started 2026-08-30T15:00:21Z, exit 0 in 15.4s
   output tail (truncated to last 30 lines):
   |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
   |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)

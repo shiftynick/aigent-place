@@ -1172,8 +1172,8 @@ export declare const RealEntityRecordSchema: GenMessage<RealEntityRecord>;
 
 /**
  * Full-snapshot body: every authoritative entity that survived AOI truncation,
- * in ascending entity_id order. The entity_id order is canonical so the wire
- * is deterministic across same-build replays.
+ * in AOI rank order (nearest-first, ties by ascending entity_id). The rank
+ * is canonical so the wire stays deterministic across same-build replays.
  *
  * @generated from message aigent.protocol.v1.WorldSnapshotBodyProto
  */

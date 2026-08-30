@@ -157,17 +157,22 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       baselineId = body.value.baselineId;
       waitingForFull = false;
       const decoded = decodeWorldSnapshotBody(body.value.payload);
-      if (decoded) {
-        lastTick = decoded.tick;
-        seen.clear();
-        for (const record of decoded.bodies) {
-          applyBody(record);
-        }
-        removeMissing();
-        setStatus(
-          `viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
-        );
+      if (!decoded) {
+        // Unknown version or malformed payload: do not trust the
+        // baseline_id and ask for a resync instead.
+        setStatus("viewer: full snapshot version unknown or payload malformed — requesting resync");
+        requestResync("snapshot version unknown");
+        return;
       }
+      lastTick = decoded.tick;
+      seen.clear();
+      for (const record of decoded.bodies) {
+        applyBody(record);
+      }
+      removeMissing();
+      setStatus(
+        `viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
+      );
       return;
     }
     if (body.case === "snapshotDelta") {
@@ -215,6 +220,16 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     waitingForFull = true;
     baselineId = null;
     connectionId = null;
+    // Drop any bodies carried over from a prior connection: a new
+    // connection_id is a new session, the prior bodies are no longer
+    // authoritative.
+    for (const entry of bodies.values()) {
+      scene.remove(entry.mesh);
+      entry.mesh.geometry.dispose();
+      entry.mesh.material.dispose();
+    }
+    bodies.clear();
+    seen.clear();
     setStatus(`viewer: connecting ${wsUrl}`);
     socket = new WebSocket(wsUrl);
     socket.binaryType = "arraybuffer";
@@ -267,6 +282,10 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         handleEnvelope(bytes);
       } catch (error) {
         setStatus(`viewer: envelope decode error: ${error?.message ?? error}`);
+        // A malformed frame breaks the live delta chain. Treat it the
+        // same as an unknown version: ask the server for a fresh full
+        // snapshot.
+        requestResync("malformed frame");
       }
     });
     socket.addEventListener("close", () => {

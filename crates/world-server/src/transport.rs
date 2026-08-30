@@ -190,9 +190,30 @@ impl TransportState {
                 })
         };
 
+        // Build the body outside the lock so the byte measure reflects the
+        // real frame the socket will receive. The fanout installs the body
+        // on the snapshot channel but returns the bytes to charge against
+        // the queue.
+        let message_id = self.next_server_message_id();
         let (baseline_id, body) = {
             let mut fanout = self.fanout.lock().await;
-            let measure = |_shape: &crate::fanout::RealFrameShape<'_>| 0usize;
+            let measure = |shape: &crate::fanout::RealFrameShape<'_>| {
+                let preview = match shape {
+                    crate::fanout::RealFrameShape::Full { body, .. } => {
+                        crate::wire::encode_world_snapshot_body(body)
+                    }
+                    _ => Vec::new(),
+                };
+                server_envelope(
+                    connection_id,
+                    message_id,
+                    envelope::Body::FullSnapshot(FullSnapshot {
+                        baseline_id: 0,
+                        payload: preview,
+                    }),
+                )
+                .encoded_len()
+            };
             let Some((baseline_id, body, _events, _enqueue)) =
                 fanout.client_resync_real(connection_id, &generation, &measure)
             else {
@@ -205,14 +226,18 @@ impl TransportState {
         };
         let frame = encode_envelope(
             connection_id,
-            self.next_server_message_id(),
+            message_id,
             envelope::Body::FullSnapshot(FullSnapshot {
                 baseline_id,
                 payload: crate::wire::encode_world_snapshot_body(&body),
             }),
         );
         let delivered = self.try_deliver(connection_id, Bytes::from(frame)).await;
-        {
+        if delivered {
+            // Only clear hold_observe once the full snapshot is actually on
+            // the wire. A previous version cleared it unconditionally, which
+            // left the connection stuck waiting for a baseline that never
+            // installed.
             let mut fanout = self.fanout.lock().await;
             if let Some(connection) = fanout.get_mut(connection_id) {
                 connection.hold_observe = false;
