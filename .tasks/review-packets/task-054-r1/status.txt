@@ -1,0 +1,6 @@
+- Branch: task-054-carry-real-bodies
+- Base: origin/main @ 9f98f751 (clean)
+- Diff: see diff.patch in this packet
+- Untracked: see untracked.txt in this packet
+- Task status: review
+- Commits since base: 3 (6ee7c76, 844b2f3, 56d6d86)

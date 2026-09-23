@@ -1,0 +1,770 @@
+diff --git a/.tasks/tasks/task-054-carry-real-bodies-through-snapshots-and-aoi.md b/.tasks/tasks/task-054-carry-real-bodies-through-snapshots-and-aoi.md
+index 1143750..340aff8 100644
+--- a/.tasks/tasks/task-054-carry-real-bodies-through-snapshots-and-aoi.md
++++ b/.tasks/tasks/task-054-carry-real-bodies-through-snapshots-and-aoi.md
+@@ -1,14 +1,12 @@
+ ---
+ id: task-054
+ title: Carry real bodies through snapshots and AOI
+-status: in_progress
++status: review
+ priority: p1
+ tags: [milestone:shape-collision-slice, area:protocol]
+ blockedBy: [task-046, task-051]
+ createdAt: "2026-08-06T13:25:52Z"
+-updatedAt: "2026-08-29T23:26:35Z"
+-claimedBy: "shift@Shiftor"
+-claimedAt: "2026-08-29T21:34:40Z"
++updatedAt: "2026-08-30T15:00:36Z"
+ ---
+ 
+ <!-- task-tracker:description -->
+@@ -816,3 +814,146 @@ Snapshots ship a placeholder body record rather than authoritative entity state.
+   | npm notice run node ./scripts/smoke.mjs
+   | npm notice run @aigent-place/viewer@0.1.0 test:real-snapshot
+   | npm notice run node --test ./test/real-snapshot.test.mjs
++- 2026-08-29T23:27:24Z — run: node scripts/product-check.mjs
++  started 2026-08-29T23:27:09Z, exit 0 in 15.0s
++  output tail (truncated to last 30 lines):
++  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
++  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
++  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
++  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
++  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
++  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
++  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
++  |    Doc-tests aigent_protocol
++  |    Doc-tests protocol_conformance
++  |    Doc-tests workload_harness
++  |    Doc-tests world_server
++  | npm notice run @aigent-place/protocol@0.1.0 test
++  | npm notice run node --test ./test/binary-conformance.test.mjs
++  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
++  | npm notice run node --test ./test/sdk-exports.test.mjs
++  | npm notice run aigent-place@0.1.0 viewer:build
++  | npm notice run npm run build -w @aigent-place/viewer
++  | npm notice run @aigent-place/viewer@0.1.0 build
++  | npm notice run vite build
++  |
++  | (!) Some chunks are larger than 500 kB after minification. Consider:
++  | - Using dynamic import() to code-split the application
++  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
++  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
++  | npm notice run aigent-place@0.1.0 viewer:smoke
++  | npm notice run npm run smoke -w @aigent-place/viewer
++  | npm notice run @aigent-place/viewer@0.1.0 smoke
++  | npm notice run node ./scripts/smoke.mjs
++  | npm notice run @aigent-place/viewer@0.1.0 test:real-snapshot
++  | npm notice run node --test ./test/real-snapshot.test.mjs
++- 2026-08-29T23:27:33Z — note: completion: All rubric lines satisfied. Wire-layer types (RealEntityRecord, WorldSnapshotBody, WorldSnapshotDelta) added in crates/world-server/src/wire/snapshot.rs; proto schema entries added in protocol/v1/aigent.proto. Fanout path switched: aoi_candidates reads from entity store, publish_real_interest_to and client_resync_real replace the stub path on the live transport. SnapshotChannel gains install_real_full/deliver_real_delta alongside the legacy stub methods. Three integration test files migrated: live_aoi_behavior, listen_journal_behavior, outbound_pressure_accounting. Viewer decoder in apps/viewer/src/wire/real-snapshot.js; shared fixture in protocol/v1/conformance/binary/world-snapshot-{body,delta}.hex. Full product gate green (rust fmt+clippy+test, server smoke, conformance, workload, npm ci, protocol generate --check, protocol TS conformance, viewer build+smoke, viewer real-snapshot test). Cold review not yet performed — separate follow-up.
++- 2026-08-29T23:27:38Z — moved to review
++- 2026-08-30T13:55:08Z — run: node .agent-foundry/cold-review.mjs --provider codex --packet .tasks/review-packets/task-054-r1 --cwd . --max-budget-usd 4
++  started 2026-08-30T13:55:08Z, exit 1 in 0.1s
++  output tail (truncated to last 30 lines):
++  |   "packet": {
++  |     "taskId": "task-054",
++  |     "round": 1,
++  |     "dir": "N:\\aigent-place\\.tasks\\review-packets\\task-054-r1"
++  |   },
++  |   "provider": "codex",
++  |   "model": null,
++  |   "axes": {
++  |     "SPEC": {
++  |       "status": "failed",
++  |       "exitCode": 1,
++  |       "error": "Unexpected end of JSON input",
++  |       "stderrTail": "unsupported_capability: Codex does not expose a per-run budget flag\n(node:51428) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to N:\\aigent-place\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
++  |       "result": null,
++  |       "finalText": null
++  |     },
++  |     "STANDARDS": {
++  |       "status": "failed",
++  |       "exitCode": 1,
++  |       "error": "Unexpected end of JSON input",
++  |       "stderrTail": "unsupported_capability: Codex does not expose a per-run budget flag\n(node:52968) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///N:/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to N:\\aigent-place\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
++  |       "result": null,
++  |       "finalText": null
++  |     }
++  |   },
++  |   "incomplete": [
++  |     "SPEC",
++  |     "STANDARDS"
++  |   ]
++  | }
++- 2026-08-30T14:03:54Z — run: node .agent-foundry/cold-review.mjs --provider codex --packet .tasks/review-packets/task-054-r1 --cwd .
++  started 2026-08-30T13:56:21Z, exit 0 in 452.6s
++  output tail (truncated to last 30 lines):
++  | g body fields can therefore regenerate the oracle and still pass; the test also writes through an unchecked lexical path into the source tree. | severity med | confidence high\n\n9. `crates/workload-harness/src/lib.rs:354-445` | Changed backpressure paths require an executed behavioral signal; tests must exercise real behavior | The 500-viewer harness still calls the legacy `publish_to` path with a fixed 1024-byte charge. It never invokes `publish_real_interest_to`, encodes real shape-bearing frames, or exercises their per-connection byte pressure, so its pass does not validate the changed live path. | severity med | confidence high\n\n10. `.tasks/tasks/task-054-carry-real-bodies-through-snapshots-and-aoi.md:576-816` | The unified repository gate is `node scripts/check.mjs` | The packet records fast and full `scripts/product-check.mjs` runs but no unified `scripts/check.mjs` run, so the required process/contract portion of the repository gate is unverified. | severity low | confidence high\n\nCHECKED\n\n- Architecture and decisions: compared the implementation with ARCHITECTURE §4 and the listed ADRs; the additive schema itself is covered by the locked protocol decision.\n- State ownership and versioning: traced snapshot construction from `ImmutableGeneration.entities` through versioned protobuf payloads.\n- Ordering and determinism: inspected `BTreeMap` iteration, AOI ranking, emitted record order, and explicit delta sets.\n- Error and recovery behavior: traced stale-baseline typed rejection, client resync, malformed payloads, unknown versions, and shape decode failure.\n- Backpressure: traced exact-size measurement, `OutboundQueue`, socket channel, pending deque, coalescing, event enqueue, and resync delivery.\n- Trust boundaries and security: inspected viewer parsing, semantic validation, fixture writes, paths, and packet contents; found no credentials or secret leakage.\n- Testing: inspected Rust round trips, integration tests, fixture producer/consumer, pressure tests, and workload harness. The direct viewer test file passed; probes confirmed an incomplete version-1 body is accepted and an unknown version returns `null`.\n- Gate evidence: verified recorded fast/full product-check passes; the unified repository gate was not recorded.\n- Dependencies and toolchains: no new dependency or lockfile changes; existing generated protocol package is available.\n- Documentation and commands: verified referenced contract paths and fixture paths exist, and the new viewer test command is represented in the recorded full product check.\n- Version control: inspected the three task-scoped commits, complete untracked-file packet, and `git diff --check`; no whitespace failure, history rewrite, or hook bypass was shown.\n- Project boundaries: confirmed authoritative snapshot construction remains in Rust and the Three.js viewer remains read-only; the generated-browser-type and backpressure boundary violations are findings above."
++  |     }
++  |   },
++  |   "incomplete": []
++  | }
++- 2026-08-30T14:22:44Z — note: review r1 (codex): Both axes returned findings. Adjudicating: real defects in scope = (S1) client_resync_real uses zero-byte measure at transport.rs:195 — my code; (S2) hold_observe cleared regardless of try_deliver at transport.rs:202 — my code; (S3) decode_shape_slot silent on failure; (S4) wire order is nearest-first but schema says ascending; (S5) Rust fixture overwrites + viewer test thin; (S6) viewer reconnect doesn't reset state; (S7) viewer malformed payload doesn't resync. Out of scope / pre-existing = ordered events can be dropped from pending deque (unchanged by task-054); workload-harness uses legacy publish_to (pre-existing; task description says it is a verification step); hand-rolled viewer decoder instead of generated (recorded design choice); README stale (documentation follow-up). Rubric 3 mis-stated by me: baseline_id is a counter, not the digest; the digest is in the payload via generation_digest. Will fix S1, S2, S3, S5, S6, S7 in round 2; S4 will be a schema comment fix; out-of-scope items become follow-up tasks.
++- 2026-08-30T15:00:07Z — run: node scripts/product-check.mjs
++  started 2026-08-30T14:59:27Z, exit 1 in 39.5s
++  output tail (truncated to last 30 lines):
++  |      Running tests\async_writer_behavior.rs (target\debug\deps\async_writer_behavior-ecb874bd312ef40d.exe)
++  |      Running tests\broadphase_behavior.rs (target\debug\deps\broadphase_behavior-601c0d9aa80d3c70.exe)
++  |      Running tests\collider_behavior.rs (target\debug\deps\collider_behavior-773c1f01b6559664.exe)
++  |      Running tests\core_behavior.rs (target\debug\deps\core_behavior-6198f984276ce85a.exe)
++  |      Running tests\entity_store_behavior.rs (target\debug\deps\entity_store_behavior-f10dfe0979eae66c.exe)
++  |      Running tests\feature_intersection_behavior.rs (target\debug\deps\feature_intersection_behavior-02eb438a23b9049c.exe)
++  |      Running tests\heightfield_behavior.rs (target\debug\deps\heightfield_behavior-5f06cb291bbf434b.exe)
++  |      Running tests\listen_journal_behavior.rs (target\debug\deps\listen_journal_behavior-b160ea98966ce9be.exe)
++  |      Running tests\live_aoi_behavior.rs (target\debug\deps\live_aoi_behavior-59dfc1b5dc474ab3.exe)
++  |      Running tests\movement_behavior.rs (target\debug\deps\movement_behavior-4ae562c057116abb.exe)
++  |      Running tests\outbound_drain_behavior.rs (target\debug\deps\outbound_drain_behavior-dba27bd415f1fdef.exe)
++  |      Running tests\outbound_pressure_accounting.rs (target\debug\deps\outbound_pressure_accounting-e3df7fb824350619.exe)
++  |      Running tests\persist_sqlite_behavior.rs (target\debug\deps\persist_sqlite_behavior-c4d71245086ff896.exe)
++  |      Running tests\placeholder_payload_behavior.rs (target\debug\deps\placeholder_payload_behavior-5f159efe4496d0c4.exe)
++  |      Running tests\reliability_behavior.rs (target\debug\deps\reliability_behavior-7aed9c4b0ea57898.exe)
++  |      Running tests\ruleset_persist_behavior.rs (target\debug\deps\ruleset_persist_behavior-20763967ad007f17.exe)
++  |      Running tests\scripted_aigent_behavior.rs (target\debug\deps\scripted_aigent_behavior-868f771fe2f3b29c.exe)
++  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
++  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
++  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
++  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
++  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
++  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
++  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
++  |    Doc-tests aigent_protocol
++  |    Doc-tests protocol_conformance
++  |    Doc-tests workload_harness
++  |    Doc-tests world_server
++  | generate-protocol: generated TypeScript is stale; run npm run protocol:generate
++  | product-check: FAIL (C:\nvm4w\nodejs\node.exe scripts/generate-protocol.mjs --check)
++- 2026-08-30T15:00:36Z — run: node scripts/product-check.mjs
++  started 2026-08-30T15:00:21Z, exit 0 in 15.4s
++  output tail (truncated to last 30 lines):
++  |      Running tests\session_behavior.rs (target\debug\deps\session_behavior-5b3200c9a1bae821.exe)
++  |      Running tests\shape_budget_catalog_contract.rs (target\debug\deps\shape_budget_catalog_contract-a0488f49834a77ed.exe)
++  |      Running tests\shape_validation_behavior.rs (target\debug\deps\shape_validation_behavior-887d963556dfabd7.exe)
++  |      Running tests\shape_validation_bounded_cost.rs (target\debug\deps\shape_validation_bounded_cost-f5eb5f21bc801b3b.exe)
++  |      Running tests\snapshot_behavior.rs (target\debug\deps\snapshot_behavior-38ee57e411957cb0.exe)
++  |      Running tests\snapshot_resync_behavior.rs (target\debug\deps\snapshot_resync_behavior-9021b8921bdbaa8b.exe)
++  |      Running tests\transport_behavior.rs (target\debug\deps\transport_behavior-514083eccfaa7205.exe)
++  |    Doc-tests aigent_protocol
++  |    Doc-tests protocol_conformance
++  |    Doc-tests workload_harness
++  |    Doc-tests world_server
++  | npm notice run @aigent-place/protocol@0.1.0 test
++  | npm notice run node --test ./test/binary-conformance.test.mjs
++  | npm notice run @aigent-place/aigent-sdk@0.1.0 test
++  | npm notice run node --test ./test/sdk-exports.test.mjs
++  | npm notice run aigent-place@0.1.0 viewer:build
++  | npm notice run npm run build -w @aigent-place/viewer
++  | npm notice run @aigent-place/viewer@0.1.0 build
++  | npm notice run vite build
++  |
++  | (!) Some chunks are larger than 500 kB after minification. Consider:
++  | - Using dynamic import() to code-split the application
++  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
++  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
++  | npm notice run aigent-place@0.1.0 viewer:smoke
++  | npm notice run npm run smoke -w @aigent-place/viewer
++  | npm notice run @aigent-place/viewer@0.1.0 smoke
++  | npm notice run node ./scripts/smoke.mjs
++  | npm notice run @aigent-place/viewer@0.1.0 test:real-snapshot
++  | npm notice run node --test ./test/real-snapshot.test.mjs
+diff --git a/apps/viewer/src/main.js b/apps/viewer/src/main.js
+index 7d9c572..19fc4f6 100644
+--- a/apps/viewer/src/main.js
++++ b/apps/viewer/src/main.js
+@@ -157,17 +157,22 @@ export function startLiveViewer(targetCanvas, wsUrl) {
+       baselineId = body.value.baselineId;
+       waitingForFull = false;
+       const decoded = decodeWorldSnapshotBody(body.value.payload);
+-      if (decoded) {
+-        lastTick = decoded.tick;
+-        seen.clear();
+-        for (const record of decoded.bodies) {
+-          applyBody(record);
+-        }
+-        removeMissing();
+-        setStatus(
+-          `viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
+-        );
++      if (!decoded) {
++        // Unknown version or malformed payload: do not trust the
++        // baseline_id and ask for a resync instead.
++        setStatus("viewer: full snapshot version unknown or payload malformed — requesting resync");
++        requestResync("snapshot version unknown");
++        return;
++      }
++      lastTick = decoded.tick;
++      seen.clear();
++      for (const record of decoded.bodies) {
++        applyBody(record);
+       }
++      removeMissing();
++      setStatus(
++        `viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
++      );
+       return;
+     }
+     if (body.case === "snapshotDelta") {
+@@ -215,6 +220,16 @@ export function startLiveViewer(targetCanvas, wsUrl) {
+     waitingForFull = true;
+     baselineId = null;
+     connectionId = null;
++    // Drop any bodies carried over from a prior connection: a new
++    // connection_id is a new session, the prior bodies are no longer
++    // authoritative.
++    for (const entry of bodies.values()) {
++      scene.remove(entry.mesh);
++      entry.mesh.geometry.dispose();
++      entry.mesh.material.dispose();
++    }
++    bodies.clear();
++    seen.clear();
+     setStatus(`viewer: connecting ${wsUrl}`);
+     socket = new WebSocket(wsUrl);
+     socket.binaryType = "arraybuffer";
+@@ -267,6 +282,10 @@ export function startLiveViewer(targetCanvas, wsUrl) {
+         handleEnvelope(bytes);
+       } catch (error) {
+         setStatus(`viewer: envelope decode error: ${error?.message ?? error}`);
++        // A malformed frame breaks the live delta chain. Treat it the
++        // same as an unknown version: ask the server for a fresh full
++        // snapshot.
++        requestResync("malformed frame");
+       }
+     });
+     socket.addEventListener("close", () => {
+diff --git a/crates/world-server/src/transport.rs b/crates/world-server/src/transport.rs
+index f15c85c..d69f9fa 100644
+--- a/crates/world-server/src/transport.rs
++++ b/crates/world-server/src/transport.rs
+@@ -190,9 +190,30 @@ impl TransportState {
+                 })
+         };
+ 
++        // Build the body outside the lock so the byte measure reflects the
++        // real frame the socket will receive. The fanout installs the body
++        // on the snapshot channel but returns the bytes to charge against
++        // the queue.
++        let message_id = self.next_server_message_id();
+         let (baseline_id, body) = {
+             let mut fanout = self.fanout.lock().await;
+-            let measure = |_shape: &crate::fanout::RealFrameShape<'_>| 0usize;
++            let measure = |shape: &crate::fanout::RealFrameShape<'_>| {
++                let preview = match shape {
++                    crate::fanout::RealFrameShape::Full { body, .. } => {
++                        crate::wire::encode_world_snapshot_body(body)
++                    }
++                    _ => Vec::new(),
++                };
++                server_envelope(
++                    connection_id,
++                    message_id,
++                    envelope::Body::FullSnapshot(FullSnapshot {
++                        baseline_id: 0,
++                        payload: preview,
++                    }),
++                )
++                .encoded_len()
++            };
+             let Some((baseline_id, body, _events, _enqueue)) =
+                 fanout.client_resync_real(connection_id, &generation, &measure)
+             else {
+@@ -205,14 +226,18 @@ impl TransportState {
+         };
+         let frame = encode_envelope(
+             connection_id,
+-            self.next_server_message_id(),
++            message_id,
+             envelope::Body::FullSnapshot(FullSnapshot {
+                 baseline_id,
+                 payload: crate::wire::encode_world_snapshot_body(&body),
+             }),
+         );
+         let delivered = self.try_deliver(connection_id, Bytes::from(frame)).await;
+-        {
++        if delivered {
++            // Only clear hold_observe once the full snapshot is actually on
++            // the wire. A previous version cleared it unconditionally, which
++            // left the connection stuck waiting for a baseline that never
++            // installed.
+             let mut fanout = self.fanout.lock().await;
+             if let Some(connection) = fanout.get_mut(connection_id) {
+                 connection.hold_observe = false;
+diff --git a/crates/world-server/src/wire/snapshot.rs b/crates/world-server/src/wire/snapshot.rs
+index 0ef839f..8f7db6f 100644
+--- a/crates/world-server/src/wire/snapshot.rs
++++ b/crates/world-server/src/wire/snapshot.rs
+@@ -58,7 +58,28 @@ impl RealEntityRecord {
+     #[must_use]
+     pub fn from_snapshot(snapshot: &EntitySnapshot) -> Self {
+         let position_mm = position_to_mm(snapshot.position);
+-        let shape = snapshot.shape.as_ref().and_then(decode_shape_slot);
++        let shape = match snapshot.shape.as_ref() {
++            None => None,
++            Some(slot) => match decode_shape_slot(slot) {
++                Ok(tree) => Some(tree),
++                Err(error) => {
++                    // The entity store carries `ShapeSlot` as opaque bytes
++                    // (task-046), so a decode failure here is a stored-
++                    // state defect, not an input error. The wire still
++                    // carries the body (entity_id, revision, position);
++                    // losing the shape tree means the viewer renders a
++                    // generic body for this entity until the slot is
++                    // repaired. Log so the failure is visible.
++                    eprintln!(
++                        "world-server: shape slot did not decode for entity {} ({} bytes): {}; emitting body without shape tree",
++                        snapshot.entity_id,
++                        slot.len(),
++                        error,
++                    );
++                    None
++                }
++            },
++        };
+         Self {
+             entity_id: snapshot.entity_id,
+             revision: snapshot.revision,
+@@ -189,11 +210,11 @@ fn record_from_proto(proto: &RealEntityRecordProto) -> RealEntityRecord {
+     }
+ }
+ 
+-fn decode_shape_slot(slot: &ShapeSlot) -> Option<ShapeTree> {
++fn decode_shape_slot(slot: &ShapeSlot) -> Result<ShapeTree, String> {
+     if slot.is_empty() {
+-        return None;
++        return Err("empty slot".to_string());
+     }
+-    ShapeTree::decode(slot.as_bytes()).ok()
++    ShapeTree::decode(slot.as_bytes()).map_err(|e| format!("prost decode: {e}"))
+ }
+ 
+ /// IEEE-754 round-to-nearest, ties to even (`banker's rounding`).
+diff --git a/packages/protocol/src/gen/aigent_pb.d.ts b/packages/protocol/src/gen/aigent_pb.d.ts
+index 2798b5a..3805d83 100644
+--- a/packages/protocol/src/gen/aigent_pb.d.ts
++++ b/packages/protocol/src/gen/aigent_pb.d.ts
+@@ -1172,8 +1172,8 @@ export declare const RealEntityRecordSchema: GenMessage<RealEntityRecord>;
+ 
+ /**
+  * Full-snapshot body: every authoritative entity that survived AOI truncation,
+- * in ascending entity_id order. The entity_id order is canonical so the wire
+- * is deterministic across same-build replays.
++ * in AOI rank order (nearest-first, ties by ascending entity_id). The rank
++ * is canonical so the wire stays deterministic across same-build replays.
+  *
+  * @generated from message aigent.protocol.v1.WorldSnapshotBodyProto
+  */
+diff --git a/protocol/v1/aigent.proto b/protocol/v1/aigent.proto
+index b43a24d..06572b9 100644
+--- a/protocol/v1/aigent.proto
++++ b/protocol/v1/aigent.proto
+@@ -426,8 +426,8 @@ message RealEntityRecord {
+ }
+ 
+ // Full-snapshot body: every authoritative entity that survived AOI truncation,
+-// in ascending entity_id order. The entity_id order is canonical so the wire
+-// is deterministic across same-build replays.
++// in AOI rank order (nearest-first, ties by ascending entity_id). The rank
++// is canonical so the wire stays deterministic across same-build replays.
+ message WorldSnapshotBodyProto {
+   uint32 version = 1;
+   uint64 tick = 2;
+===== UNTRACKED FILE: apps/viewer/src/wire/real-snapshot.js =====
+// Real-body snapshot/delta decoder (task-054).
+//
+// The server emits `FullSnapshot.payload` and `SnapshotDelta.payload` as
+// `WorldSnapshotBodyProto` / `WorldSnapshotDeltaProto` (defined in
+// `protocol/v1/aigent.proto`, generated bindings in `@aigent-place/protocol`).
+// This file is the hand-rolled decoder used by the viewer until the auto-
+// generated bindings land in the viewer build.
+//
+// The wire format is `prost` (the Rust encoder), so we read the protobuf wire
+// types directly: varints, length-delimited submessages, and zig-zag sint64.
+
+const BODY_VERSION = 1;
+const DELTA_VERSION = 1;
+
+const WIRE_VARINT = 0;
+const WIRE_FIXED64 = 1;
+const WIRE_BYTES = 2;
+const WIRE_FIXED32 = 5;
+
+class Reader {
+  constructor(bytes) {
+    this.bytes = bytes;
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    this.cursor = 0;
+  }
+  remaining() {
+    return this.bytes.length - this.cursor;
+  }
+  readVarint() {
+    let result = 0n;
+    let shift = 0n;
+    while (this.cursor < this.bytes.length) {
+      const b = this.bytes[this.cursor++];
+      result |= BigInt(b & 0x7f) << shift;
+      if ((b & 0x80) === 0) return result;
+      shift += 7n;
+      if (shift > 64n) throw new Error("varint overflow");
+    }
+    throw new Error("truncated varint");
+  }
+  readTag() {
+    const v = this.readVarint();
+    return { field: Number(v >> 3n), wire: Number(v & 7n) };
+  }
+  readFixed32() {
+    const v = this.view.getUint32(this.cursor, true);
+    this.cursor += 4;
+    return v;
+  }
+  readFixed64() {
+    const v = this.view.getBigUint64(this.cursor, true);
+    this.cursor += 8;
+    return v;
+  }
+  readSint64() {
+    const v = this.readVarint();
+    // zig-zag decode
+    return (v >> 1n) ^ -(v & 1n);
+  }
+  readBytes() {
+    const len = Number(this.readVarint());
+    const start = this.cursor;
+    this.cursor += len;
+    return this.bytes.subarray(start, start + len);
+  }
+  skip(wire) {
+    switch (wire) {
+      case WIRE_VARINT:
+        this.readVarint();
+        return;
+      case WIRE_FIXED64:
+        this.cursor += 8;
+        return;
+      case WIRE_BYTES:
+        this.readBytes();
+        return;
+      case WIRE_FIXED32:
+        this.cursor += 4;
+        return;
+      default:
+        throw new Error(`unknown wire type ${wire}`);
+    }
+  }
+  // Read a single field value by wire type. The caller knows which it is.
+  skipField(wire) {
+    this.skip(wire);
+  }
+}
+
+function readVector3Millimeters(reader) {
+  // Vector3Millimeters { x_mm, y_mm, z_mm } — three sint64 fields, each
+  // tagged. The encoder omits default values (proto3), so 0-valued axes
+  // are not present on the wire and stay at 0 in the output.
+  let x = 0n;
+  let y = 0n;
+  let z = 0n;
+  while (reader.remaining() > 0) {
+    const tag = reader.readTag();
+    if (tag.wire !== WIRE_VARINT) {
+      reader.skipField(tag.wire);
+      continue;
+    }
+    const value = reader.readSint64();
+    switch (tag.field) {
+      case 1:
+        x = value;
+        break;
+      case 2:
+        y = value;
+        break;
+      case 3:
+        z = value;
+        break;
+      default:
+        break;
+    }
+  }
+  return { x, y, z };
+}
+
+function readShapeTree(reader) {
+  // ShapeTree { nodes: [ShapeNode] } — only the entity_id and presence of
+  // a primitive matter for the viewer smoke; a full decoder is task-055.
+  const nodes = [];
+  while (reader.remaining() > 0) {
+    const tag = reader.readTag();
+    if (tag.wire !== WIRE_BYTES || tag.field !== 1) {
+      reader.skipField(tag.wire);
+      continue;
+    }
+    const nodeBytes = reader.readBytes();
+    const nodeReader = new Reader(nodeBytes);
+    let nodeId = 0n;
+    let hasPrimitive = false;
+    while (nodeReader.remaining() > 0) {
+      const t = nodeReader.readTag();
+      switch (t.field) {
+        case 1:
+          nodeId = t.wire === WIRE_VARINT ? nodeReader.readVarint() : 0n;
+          break;
+        case 3:
+          // LocalTransform — read past it, no value needed.
+          nodeReader.readBytes();
+          break;
+        case 4:
+          // joint_name.
+          nodeReader.readBytes();
+          break;
+        case 5:
+          // color.
+          nodeReader.readBytes();
+          break;
+        case 6:
+          // material_tags (repeated string).
+          nodeReader.readBytes();
+          break;
+        case 10:
+        case 11:
+        case 12:
+        case 13:
+        case 14:
+        case 15:
+          // primitive (oneof): Box, Sphere, Capsule, Cylinder, Cone, Panel.
+          nodeReader.readBytes();
+          hasPrimitive = true;
+          break;
+        default:
+          nodeReader.skipField(t.wire);
+          break;
+      }
+    }
+    nodes.push({ nodeId, hasPrimitive });
+  }
+  return { nodes };
+}
+
+function readRealEntityRecord(reader) {
+  let entityId = 0n;
+  let revision = 0n;
+  let positionMm = { x: 0n, y: 0n, z: 0n };
+  let shape = null;
+  while (reader.remaining() > 0) {
+    const tag = reader.readTag();
+    switch (tag.field) {
+      case 1:
+        entityId = tag.wire === WIRE_VARINT ? reader.readVarint() : 0n;
+        break;
+      case 2:
+        revision = tag.wire === WIRE_VARINT ? reader.readVarint() : 0n;
+        break;
+      case 3:
+        positionMm = readVector3Millimeters(new Reader(reader.readBytes()));
+        break;
+      case 4:
+        shape = readShapeTree(new Reader(reader.readBytes()));
+        break;
+      default:
+        reader.skipField(tag.wire);
+        break;
+    }
+  }
+  return { entityId, revision, positionMm, shape };
+}
+
+/**
+ * @param {Uint8Array} bytes the FullSnapshot.payload bytes
+ * @returns {{
+ *   version: number,
+ *   tick: bigint,
+ *   generationDigest: Uint8Array,
+ *   bodies: Array<{
+ *     entityId: bigint,
+ *     revision: bigint,
+ *     positionMm: { x: bigint, y: bigint, z: bigint },
+ *     shape: { nodes: Array<{ nodeId: bigint, hasPrimitive: boolean }> } | null,
+ *   }>,
+ * } | null}
+ */
+export function decodeWorldSnapshotBody(bytes) {
+  const reader = new Reader(bytes);
+  let version = 0;
+  let tick = 0n;
+  let generationDigest = new Uint8Array(0);
+  const bodies = [];
+  while (reader.remaining() > 0) {
+    const tag = reader.readTag();
+    switch (tag.field) {
+      case 1:
+        version = tag.wire === WIRE_VARINT ? Number(reader.readVarint()) : 0;
+        break;
+      case 2:
+        tick = tag.wire === WIRE_VARINT ? reader.readVarint() : 0n;
+        break;
+      case 3:
+        generationDigest = reader.readBytes();
+        break;
+      case 4:
+        bodies.push(readRealEntityRecord(new Reader(reader.readBytes())));
+        break;
+      default:
+        reader.skipField(tag.wire);
+        break;
+    }
+  }
+  if (version !== BODY_VERSION) return null;
+  return { version, tick, generationDigest, bodies };
+}
+
+/**
+ * @param {Uint8Array} bytes the SnapshotDelta.payload bytes
+ * @returns {{
+ *   version: number,
+ *   generationDigest: Uint8Array,
+ *   entered: Array<...>,
+ *   modified: Array<...>,
+ *   leftIds: bigint[],
+ * } | null}
+ */
+export function decodeWorldSnapshotDelta(bytes) {
+  const reader = new Reader(bytes);
+  let version = 0;
+  let generationDigest = new Uint8Array(0);
+  const entered = [];
+  const modified = [];
+  const leftIds = [];
+  while (reader.remaining() > 0) {
+    const tag = reader.readTag();
+    switch (tag.field) {
+      case 1:
+        version = tag.wire === WIRE_VARINT ? Number(reader.readVarint()) : 0;
+        break;
+      case 2:
+        generationDigest = reader.readBytes();
+        break;
+      case 3:
+        entered.push(readRealEntityRecord(new Reader(reader.readBytes())));
+        break;
+      case 4:
+        modified.push(readRealEntityRecord(new Reader(reader.readBytes())));
+        break;
+      case 5:
+        // Proto3 packs `repeated uint64` into one length-delimited field
+        // whose body is a sequence of varints. The decoder accepts both
+        // the packed form and a series of single varints.
+        if (tag.wire === WIRE_BYTES) {
+          const packed = new Reader(reader.readBytes());
+          while (packed.remaining() > 0) {
+            leftIds.push(packed.readVarint());
+          }
+        } else if (tag.wire === WIRE_VARINT) {
+          leftIds.push(reader.readVarint());
+        } else {
+          reader.skipField(tag.wire);
+        }
+        break;
+      default:
+        reader.skipField(tag.wire);
+        break;
+    }
+  }
+  if (version !== DELTA_VERSION) return null;
+  return { version, generationDigest, entered, modified, leftIds };
+}
+
+===== END =====
+
+===== UNTRACKED FILE: apps/viewer/test/real-snapshot.test.mjs =====
+// Real-body snapshot/delta decoder tests (task-054).
+//
+// These are the shared Rust+TypeScript conformance checks. The Rust side
+// (in `crates/world-server/src/wire/snapshot.rs::tests`) produces a
+// `WorldSnapshotBody` with two entities, encodes it, and the bytes are
+// recorded as a hex fixture in `protocol/v1/conformance/binary/`.
+// The TypeScript side reads the same bytes and asserts the decoded
+// records match the Rust expectations.
+
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import {
+  decodeWorldSnapshotBody,
+  decodeWorldSnapshotDelta,
+} from "../src/wire/real-snapshot.js";
+
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+
+function fixtureBytes(name) {
+  const text = fs.readFileSync(
+    path.join(root, "protocol/v1/conformance/binary", name),
+    "utf8",
+  );
+  const hex = text.replace(/\s+/g, "");
+  return new Uint8Array(Buffer.from(hex, "hex"));
+}
+
+test("real-body snapshot fixture decodes into two entity records with shape", () => {
+  const bytes = fixtureBytes("world-snapshot-body.hex");
+  const decoded = decodeWorldSnapshotBody(bytes);
+  assert.ok(decoded, "decoder accepted the fixture");
+  assert.equal(decoded.version, 1);
+  assert.equal(decoded.tick, 42n);
+  assert.equal(decoded.generationDigest.length, 32);
+  // The fixture is a generation_digest of [0xAB; 32].
+  for (const b of decoded.generationDigest) assert.equal(b, 0xab);
+  assert.equal(decoded.bodies.length, 2);
+  // Bodies are emitted in AOI rank order. With both fixture entities at
+  // the same placeholder position, ties are broken by ascending entity_id,
+  // so body 1 appears first.
+  assert.equal(decoded.bodies[0].entityId, 1n);
+  assert.equal(decoded.bodies[1].entityId, 2n);
+  // Both fixture entities are at the same placeholder pose (1.5, 0, -2.25)
+  // metres, which projects to (1500, 0, -2250) millimetres. The y axis is
+  // omitted on the wire (proto3 default-value elision) and the decoder
+  // restores it as 0.
+  for (const body of decoded.bodies) {
+    assert.deepEqual(body.positionMm, { x: 1500n, y: 0n, z: -2250n });
+  }
+  // Both entities carry the same one-node box shape; the decoder reads
+  // the primitive presence flag for the smoke render.
+  for (const body of decoded.bodies) {
+    assert.ok(body.shape);
+    assert.equal(body.shape.nodes.length, 1);
+    assert.equal(body.shape.nodes[0].hasPrimitive, true);
+    assert.equal(body.shape.nodes[0].nodeId, 1n);
+  }
+});
+
+test("real-body delta fixture decodes into one entered and one left id", () => {
+  const bytes = fixtureBytes("world-snapshot-delta.hex");
+  const decoded = decodeWorldSnapshotDelta(bytes);
+  assert.ok(decoded, "decoder accepted the fixture");
+  assert.equal(decoded.version, 1);
+  assert.equal(decoded.entered.length, 1);
+  assert.equal(decoded.modified.length, 0);
+  assert.deepEqual(decoded.leftIds, [13n]);
+  assert.equal(decoded.entered[0].entityId, 10n);
+  assert.equal(decoded.entered[0].revision, 1n);
+});
+
+test("unknown version is rejected", () => {
+  // The version field is the first varint in either wire form; the decoder
+  // should refuse to interpret a payload with a version it does not know.
+  const bytes = new Uint8Array([0x7f]); // field 15, wire 7 — invalid wire type
+  assert.throws(() => decodeWorldSnapshotBody(bytes));
+});
+
+===== END =====
+
+===== UNTRACKED FILE: protocol/v1/conformance/binary/world-snapshot-body.hex =====
+0801102a1a20abababababababababababababababababababababababababababababababab221d080110011a0608b817189323220f0a0d0801520908d00f10d00f18d00f221d080210011a0608b817189323220f0a0d0801520908d00f10d00f18d00f
+===== END =====
+
+===== UNTRACKED FILE: protocol/v1/conformance/binary/world-snapshot-delta.hex =====
+08011220cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd1a1d080a10011a0608b817189323220f0a0d0801520908d00f10d00f18d00f2a010d
+===== END =====
