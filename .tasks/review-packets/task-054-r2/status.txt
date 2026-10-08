@@ -1,0 +1,7 @@
+Round 2 packet.
+- Branch: task-054-carry-real-bodies
+- Base: round-1 base (main..HEAD~1)
+- Diff: see diff.patch
+- Untracked: see untracked.txt
+- Task status: review
+- Commits since round 1: 1 (431dd53, round 2 fixes)

@@ -1,12 +1,12 @@
 ---
 id: task-7210989894000001
 title: Size the client-resync frame from its encoded envelope
-status: backlog
+status: done
 priority: p3
-tags: [area:network, phase:debt]
+tags: [area:network, phase:debt, deleted:true]
 blockedBy: []
 createdAt: "2026-08-06T15:47:08Z"
-updatedAt: "2026-08-06T15:47:08Z"
+updatedAt: "2026-10-08T02:41:58Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,5 @@ TransportState::deliver_client_resync charges SnapshotFanout::client_resync with
 ## Log
 
 - 2026-08-06T15:47:08Z — created (status: backlog)
+- 2026-10-08T02:41:58Z — note: Superseded by completed task-054 in PR #69. The live client-resync full uses the exact same encoded envelope for charge and send. resync_waits_for_full_write_and_charges_exact_envelope verifies exact bytes and matching write completion. Retire this duplicate card by soft deletion; no separate implementation remains.
+- 2026-10-08T02:41:58Z — removed (soft delete)

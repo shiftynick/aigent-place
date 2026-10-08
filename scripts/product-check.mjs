@@ -116,6 +116,9 @@ export function main(argv = process.argv) {
   console.log("product-check: viewer build + smoke");
   run(npmCmd, ["run", "viewer:build"], { shell: npmShell });
   run(npmCmd, ["run", "viewer:smoke"], { shell: npmShell });
+  run(npmCmd, ["run", "test:real-snapshot", "-w", "@aigent-place/viewer"], {
+    shell: npmShell,
+  });
 
   console.log("product-check: PASS");
 }

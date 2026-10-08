@@ -16,6 +16,9 @@ target/
 world-journal.sqlite
 world-journal.sqlite-wal
 world-journal.sqlite-shm
+demojournal.sqlite
+demojournal.sqlite-wal
+demojournal.sqlite-shm
 
 # Local scratch (cold-review packets, ephemeral worktrees helpers)
 .tmp/

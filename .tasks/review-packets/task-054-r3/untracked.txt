@@ -1,0 +1,13 @@
+.tasks/review-packets/task-054-r3/decisions.md
+.tasks/review-packets/task-054-r3/diff.patch
+.tasks/review-packets/task-054-r3/engineering-standards.md
+.tasks/review-packets/task-054-r3/evidence.md
+.tasks/review-packets/task-054-r3/fix-verification.md
+.tasks/review-packets/task-054-r3/incomplete-attempt.json
+.tasks/review-packets/task-054-r3/manifest.json
+.tasks/review-packets/task-054-r3/objective.txt
+.tasks/review-packets/task-054-r3/repair-from-head.patch
+.tasks/review-packets/task-054-r3/review-standards.md
+.tasks/review-packets/task-054-r3/rubric.txt
+.tasks/review-packets/task-054-r3/status.txt
+.tasks/review-packets/task-054-r3/untracked.txt

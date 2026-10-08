@@ -2,24 +2,21 @@
 //!
 //! Tokio/axum owns accept and per-connection I/O. Simulation publishes into
 //! [`PublicationMailbox`] without waiting; [`TransportState::drain_fanout`]
-//! encodes observe traffic and `try_send`s onto bounded per-connection
-//! channels. Slow clients fill those channels and are isolated via outbound
+//! encodes observe traffic into per-connection byte-accounted FIFOs.
+//! Slow clients fill those queues and are isolated via outbound
 //! overflow observation — the drain path never awaits a socket write.
 
 use crate::aoi::AoiError;
 use crate::entity::ShapeSlot;
-use crate::fanout::{
-    PublicationMailbox, PublishOutcome, SnapshotFanout, StateFrameShape, StateSizing,
-};
+use crate::fanout::{PublicationMailbox, RealPublishOutcome, SnapshotFanout};
 use crate::generation::ImmutableGeneration;
-use crate::outbound::{ObserveOutcome, QUEUE_LIMIT_BYTES};
+use crate::outbound::{ObserveOutcome, StateKind, QUEUE_LIMIT_BYTES};
 use crate::persist::DurableJournal;
 use crate::session::{
     AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, ConnectionMode,
     ConnectionRole, DecodedCommandPayload, FeatureOffer, HandshakeOutcome, IdentityBinding,
     SessionHub,
 };
-use crate::snapshot::StubSnapshotPayload;
 use crate::tick::TICK_MS;
 use crate::world::{CommandEffect, QueuedCommand, World, WorldConfig, WorldError};
 use aigent_protocol::{
@@ -39,14 +36,14 @@ use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message as ProstMessage;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, watch, Mutex};
+use tokio::sync::{watch, Mutex, Notify};
 use tokio::task::JoinHandle;
 
 const OUTBOUND_CHANNEL_CAP: usize = 8;
@@ -56,16 +53,97 @@ const OUTBOUND_CHANNEL_CAP: usize = 8;
 /// Relative to the process working directory. Override with `--journal PATH`.
 pub const DEFAULT_LISTEN_JOURNAL_PATH: &str = "world-journal.sqlite";
 
+#[derive(Debug, Clone, Copy)]
+enum BufferedKind {
+    State { baseline_id: u64, kind: StateKind },
+    Ordered,
+    Recovery,
+}
+
+#[derive(Debug, Clone)]
+struct BufferedFrame {
+    bytes: Bytes,
+    charged_bytes: usize,
+    kind: BufferedKind,
+}
+
+impl BufferedFrame {
+    fn new(bytes: Bytes, override_bytes: Option<usize>) -> Self {
+        let kind = match Envelope::decode(bytes.as_ref())
+            .ok()
+            .and_then(|envelope| envelope.body)
+        {
+            Some(envelope::Body::FullSnapshot(full)) => BufferedKind::State {
+                baseline_id: full.baseline_id,
+                kind: StateKind::Full,
+            },
+            Some(envelope::Body::SnapshotDelta(delta)) => BufferedKind::State {
+                baseline_id: delta.baseline_id,
+                kind: StateKind::Delta,
+            },
+            Some(envelope::Body::SnapshotResyncRequired(_)) => BufferedKind::Recovery,
+            _ => BufferedKind::Ordered,
+        };
+        Self {
+            charged_bytes: override_bytes.unwrap_or(bytes.len()),
+            bytes,
+            kind,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct BufferedOutbound {
+    pending: VecDeque<BufferedFrame>,
+    /// A socket write cannot be withdrawn; its bytes remain charged until success.
+    active: Option<BufferedFrame>,
+}
+
+impl BufferedOutbound {
+    fn sync_accounting(&self, connection: &mut crate::fanout::ConnectionOutbound) {
+        let mut states = Vec::new();
+        let mut ordered_bytes = 0usize;
+        for frame in self.active.iter().chain(self.pending.iter()) {
+            match frame.kind {
+                BufferedKind::State { kind, .. } => states.push((frame.charged_bytes, kind)),
+                BufferedKind::Ordered | BufferedKind::Recovery => {
+                    ordered_bytes = ordered_bytes.saturating_add(frame.charged_bytes)
+                }
+            }
+        }
+        connection.queue.retain_frames(&states, ordered_bytes);
+    }
+}
+
 #[derive(Debug)]
 struct LiveSocket {
     close_tx: watch::Sender<bool>,
-    outbound_tx: mpsc::Sender<Bytes>,
-    /// When true, the socket task stops pumping outbound frames (stuck writer).
+    outbound_wake: Arc<Notify>,
     outbound_paused: Arc<AtomicBool>,
-    /// Frames that could not enter the bounded channel (bounded; never silent-grow).
-    pending: std::sync::Mutex<std::collections::VecDeque<Bytes>>,
-    /// Frames accepted into channel or pending but not yet written to the socket.
-    inflight: AtomicU64,
+    /// One transport-owned FIFO. Coalescing can withdraw all pending state,
+    /// while ordered/control traffic keeps FIFO order and is never evicted.
+    outbound: BufferedOutbound,
+}
+
+fn buffer_frame(
+    live: &mut LiveSocket,
+    connection: &mut crate::fanout::ConnectionOutbound,
+    frame: BufferedFrame,
+) {
+    if matches!(
+        frame.kind,
+        BufferedKind::State {
+            kind: StateKind::Full,
+            ..
+        } | BufferedKind::Recovery
+    ) {
+        live.outbound
+            .pending
+            .retain(|prior| !matches!(prior.kind, BufferedKind::State { .. }));
+    }
+    live.outbound.pending.push_back(frame);
+    live.outbound.sync_accounting(connection);
+    live.outbound_wake.notify_one();
 }
 
 /// Shared transport state. Demo identity uses trusted inject (not production auth).
@@ -154,6 +232,9 @@ impl TransportState {
         let sockets = self.sockets.lock().await;
         if let Some(live) = sockets.get(connection_id) {
             live.outbound_paused.store(paused, Ordering::Relaxed);
+            if !paused {
+                live.outbound_wake.notify_one();
+            }
             true
         } else {
             false
@@ -189,38 +270,60 @@ impl TransportState {
                 })
         };
 
-        let (baseline_id, payload) = {
-            let mut fanout = self.fanout.lock().await;
-            let Some((baseline_id, payload, _events, _enqueue)) =
-                fanout.client_resync(connection_id, &generation, None)
-            else {
-                return false;
-            };
-            if let Some(connection) = fanout.get_mut(connection_id) {
-                connection.hold_observe = true;
-            }
-            (baseline_id, payload)
+        let message_id = self.next_server_message_id();
+        // Socket queue and baseline installation share the same lock order as
+        // the drain/write acknowledgments, so no old delta can race past resync.
+        let mut sockets = self.sockets.lock().await;
+        let Some(live) = sockets.get_mut(connection_id) else {
+            return false;
         };
-        let frame = encode_envelope(
-            connection_id,
-            self.next_server_message_id(),
-            envelope::Body::FullSnapshot(FullSnapshot {
-                baseline_id,
-                payload: payload.encode_wire(),
-            }),
-        );
-        let delivered = self.try_deliver(connection_id, Bytes::from(frame)).await;
-        {
-            let mut fanout = self.fanout.lock().await;
-            if let Some(connection) = fanout.get_mut(connection_id) {
-                connection.hold_observe = false;
+        let mut fanout = self.fanout.lock().await;
+        let measure = |shape: &crate::fanout::RealFrameShape<'_>| {
+            state_frame_encoded_len_real(connection_id, message_id, *shape)
+        };
+        match fanout.client_resync_real(connection_id, &generation, &measure) {
+            Ok(Some((baseline_id, body, _, _))) => {
+                let connection = fanout.get_mut(connection_id).expect("resynced connection");
+                connection.hold_observe = true;
+                let frame = encode_envelope(
+                    connection_id,
+                    message_id,
+                    envelope::Body::FullSnapshot(FullSnapshot {
+                        baseline_id,
+                        payload: crate::wire::encode_world_snapshot_body(&body),
+                    }),
+                );
+                buffer_frame(
+                    live,
+                    connection,
+                    BufferedFrame::new(Bytes::from(frame), None),
+                );
+                true
             }
+            Err(error) => {
+                eprintln!("world-server: snapshot resync failed: {error}");
+                let connection = fanout.get_mut(connection_id).expect("attached connection");
+                let frame = encode_envelope(
+                    connection_id,
+                    message_id,
+                    envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
+                        reason: aigent_protocol::SnapshotResyncReason::ServerInitiated as i32,
+                        baseline_id: connection.snapshot.baseline_id(),
+                    }),
+                );
+                buffer_frame(
+                    live,
+                    connection,
+                    BufferedFrame::new(Bytes::from(frame), None),
+                );
+                false
+            }
+            Ok(None) => false,
         }
-        delivered
     }
 
     /// Serialization-stage drain: observe prior undrained pressure, then encode
-    /// observe traffic and try_send to sockets. Close only slow connections.
+    /// observe traffic into socket queues. Close only slow connections.
     /// Never awaits I/O. Queue byte accounting clears only after the socket
     /// task reports a send via [`Self::note_frame_sent`], so healthy writers
     /// that clear between ticks stay under the overflow window.
@@ -274,40 +377,54 @@ impl TransportState {
             if report.closed.iter().any(|id| id == &connection_id) {
                 continue;
             }
-            self.flush_pending(&connection_id).await;
             // One message id per connection per pass: the id a frame is sized
             // with is the id it is written with, so the bytes charged to the
             // outbound queue are the bytes that reach the socket.
             let message_id = self.next_server_message_id();
-            let measure = |shape: StateFrameShape<'_>| {
-                state_frame_encoded_len(&connection_id, message_id, shape)
-            };
-            let sizing = match encoded_bytes {
-                Some(bytes) => StateSizing::Fixed(bytes),
-                None => StateSizing::Frame(&measure),
-            };
             // Publish and encode under one lock: a client resync arriving
             // between them would replace this connection's payload, so the
             // queue would be charged one frame while the socket received
             // another. No await happens inside, so the drain still never
             // blocks on I/O.
-            let (outcome, frames) = {
+            //
+            // task-054: live traffic now uses the real-body publish path,
+            // which reads AOI candidates from the entity store and emits
+            // `WorldSnapshotBody` / `WorldSnapshotDelta` instead of the
+            // legacy `AIGB` placeholder.
+            let outcome = {
+                let mut sockets = self.sockets.lock().await;
+                let Some(live) = sockets.get_mut(&connection_id) else {
+                    continue;
+                };
                 let mut fanout = self.fanout.lock().await;
-                // Live traffic is AOI-truncated: nearest-first under the role's
-                // cap against this connection's own focus.
-                let Some(outcome) = fanout.publish_interest_to(&connection_id, &generation, sizing)
+                let real_measure = |shape: &crate::fanout::RealFrameShape<'_>| {
+                    encoded_bytes.unwrap_or_else(|| {
+                        state_frame_encoded_len_real(&connection_id, message_id, *shape)
+                    })
+                };
+                let Some(outcome) =
+                    fanout.publish_real_interest_to(&connection_id, &generation, &real_measure)
                 else {
                     continue;
                 };
-                let frames = encode_publish_frames(
-                    &connection_id,
-                    message_id,
-                    &outcome,
-                    fanout
-                        .get(&connection_id)
-                        .and_then(|c| c.snapshot.last_payload()),
-                );
-                (outcome, frames)
+                let frames = encode_real_publish_frames(&connection_id, message_id, &outcome);
+                for frame in frames {
+                    if let Some(connection) = fanout.get_mut(&connection_id) {
+                        let override_size =
+                            if matches!(outcome, RealPublishOutcome::EncodingFailed { .. }) {
+                                None
+                            } else {
+                                encoded_bytes
+                            };
+                        buffer_frame(
+                            live,
+                            connection,
+                            BufferedFrame::new(Bytes::from(frame), override_size),
+                        );
+                        delivered += 1;
+                    }
+                }
+                outcome
             };
             if let Some(aigent_id) = connection_aigents.get(&connection_id) {
                 for termination in generation
@@ -345,27 +462,19 @@ impl TransportState {
                             .encode_to_vec(),
                         }),
                     );
-                    let queued = {
-                        let mut fanout = self.fanout.lock().await;
-                        fanout
-                            .get_mut(&connection_id)
-                            .is_some_and(|connection| connection.queue.enqueue_event(frame.len()))
-                    };
-                    if queued && self.try_deliver(&connection_id, Bytes::from(frame)).await {
+                    if self.try_deliver(&connection_id, Bytes::from(frame)).await {
                         delivered += 1;
                     }
                 }
             }
-            if let PublishOutcome::InterestUnavailable { error } = outcome {
+            if let RealPublishOutcome::InterestUnavailable { error } = outcome {
                 report
                     .interest_unavailable
                     .push((connection_id.clone(), error));
                 continue;
             }
-            for frame in frames {
-                if self.try_deliver(&connection_id, Bytes::from(frame)).await {
-                    delivered += 1;
-                }
+            if let RealPublishOutcome::EncodingFailed { error } = outcome {
+                report.encoding_failed.push((connection_id.clone(), error));
             }
         }
         report.delivered = delivered;
@@ -392,82 +501,117 @@ impl TransportState {
             delivered: 0,
             closed,
             interest_unavailable: Vec::new(),
+            encoding_failed: Vec::new(),
         }
     }
 
-    /// Called by the socket task after a successful WebSocket write.
-    /// Accounting clears only when no frames remain in channel or pending.
+    /// Release exactly the frame that completed its socket write.
     pub async fn note_frame_sent(&self, connection_id: &[u8]) {
-        {
-            let sockets = self.sockets.lock().await;
-            let Some(live) = sockets.get(connection_id) else {
-                return;
-            };
-            live.inflight.fetch_sub(1, Ordering::AcqRel);
-            // Hold sockets across the zero-check and drain so try_deliver cannot
-            // admit another frame that would then be cleared incorrectly.
-            if live.inflight.load(Ordering::Acquire) == 0 {
-                let mut fanout = self.fanout.lock().await;
-                if let Some(connection) = fanout.get_mut(connection_id) {
-                    connection.queue.drain_all();
-                }
-            }
-        }
-        self.flush_pending(connection_id).await;
-    }
-
-    async fn flush_pending(&self, connection_id: &[u8]) {
-        let sockets = self.sockets.lock().await;
-        let Some(live) = sockets.get(connection_id) else {
+        let mut sockets = self.sockets.lock().await;
+        let Some(live) = sockets.get_mut(connection_id) else {
             return;
         };
-        let mut pending = live
-            .pending
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        while let Some(frame) = pending.pop_front() {
-            match live.outbound_tx.try_send(frame.clone()) {
-                Ok(()) => {}
-                Err(_) => {
-                    pending.push_front(frame);
-                    break;
+        let sent = live.outbound.active.take();
+        let mut fanout = self.fanout.lock().await;
+        if let Some(connection) = fanout.get_mut(connection_id) {
+            if let Some(BufferedFrame {
+                kind:
+                    BufferedKind::State {
+                        baseline_id,
+                        kind: StateKind::Full,
+                    },
+                ..
+            }) = sent
+            {
+                if connection.snapshot.baseline_id() == Some(baseline_id) {
+                    connection.hold_observe = false;
                 }
             }
+            live.outbound.sync_accounting(connection);
+        }
+        if !live.outbound.pending.is_empty() {
+            live.outbound_wake.notify_one();
         }
     }
 
-    /// Deliver one frame without awaiting. Returns true if accepted by the channel
-    /// or buffered in the bounded pending deque. When pending is full, the oldest
-    /// pending frame is evicted so the newest (especially command results) is kept.
-    /// Snapshot byte-cap accounting stays in the fan-out publish path; command
-    /// results must call [`OutboundQueue::enqueue_event`] before this.
-    async fn try_deliver(&self, connection_id: &[u8], frame: Bytes) -> bool {
-        let sockets = self.sockets.lock().await;
-        let Some(live) = sockets.get(connection_id) else {
+    /// Only a completed write releases accounting or a matching baseline hold.
+    async fn write_outbound<F, E>(
+        &self,
+        connection_id: &[u8],
+        send: F,
+        close_rx: &mut watch::Receiver<bool>,
+    ) -> Result<bool, E>
+    where
+        F: std::future::Future<Output = Result<(), E>>,
+    {
+        let written = send_until_closed(send, close_rx).await?;
+        if written {
+            self.note_frame_sent(connection_id).await;
+        }
+        Ok(written)
+    }
+
+    async fn take_outbound(&self, connection_id: &[u8]) -> Option<Bytes> {
+        let mut sockets = self.sockets.lock().await;
+        let live = sockets.get_mut(connection_id)?;
+        if live.outbound_paused.load(Ordering::Relaxed) {
+            return None;
+        }
+        let frame = live.outbound.pending.pop_front()?;
+        let bytes = frame.bytes.clone();
+        live.outbound.active = Some(frame);
+        Some(bytes)
+    }
+
+    /// Admission into the same FIFO used by the socket writer. The byte limit
+    /// triggers state replacement and the fixed overflow window, never eviction
+    /// of an ordered result, event, or control frame.
+    async fn try_deliver(&self, connection_id: &[u8], bytes: Bytes) -> bool {
+        let mut sockets = self.sockets.lock().await;
+        let Some(live) = sockets.get_mut(connection_id) else {
             return false;
         };
-        match live.outbound_tx.try_send(frame.clone()) {
-            Ok(()) => {
-                live.inflight.fetch_add(1, Ordering::AcqRel);
-                true
-            }
-            Err(_) => {
-                let mut pending = live
-                    .pending
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if pending.len() >= OUTBOUND_CHANNEL_CAP {
-                    // Evict oldest undelivered frame; keep newest. Inflight count
-                    // unchanged (one out, one in).
-                    let _ = pending.pop_front();
-                    pending.push_back(frame);
-                } else {
-                    pending.push_back(frame);
-                    live.inflight.fetch_add(1, Ordering::AcqRel);
+        let mut fanout = self.fanout.lock().await;
+        let Some(connection) = fanout.get(connection_id) else {
+            return false;
+        };
+        if connection.queue.is_closed() {
+            return false;
+        }
+        let frame = BufferedFrame::new(bytes, None);
+        let ordered = matches!(frame.kind, BufferedKind::Ordered);
+        let pending_states = live
+            .outbound
+            .pending
+            .iter()
+            .filter(|queued| matches!(queued.kind, BufferedKind::State { .. }))
+            .count();
+        if ordered
+            && connection
+                .queue
+                .queued_bytes()
+                .saturating_add(frame.charged_bytes)
+                > QUEUE_LIMIT_BYTES
+            && pending_states > 1
+        {
+            let message_id = self.next_server_message_id();
+            let measure = |shape: &crate::fanout::RealFrameShape<'_>| {
+                state_frame_encoded_len_real(connection_id, message_id, *shape)
+            };
+            if let Some(outcome) = fanout.coalesce_real_pending(connection_id, &measure) {
+                for full in encode_real_publish_frames(connection_id, message_id, &outcome) {
+                    let connection = fanout.get_mut(connection_id).expect("attached connection");
+                    buffer_frame(
+                        live,
+                        connection,
+                        BufferedFrame::new(Bytes::from(full), None),
+                    );
                 }
-                true
             }
         }
+        let connection = fanout.get_mut(connection_id).expect("attached connection");
+        buffer_frame(live, connection, frame);
+        true
     }
 }
 
@@ -481,6 +625,8 @@ pub struct DrainReport {
     /// untruncated payload, so the drain reports them instead of leaving the
     /// starvation silent.
     pub interest_unavailable: Vec<(Vec<u8>, AoiError)>,
+    /// Corrupt authoritative records were rejected without installing partial state.
+    pub encoding_failed: Vec<(Vec<u8>, crate::wire::SnapshotEncodeError)>,
 }
 
 /// Bind `addr` and serve the WebSocket upgrade route forever.
@@ -626,7 +772,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
     };
 
     let (close_tx, mut close_rx) = watch::channel(false);
-    let (outbound_tx, mut outbound_rx) = mpsc::channel::<Bytes>(OUTBOUND_CHANNEL_CAP);
+    let outbound_wake = Arc::new(Notify::new());
     match outcome {
         HandshakeOutcome::Accepted {
             mode,
@@ -662,10 +808,9 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
                     connection_id.clone(),
                     LiveSocket {
                         close_tx: close_tx.clone(),
-                        outbound_tx,
+                        outbound_wake: Arc::clone(&outbound_wake),
                         outbound_paused: Arc::new(AtomicBool::new(false)),
-                        pending: std::sync::Mutex::new(std::collections::VecDeque::new()),
-                        inflight: AtomicU64::new(0),
+                        outbound: BufferedOutbound::default(),
                     },
                 );
             }
@@ -714,19 +859,14 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
                 tokio::select! {
                     _ = close_rx.changed() => {
                         if *close_rx.borrow() {
-                            let _ = socket.close().await;
+                            // Dropping the socket closes a blocked peer without
+                            // waiting for a close-frame flush to complete.
                             break;
                         }
                     }
-                    outbound = outbound_rx.recv(), if !outbound_paused.load(Ordering::Relaxed) => {
-                        match outbound {
-                            Some(frame) => {
-                                if socket.send(Message::Binary(frame)).await.is_err() {
-                                    break;
-                                }
-                                state.note_frame_sent(&connection_id).await;
-                            }
-                            None => break,
+                    _ = outbound_wake.notified(), if !outbound_paused.load(Ordering::Relaxed) => {
+                        if let Some(frame) = state.take_outbound(&connection_id).await {
+                            if !matches!(state.write_outbound(&connection_id, socket.send(Message::Binary(frame)), &mut close_rx).await, Ok(true)) { break; }
                         }
                     }
                     message = socket.next() => {
@@ -754,6 +894,28 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
             let reject = encode_reject(code);
             let _ = socket.send(Message::Binary(reject.into())).await;
             let _ = socket.close().await;
+        }
+    }
+}
+
+/// A successful write is the only outcome that acknowledges a retained frame.
+async fn send_until_closed<F, E>(send: F, close_rx: &mut watch::Receiver<bool>) -> Result<bool, E>
+where
+    F: std::future::Future<Output = Result<(), E>>,
+{
+    if *close_rx.borrow() {
+        return Ok(false);
+    }
+    tokio::pin!(send);
+    loop {
+        tokio::select! {
+            biased;
+            changed = close_rx.changed() => {
+                if changed.is_err() || *close_rx.borrow() {
+                    return Ok(false);
+                }
+            }
+            result = &mut send => return result.map(|()| true),
         }
     }
 }
@@ -958,15 +1120,7 @@ async fn handle_command_envelope(
         encode_command_outcome(connection_id, state.next_server_message_id(), &outcome)
     {
         let frame = Bytes::from(frame);
-        let queued = {
-            let mut fanout = state.fanout.lock().await;
-            fanout
-                .get_mut(connection_id)
-                .is_some_and(|connection| connection.queue.enqueue_event(frame.len()))
-        };
-        if queued {
-            let _ = state.try_deliver(connection_id, frame).await;
-        }
+        let _ = state.try_deliver(connection_id, frame).await;
     }
     true
 }
@@ -1094,40 +1248,43 @@ fn body_id_for_aigent(aigent_id: &[u8]) -> u64 {
     u64::from_be_bytes(digest[..8].try_into().expect("sha256 prefix"))
 }
 
-fn encode_publish_frames(
+/// Build the wire frame for a real-body publish (task-054).
+///
+/// The real path is the live socket path; the bytes here are exactly what
+/// `state_frame_encoded_len_real` measures, so the queue charge matches the
+/// bytes that reach the socket.
+fn encode_real_publish_frames(
     connection_id: &[u8],
     message_id: u64,
-    outcome: &PublishOutcome,
-    last_payload: Option<&StubSnapshotPayload>,
+    outcome: &crate::fanout::RealPublishOutcome,
 ) -> Vec<Vec<u8>> {
+    use crate::fanout::RealPublishOutcome;
     match outcome {
-        PublishOutcome::FullSnapshot { baseline_id, .. } => {
-            let payload = last_payload
-                .map(StubSnapshotPayload::encode_wire)
-                .unwrap_or_else(|| vec![0; 32]);
-            vec![encode_envelope(
-                connection_id,
-                message_id,
-                envelope::Body::FullSnapshot(FullSnapshot {
-                    baseline_id: *baseline_id,
-                    payload,
-                }),
-            )]
-        }
-        PublishOutcome::Delta { baseline_id, .. } => {
-            let payload = last_payload
-                .map(StubSnapshotPayload::encode_wire)
-                .unwrap_or_else(|| b"delta".to_vec());
-            vec![encode_envelope(
-                connection_id,
-                message_id,
-                envelope::Body::SnapshotDelta(SnapshotDelta {
-                    baseline_id: *baseline_id,
-                    payload,
-                }),
-            )]
-        }
-        PublishOutcome::ResyncRequired { required, .. } => vec![encode_envelope(
+        RealPublishOutcome::FullSnapshot {
+            baseline_id,
+            wire_bytes,
+            ..
+        } => vec![encode_envelope(
+            connection_id,
+            message_id,
+            envelope::Body::FullSnapshot(FullSnapshot {
+                baseline_id: *baseline_id,
+                payload: wire_bytes.clone(),
+            }),
+        )],
+        RealPublishOutcome::Delta {
+            baseline_id,
+            wire_bytes,
+            ..
+        } => vec![encode_envelope(
+            connection_id,
+            message_id,
+            envelope::Body::SnapshotDelta(SnapshotDelta {
+                baseline_id: *baseline_id,
+                payload: wire_bytes.clone(),
+            }),
+        )],
+        RealPublishOutcome::ResyncRequired { required } => vec![encode_envelope(
             connection_id,
             message_id,
             envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
@@ -1135,9 +1292,47 @@ fn encode_publish_frames(
                 baseline_id: required.requested_baseline_id,
             }),
         )],
-        // Neither outcome queued anything, so nothing goes on the wire.
-        PublishOutcome::ConnectionClosed | PublishOutcome::InterestUnavailable { .. } => Vec::new(),
+        RealPublishOutcome::EncodingFailed { .. } => vec![encode_envelope(
+            connection_id,
+            message_id,
+            envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
+                reason: aigent_protocol::SnapshotResyncReason::ServerInitiated as i32,
+                baseline_id: None,
+            }),
+        )],
+        RealPublishOutcome::ConnectionClosed | RealPublishOutcome::InterestUnavailable { .. } => {
+            Vec::new()
+        }
     }
+}
+
+/// Encoded length of the exact real-body envelope queued for the socket.
+fn state_frame_encoded_len_real(
+    connection_id: &[u8],
+    message_id: u64,
+    shape: crate::fanout::RealFrameShape<'_>,
+) -> usize {
+    use crate::fanout::RealFrameShape;
+    use crate::wire::{encode_world_snapshot_body, encode_world_snapshot_delta};
+    let body = match shape {
+        RealFrameShape::Full { baseline_id, body } => envelope::Body::FullSnapshot(FullSnapshot {
+            baseline_id,
+            payload: encode_world_snapshot_body(body),
+        }),
+        RealFrameShape::Delta { baseline_id, delta } => {
+            envelope::Body::SnapshotDelta(SnapshotDelta {
+                baseline_id,
+                payload: encode_world_snapshot_delta(delta),
+            })
+        }
+        RealFrameShape::ResyncRequired { notice } => {
+            envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
+                reason: notice.reason as i32,
+                baseline_id: notice.requested_baseline_id,
+            })
+        }
+    };
+    server_envelope(connection_id, message_id, body).encoded_len()
 }
 
 fn encode_command_outcome(
@@ -1210,42 +1405,6 @@ fn server_envelope(connection_id: &[u8], message_id: u64, body: envelope::Body) 
 
 fn encode_envelope(connection_id: &[u8], message_id: u64, body: envelope::Body) -> Vec<u8> {
     server_envelope(connection_id, message_id, body).encode_to_vec()
-}
-
-/// Encoded length of the state frame this drain will write for `shape`.
-///
-/// Built from the same envelope, payload encoding, and message id that
-/// [`encode_publish_frames`] goes on to write, and `prost` reports the length
-/// its encoder produces — so outbound pressure is charged the socket's bytes
-/// rather than a provisional stand-in.
-fn state_frame_encoded_len(
-    connection_id: &[u8],
-    message_id: u64,
-    shape: StateFrameShape<'_>,
-) -> usize {
-    let body = match shape {
-        StateFrameShape::Full {
-            baseline_id,
-            payload,
-        } => envelope::Body::FullSnapshot(FullSnapshot {
-            baseline_id,
-            payload: payload.encode_wire(),
-        }),
-        StateFrameShape::Delta {
-            baseline_id,
-            payload,
-        } => envelope::Body::SnapshotDelta(SnapshotDelta {
-            baseline_id,
-            payload: payload.encode_wire(),
-        }),
-        StateFrameShape::ResyncRequired { notice } => {
-            envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
-                reason: notice.reason as i32,
-                baseline_id: notice.requested_baseline_id,
-            })
-        }
-    };
-    server_envelope(connection_id, message_id, body).encoded_len()
 }
 
 fn wire_to_semantic_hello(
@@ -1326,7 +1485,7 @@ fn role_to_proto(role: ConnectionRole) -> i32 {
     }
 }
 
-/// Test helper: queue capacity used by transport outbound channels.
+/// Legacy frame-count fixture value. Live retention uses encoded byte pressure.
 #[must_use]
 pub fn outbound_channel_cap() -> usize {
     OUTBOUND_CHANNEL_CAP
@@ -1360,5 +1519,278 @@ mod feature_wire_tests {
             vec![1, 3],
             "wire conversion must not collapse the client version set to its max"
         );
+    }
+}
+
+#[cfg(test)]
+mod buffered_outbound_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn active_full_stays_charged_and_cannot_release_a_newer_resync() {
+        let state = TransportState::new(SessionHub::new_v1());
+        let connection_id = b"active-write".to_vec();
+        let (close_tx, _) = watch::channel(false);
+        state.fanout.lock().await.attach(connection_id.clone());
+        state.sockets.lock().await.insert(
+            connection_id.clone(),
+            LiveSocket {
+                close_tx,
+                outbound_wake: Arc::new(Notify::new()),
+                outbound_paused: Arc::new(AtomicBool::new(false)),
+                outbound: BufferedOutbound::default(),
+            },
+        );
+        let generation = World::new(WorldConfig::default())
+            .advance_tick()
+            .unwrap()
+            .clone();
+        state.publish_generation(generation);
+        assert_eq!(state.drain_fanout(None).await.delivered, 1);
+        let original = state.take_outbound(&connection_id).await.unwrap();
+        assert!(state.deliver_client_resync(&connection_id).await);
+        let pending_size = {
+            let sockets = state.sockets.lock().await;
+            sockets
+                .get(&connection_id)
+                .unwrap()
+                .outbound
+                .pending
+                .front()
+                .unwrap()
+                .bytes
+                .len()
+        };
+        assert_eq!(
+            state
+                .fanout
+                .lock()
+                .await
+                .get(&connection_id)
+                .unwrap()
+                .queue
+                .queued_bytes(),
+            original.len() + pending_size
+        );
+        state.note_frame_sent(&connection_id).await;
+        {
+            let fanout = state.fanout.lock().await;
+            let connection = fanout.get(&connection_id).unwrap();
+            assert!(
+                connection.hold_observe,
+                "old full acknowledgment cannot release the new baseline"
+            );
+            assert_eq!(connection.queue.queued_bytes(), pending_size);
+        }
+        assert_eq!(
+            state.take_outbound(&connection_id).await.unwrap().len(),
+            pending_size
+        );
+        state.note_frame_sent(&connection_id).await;
+        let fanout = state.fanout.lock().await;
+        let connection = fanout.get(&connection_id).unwrap();
+        assert!(!connection.hold_observe);
+        assert_eq!(connection.queue.queued_bytes(), 0);
+    }
+
+    #[tokio::test]
+    async fn close_cancels_a_confirmed_active_write() {
+        let (close_tx, mut close_rx) = watch::channel(false);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let blocked_write = async move {
+            started_tx.send(()).unwrap();
+            std::future::pending::<Result<(), std::convert::Infallible>>().await
+        };
+        let writer = tokio::spawn(async move {
+            send_until_closed(blocked_write, &mut close_rx)
+                .await
+                .unwrap()
+        });
+        started_rx.await.unwrap();
+        close_tx.send(true).unwrap();
+        let written = tokio::time::timeout(Duration::from_millis(250), writer)
+            .await
+            .expect("overflow close must interrupt an active socket write")
+            .unwrap();
+        assert!(!written, "a cancelled write must not acknowledge its frame");
+    }
+
+    #[tokio::test]
+    async fn overflow_observation_cancels_only_the_affected_active_write() {
+        let state = TransportState::new(SessionHub::new_v1());
+        let slow_id = b"overflow-active-write".to_vec();
+        let healthy_id = b"healthy-write".to_vec();
+        let (slow_close_tx, mut slow_close_rx) = watch::channel(false);
+        let (healthy_close_tx, healthy_close_rx) = watch::channel(false);
+        for (connection_id, close_tx) in [
+            (slow_id.clone(), slow_close_tx),
+            (healthy_id.clone(), healthy_close_tx),
+        ] {
+            state.fanout.lock().await.attach(connection_id.clone());
+            state.sockets.lock().await.insert(
+                connection_id.clone(),
+                LiveSocket {
+                    close_tx,
+                    outbound_wake: Arc::new(Notify::new()),
+                    outbound_paused: Arc::new(AtomicBool::new(false)),
+                    outbound: BufferedOutbound::default(),
+                },
+            );
+            assert!(state.deliver_client_resync(&connection_id).await);
+        }
+        state.take_outbound(&healthy_id).await.unwrap();
+        state.note_frame_sent(&healthy_id).await;
+        let active = state.take_outbound(&slow_id).await.unwrap();
+        // An ordered result cannot coalesce; its actual envelope bytes keep
+        // the stalled socket over the limit throughout the observation window.
+        let pending = Bytes::from(encode_envelope(
+            &slow_id,
+            state.next_server_message_id(),
+            envelope::Body::CommandResult(CommandResult {
+                command_message_id: 1,
+                sequence: 1,
+                idempotency_key: vec![0; QUEUE_LIMIT_BYTES],
+                outcome: Some(command_result::Outcome::Accepted(CommandAccepted::default())),
+            }),
+        ));
+        assert!(state.try_deliver(&slow_id, pending.clone()).await);
+        let retained = active.len() + pending.len();
+        assert!(retained > QUEUE_LIMIT_BYTES);
+
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let blocked_write = async move {
+            started_tx.send(()).unwrap();
+            std::future::pending::<Result<(), std::convert::Infallible>>().await
+        };
+        let writer_state = Arc::clone(&state);
+        let writer_id = slow_id.clone();
+        let writer = tokio::spawn(async move {
+            writer_state
+                .write_outbound(&writer_id, blocked_write, &mut slow_close_rx)
+                .await
+                .unwrap()
+        });
+        started_rx.await.unwrap();
+        for observation in 1..=crate::outbound::OVERFLOW_TICK_OBSERVATIONS {
+            state.advance_logical_tick();
+            let report = state.drain_fanout(None).await;
+            if observation < crate::outbound::OVERFLOW_TICK_OBSERVATIONS {
+                assert!(report.closed.is_empty());
+                assert!(!writer.is_finished());
+            } else {
+                assert_eq!(report.closed, vec![slow_id.clone()]);
+            }
+            assert!(!*healthy_close_rx.borrow());
+        }
+        let written = tokio::time::timeout(Duration::from_millis(250), writer)
+            .await
+            .expect("40 overflow ticks must interrupt the affected active writer")
+            .unwrap();
+        assert!(
+            !written,
+            "overflow cancellation must not acknowledge the full"
+        );
+
+        let sockets = state.sockets.lock().await;
+        let slow = sockets.get(&slow_id).unwrap();
+        assert_eq!(slow.outbound.active.as_ref().unwrap().bytes, active);
+        assert_eq!(slow.outbound.pending.len(), 1);
+        assert_eq!(slow.outbound.pending[0].bytes, pending);
+        assert!(matches!(
+            slow.outbound.pending[0].kind,
+            BufferedKind::Ordered
+        ));
+        let fanout = state.fanout.lock().await;
+        let slow = fanout.get(&slow_id).unwrap();
+        assert!(slow.queue.is_closed());
+        assert_eq!(slow.queue.over_limit_ticks(), 40);
+        assert!(slow.hold_observe, "cancelled full remains unacknowledged");
+        assert_eq!(slow.queue.queued_bytes(), retained);
+        let healthy = fanout.get(&healthy_id).unwrap();
+        assert!(!healthy.queue.is_closed());
+        assert_eq!(healthy.queue.queued_bytes(), 0);
+        assert!(!healthy.hold_observe);
+    }
+
+    #[tokio::test]
+    async fn cancelled_active_write_does_not_acknowledge_or_evict_pending_frames() {
+        let state = TransportState::new(SessionHub::new_v1());
+        let connection_id = b"cancelled-write".to_vec();
+        let (close_tx, mut close_rx) = watch::channel(false);
+        state.fanout.lock().await.attach(connection_id.clone());
+        state.sockets.lock().await.insert(
+            connection_id.clone(),
+            LiveSocket {
+                close_tx: close_tx.clone(),
+                outbound_wake: Arc::new(Notify::new()),
+                outbound_paused: Arc::new(AtomicBool::new(false)),
+                outbound: BufferedOutbound::default(),
+            },
+        );
+        let generation = World::new(WorldConfig::default())
+            .advance_tick()
+            .unwrap()
+            .clone();
+        state.publish_generation(generation);
+        state.drain_fanout(None).await;
+        let active = state.take_outbound(&connection_id).await.unwrap();
+        assert!(state.deliver_client_resync(&connection_id).await);
+        let result = encode_envelope(
+            &connection_id,
+            state.next_server_message_id(),
+            envelope::Body::CommandResult(CommandResult {
+                command_message_id: 1,
+                sequence: 1,
+                idempotency_key: b"pending-result".to_vec(),
+                outcome: Some(command_result::Outcome::Accepted(CommandAccepted::default())),
+            }),
+        );
+        assert!(state.try_deliver(&connection_id, Bytes::from(result)).await);
+        let retained = state
+            .fanout
+            .lock()
+            .await
+            .get(&connection_id)
+            .unwrap()
+            .queue
+            .queued_bytes();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let blocked = async move {
+            started_tx.send(()).unwrap();
+            std::future::pending::<Result<(), std::convert::Infallible>>().await
+        };
+        let writer_state = Arc::clone(&state);
+        let writer_id = connection_id.clone();
+        let writer = tokio::spawn(async move {
+            writer_state
+                .write_outbound(&writer_id, blocked, &mut close_rx)
+                .await
+                .unwrap()
+        });
+        started_rx.await.unwrap();
+        close_tx.send(true).unwrap();
+        assert!(!tokio::time::timeout(Duration::from_millis(250), writer)
+            .await
+            .unwrap()
+            .unwrap());
+        let sockets = state.sockets.lock().await;
+        let live = sockets.get(&connection_id).unwrap();
+        assert_eq!(live.outbound.active.as_ref().unwrap().bytes, active);
+        assert_eq!(live.outbound.pending.len(), 2);
+        assert!(matches!(
+            live.outbound.pending[0].kind,
+            BufferedKind::State {
+                kind: StateKind::Full,
+                ..
+            }
+        ));
+        assert!(matches!(
+            live.outbound.pending[1].kind,
+            BufferedKind::Ordered
+        ));
+        let fanout = state.fanout.lock().await;
+        let connection = fanout.get(&connection_id).unwrap();
+        assert!(connection.hold_observe);
+        assert_eq!(connection.queue.queued_bytes(), retained);
     }
 }

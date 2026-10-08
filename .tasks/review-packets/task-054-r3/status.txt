@@ -1,0 +1,25 @@
+ M .gitignore
+ M .tasks/tasks/task-054-carry-real-bodies-through-snapshots-and-aoi.md
+ M README.md
+ M apps/viewer/package.json
+ M apps/viewer/src/main.js
+ M apps/viewer/src/wire/real-snapshot.js
+ A apps/viewer/test/fake-three.mjs
+ A apps/viewer/test/live-viewer.test.mjs
+ M apps/viewer/test/real-snapshot.test.mjs
+ A apps/viewer/test/snapshot-fixtures.mjs
+ M crates/workload-harness/src/lib.rs
+ M crates/world-server/src/fanout.rs
+ M crates/world-server/src/lib.rs
+ M crates/world-server/src/outbound.rs
+ M crates/world-server/src/snapshot.rs
+ M crates/world-server/src/transport.rs
+ M crates/world-server/src/wire/mod.rs
+ M crates/world-server/src/wire/snapshot.rs
+ M crates/world-server/tests/live_aoi_behavior.rs
+ M crates/world-server/tests/outbound_pressure_accounting.rs
+D  demojournal.sqlite
+D  demojournal.sqlite-shm
+D  demojournal.sqlite-wal
+ M protocol/v1/CONTRACT.md
+?? .tasks/review-packets/task-054-r3/

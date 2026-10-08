@@ -1,12 +1,12 @@
 ---
 id: task-7210989894000005
 title: Withdraw superseded frames when outbound state coalesces
-status: backlog
+status: done
 priority: p2
-tags: [area:network, phase:debt]
+tags: [area:network, phase:debt, deleted:true]
 blockedBy: []
 createdAt: "2026-08-06T16:15:38Z"
-updatedAt: "2026-08-06T16:15:38Z"
+updatedAt: "2026-10-08T02:41:58Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,5 @@ Found by cold review during task-041. Coalescing lives in OutboundQueue (crates/
 ## Log
 
 - 2026-08-06T16:15:38Z — created (status: backlog)
+- 2026-10-08T02:41:58Z — note: Superseded by completed task-054 in PR #69. A single typed transport FIFO physically withdraws only pending replaceable state, retains the active write charge, and preserves ordered/control traffic. Socket regressions prove coalescing, complete-full promotion and exact retained bytes. Retire this duplicate card by soft deletion; no separate implementation remains.
+- 2026-10-08T02:41:58Z — removed (soft delete)

@@ -1,0 +1,106 @@
+--- a/crates/world-server/src/transport.rs
++++ b/crates/world-server/src/transport.rs
+@@ -1616,6 +1616,103 @@
+     }
+ 
+     #[tokio::test]
++    async fn overflow_observation_cancels_only_the_affected_active_write() {
++        let state = TransportState::new(SessionHub::new_v1());
++        let slow_id = b"overflow-active-write".to_vec();
++        let healthy_id = b"healthy-write".to_vec();
++        let (slow_close_tx, mut slow_close_rx) = watch::channel(false);
++        let (healthy_close_tx, healthy_close_rx) = watch::channel(false);
++        for (connection_id, close_tx) in [
++            (slow_id.clone(), slow_close_tx),
++            (healthy_id.clone(), healthy_close_tx),
++        ] {
++            state.fanout.lock().await.attach(connection_id.clone());
++            state.sockets.lock().await.insert(
++                connection_id.clone(),
++                LiveSocket {
++                    close_tx,
++                    outbound_wake: Arc::new(Notify::new()),
++                    outbound_paused: Arc::new(AtomicBool::new(false)),
++                    outbound: BufferedOutbound::default(),
++                },
++            );
++            assert!(state.deliver_client_resync(&connection_id).await);
++        }
++        state.take_outbound(&healthy_id).await.unwrap();
++        state.note_frame_sent(&healthy_id).await;
++        let active = state.take_outbound(&slow_id).await.unwrap();
++        // An ordered result cannot coalesce; its actual envelope bytes keep
++        // the stalled socket over the limit throughout the observation window.
++        let pending = Bytes::from(encode_envelope(
++            &slow_id,
++            state.next_server_message_id(),
++            envelope::Body::CommandResult(CommandResult {
++                command_message_id: 1,
++                sequence: 1,
++                idempotency_key: vec![0; QUEUE_LIMIT_BYTES],
++                outcome: Some(command_result::Outcome::Accepted(CommandAccepted::default())),
++            }),
++        ));
++        assert!(state.try_deliver(&slow_id, pending.clone()).await);
++        let retained = active.len() + pending.len();
++        assert!(retained > QUEUE_LIMIT_BYTES);
++
++        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
++        let blocked_write = async move {
++            started_tx.send(()).unwrap();
++            std::future::pending::<Result<(), std::convert::Infallible>>().await
++        };
++        let writer_state = Arc::clone(&state);
++        let writer_id = slow_id.clone();
++        let writer = tokio::spawn(async move {
++            writer_state
++                .write_outbound(&writer_id, blocked_write, &mut slow_close_rx)
++                .await
++                .unwrap()
++        });
++        started_rx.await.unwrap();
++        for observation in 1..=crate::outbound::OVERFLOW_TICK_OBSERVATIONS {
++            state.advance_logical_tick();
++            let report = state.drain_fanout(None).await;
++            if observation < crate::outbound::OVERFLOW_TICK_OBSERVATIONS {
++                assert!(report.closed.is_empty());
++                assert!(!writer.is_finished());
++            } else {
++                assert_eq!(report.closed, vec![slow_id.clone()]);
++            }
++            assert!(!*healthy_close_rx.borrow());
++        }
++        let written = tokio::time::timeout(Duration::from_millis(250), writer)
++            .await
++            .expect("40 overflow ticks must interrupt the affected active writer")
++            .unwrap();
++        assert!(
++            !written,
++            "overflow cancellation must not acknowledge the full"
++        );
++
++        let sockets = state.sockets.lock().await;
++        let slow = sockets.get(&slow_id).unwrap();
++        assert_eq!(slow.outbound.active.as_ref().unwrap().bytes, active);
++        assert_eq!(slow.outbound.pending.len(), 1);
++        assert_eq!(slow.outbound.pending[0].bytes, pending);
++        assert!(matches!(
++            slow.outbound.pending[0].kind,
++            BufferedKind::Ordered
++        ));
++        let fanout = state.fanout.lock().await;
++        let slow = fanout.get(&slow_id).unwrap();
++        assert!(slow.queue.is_closed());
++        assert_eq!(slow.queue.over_limit_ticks(), 40);
++        assert!(slow.hold_observe, "cancelled full remains unacknowledged");
++        assert_eq!(slow.queue.queued_bytes(), retained);
++        let healthy = fanout.get(&healthy_id).unwrap();
++        assert!(!healthy.queue.is_closed());
++        assert_eq!(healthy.queue.queued_bytes(), 0);
++        assert!(!healthy.hold_observe);
++    }
++
++    #[tokio::test]
+     async fn cancelled_active_write_does_not_acknowledge_or_evict_pending_frames() {
+         let state = TransportState::new(SessionHub::new_v1());
+         let connection_id = b"cancelled-write".to_vec();

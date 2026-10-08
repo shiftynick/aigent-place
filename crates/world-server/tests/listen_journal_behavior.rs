@@ -12,7 +12,7 @@ use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use world_server::{
-    decode_placeholder_payload, serve_ephemeral, DurableJournal, JournalError, SessionHub,
+    decode_world_snapshot_body_ids, serve_ephemeral, DurableJournal, JournalError, SessionHub,
     SqliteJournal, TransportState, World, WorldConfig,
 };
 
@@ -125,9 +125,9 @@ async fn next_full_snapshot_bodies(ws: &mut Socket) -> Vec<u64> {
         };
         let envelope = Envelope::decode(bytes.as_ref()).unwrap();
         if let Some(envelope::Body::FullSnapshot(full)) = envelope.body {
-            let (_tick, _digest, bodies) =
-                decode_placeholder_payload(&full.payload).expect("placeholder payload");
-            return bodies.into_iter().map(|body| body.body_id).collect();
+            let bodies =
+                decode_world_snapshot_body_ids(&full.payload).expect("real-body snapshot payload");
+            return bodies;
         }
     }
     panic!("no FullSnapshot received");

@@ -1,0 +1,37 @@
+Task-054 — Carry real bodies through snapshots and AOI.
+
+## Task objective
+
+Replace the placeholder (AIGB) snapshot body in the live wire path with
+the authoritative entity state from the entity store. The new format must
+carry real entity id, revision, fixed-point millimetre position, and shape
+tree per the protocol envelope in ARCHITECTURE §4. Deltas must carry
+explicit enter/leave records (never inferred from absence) and encode
+against a numbered baseline the server retains. Replaceable entity state
+may coalesce under backpressure; ordered events may not. The viewer
+decoder contract must be updated in lockstep with the server encoder and
+both must be covered by a shared Rust+TypeScript fixture.
+
+## Rubric (from the task log)
+
+1. FullSnapshot / SnapshotDelta wire payload is a real snapshot body
+   message (entity_id monotonic u64, revision u64, fixed-point mm position,
+   ShapeTree) — not the AIGB placeholder — and the server encoder writes
+   from the entity store.
+2. SnapshotDelta carries explicit enter/leave per entity_id; the decoder
+   test fails if enter or leave is omitted for any entity whose state
+   changes.
+3. baseline_id is the immutable-generation digest the server retains;
+   resync fails typed when the client references a baseline the server
+   has dropped.
+4. Replaceable entity state coalesces under backpressure; ordered events
+   never coalesce.
+5. The viewer decoder and the server encoder share a fixture under
+   apps/viewer and a Rust test that diffs encoded bytes.
+6. AOI hard cap (100 entities) truncates nearest-first on the live
+   snapshot path; a test with >100 entities within range produces exactly
+   100.
+7. Workload-harness at 500 concurrent viewers holds per-connection
+   outbound within the 256 KiB coalesce threshold.
+8. hold_observe clears only after a full resync installs.
+9. Product gate green.

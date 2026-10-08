@@ -6,7 +6,7 @@ priority: p2
 tags: [area:network, phase:debt]
 blockedBy: []
 createdAt: "2026-08-06T15:47:38Z"
-updatedAt: "2026-08-06T15:47:38Z"
+updatedAt: "2026-10-08T02:41:58Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ Discovered while fixing task-041. Now that the live drain charges real encoded f
 ## Log
 
 - 2026-08-06T15:47:38Z — created (status: backlog)
+- 2026-10-08T02:41:58Z — note: Scope reconciliation after task-054: Task-054 now proves overflow observation -> targeted close signal -> cancellation at the real transport write boundary, using encoded ordered bytes and40 logical ticks, and keeps healthy peers open. Remaining acceptance is the original actual-WebSocket command-admission/paused-writer case (or an explicit architecture decision); no OS-buffer saturation test is claimed.

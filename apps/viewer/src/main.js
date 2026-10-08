@@ -1,87 +1,27 @@
 import * as THREE from "three";
-import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { create, toBinary } from "@bufbuild/protobuf";
 import {
   ClientHelloSchema,
+  ConnectionMode,
   ConnectionRole,
   EnvelopeSchema,
   HandshakeFrameSchema,
   SnapshotResyncRequestSchema,
 } from "@aigent-place/protocol";
+import {
+  decodeSnapshotBinary,
+  decodeWorldSnapshotBody,
+  decodeWorldSnapshotDelta,
+} from "./wire/real-snapshot.js";
 
 const status = document.querySelector("#status");
 const canvas = document.querySelector("#viewport");
-
-const PLACEHOLDER_MAGIC = "AIGB";
-
-/**
- * @param {Uint8Array} bytes
- * @returns {{ tick: bigint, bodies: Array<{ bodyId: bigint, sequence: bigint, xMm: bigint, yMm: bigint, zMm: bigint }> } | null}
- */
-export function decodePlaceholderPayload(bytes) {
-  if (bytes.length < 4 + 1 + 8 + 32 + 4) {
-    return null;
-  }
-  const magic = String.fromCharCode(...bytes.subarray(0, 4));
-  if (magic !== PLACEHOLDER_MAGIC || bytes[4] !== 1) {
-    return null;
-  }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const tick = view.getBigUint64(5, false);
-  const count = view.getUint32(45, false);
-  let cursor = 49;
-  const bodies = [];
-  for (let i = 0; i < count; i += 1) {
-    if (bytes.length < cursor + 40) {
-      return null;
-    }
-    bodies.push({
-      bodyId: view.getBigUint64(cursor, false),
-      sequence: view.getBigUint64(cursor + 8, false),
-      xMm: view.getBigInt64(cursor + 16, false),
-      yMm: view.getBigInt64(cursor + 24, false),
-      zMm: view.getBigInt64(cursor + 32, false),
-    });
-    cursor += 40;
-  }
-  return { tick, bodies };
-}
-
-export function createSmokeScene(targetCanvas) {
-  const renderer = new THREE.WebGLRenderer({
-    canvas: targetCanvas,
-    antialias: true,
-  });
-  renderer.setPixelRatio(window.devicePixelRatio || 1);
-  renderer.setSize(targetCanvas.clientWidth, targetCanvas.clientHeight, false);
-
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b1220);
-
-  const camera = new THREE.PerspectiveCamera(
-    60,
-    targetCanvas.clientWidth / Math.max(targetCanvas.clientHeight, 1),
-    0.1,
-    200,
-  );
-  camera.position.set(8, 6, 10);
-  camera.lookAt(0, 0.5, 0);
-
-  const light = new THREE.DirectionalLight(0xffffff, 1.1);
-  light.position.set(3, 5, 2);
-  scene.add(light);
-  scene.add(new THREE.AmbientLight(0x6688aa, 0.35));
-  scene.add(new THREE.GridHelper(40, 40, 0x1f2a44, 0x152033));
-
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
-  );
-  mesh.position.y = 0.5;
-  scene.add(mesh);
-
-  renderer.render(scene, camera);
-  return { renderer, scene, camera, mesh };
-}
+const MAX_MESSAGE_IDS = 65_536;
+const SERVER_BODIES = new Set([
+  "commandResult", "protocolError", "percept", "fullSnapshot", "snapshotDelta",
+  "snapshotResyncRequired", "orderedEvent", "eventResyncRequired", "eventStreamReset",
+  "connectionDisplaced",
+]);
 
 function mmToMeters(mm) {
   return Number(mm) / 1000;
@@ -93,18 +33,47 @@ function setStatus(text) {
   }
 }
 
+function createSmokeScene(targetCanvas) {
+  const renderer = new THREE.WebGLRenderer({ canvas: targetCanvas, antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(targetCanvas.clientWidth, targetCanvas.clientHeight, false);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0d12);
+  const camera = new THREE.PerspectiveCamera(
+    60,
+    targetCanvas.clientWidth / Math.max(1, targetCanvas.clientHeight),
+    0.1,
+    1000,
+  );
+  camera.position.set(8, 6, 10);
+  camera.lookAt(0, 0, 0);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambient);
+  const directional = new THREE.DirectionalLight(0xffffff, 0.4);
+  directional.position.set(5, 10, 7);
+  scene.add(directional);
+  const cube = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
+  );
+  scene.add(cube);
+  return { renderer, scene, camera, cube };
+}
+
 /**
- * Live spectator that renders placeholder bodies from stub snapshot payloads.
+ * Live spectator that decodes `WorldSnapshotBodyProto` /
+ * `WorldSnapshotDeltaProto` from the server and renders one Three.js
+ * mesh per entity. Actual visual mesh selection from the shape tree
+ * is task-055; this card wires the decoder in lockstep with the
+ * server encoder.
  */
 export function startLiveViewer(targetCanvas, wsUrl) {
-  const { renderer, scene, camera } = createSmokeScene(targetCanvas);
-  // Remove the static smoke cube; live bodies replace it.
-  const smoke = scene.children.find((child) => child.isMesh);
-  if (smoke) {
-    scene.remove(smoke);
-  }
+  const { renderer, scene, camera, cube } = createSmokeScene(targetCanvas);
+  scene.remove(cube);
+  cube.geometry.dispose();
+  cube.material.dispose();
 
-  /** @type {Map<string, { mesh: THREE.Mesh, target: THREE.Vector3 }>} */
+  /** @type {Map<string, { mesh: THREE.Mesh, target: THREE.Vector3, record: import("@aigent-place/protocol").RealEntityRecord }>} */
   const bodies = new Map();
   let baselineId = null;
   let waitingForFull = true;
@@ -115,30 +84,12 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   /** @type {Uint8Array | null} */
   let connectionId = null;
   let nextMessageId = 1n;
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @type {Set<bigint>} */
+  const seenMessageIds = new Set();
 
-  function upsertBodies(list) {
-    const seen = new Set();
-    for (const body of list) {
-      const key = body.bodyId.toString();
-      seen.add(key);
-      const target = new THREE.Vector3(
-        mmToMeters(body.xMm),
-        mmToMeters(body.yMm),
-        mmToMeters(body.zMm),
-      );
-      let entry = bodies.get(key);
-      if (!entry) {
-        const mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(1, 1, 1),
-          new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
-        );
-        mesh.position.copy(target);
-        scene.add(mesh);
-        entry = { mesh, target };
-        bodies.set(key, entry);
-      }
-      entry.target.copy(target);
-    }
+  function removeMissing() {
     for (const [key, entry] of bodies) {
       if (!seen.has(key)) {
         scene.remove(entry.mesh);
@@ -147,6 +98,26 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         bodies.delete(key);
       }
     }
+  }
+
+  function upsertBody(record) {
+    const key = record.entityId.toString();
+    seen.add(key);
+    const { xMm, yMm, zMm } = record.positionMm;
+    const target = new THREE.Vector3(mmToMeters(xMm), mmToMeters(yMm), mmToMeters(zMm));
+    let entry = bodies.get(key);
+    if (!entry) {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
+      );
+      mesh.position.copy(target);
+      scene.add(mesh);
+      entry = { mesh, target, record };
+      bodies.set(key, entry);
+    }
+    entry.target.copy(target);
+    entry.record = record;
   }
 
   function requestResync(reason) {
@@ -178,21 +149,58 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   }
 
   function handleEnvelope(bytes) {
-    const envelope = fromBinary(EnvelopeSchema, bytes);
+    const envelope = decodeSnapshotBinary(EnvelopeSchema, bytes);
     if (envelope.protocolMajor !== 1) {
-      setStatus(`viewer: unsupported protocol major ${envelope.protocolMajor}`);
+      requestResync(`invalid envelope: unsupported protocol major ${envelope.protocolMajor}`);
       return;
     }
+    if (connectionId === null || envelope.connectionId.length === 0 ||
+        envelope.connectionId.length !== connectionId.length ||
+        !envelope.connectionId.every((value, index) => value === connectionId[index])) {
+      requestResync("invalid envelope: connection identity mismatch");
+      return;
+    }
+    if (envelope.messageId === 0n || seenMessageIds.has(envelope.messageId)) {
+      requestResync("invalid envelope: zero or duplicate message ID");
+      return;
+    }
+    if (!envelope.metadata || envelope.metadata.requiredFeatures.length !== 0) {
+      // This viewer offers no optional features in ClientHello.
+      requestResync("invalid envelope: missing metadata or unselected feature");
+      return;
+    }
+    if (!SERVER_BODIES.has(envelope.body.case)) {
+      requestResync("invalid envelope: missing or direction-forbidden body");
+      return;
+    }
+    // Keep duplicate protection complete for this identity. A fresh session
+    // resets the history without allowing old IDs on the same connection.
+    if (seenMessageIds.size >= MAX_MESSAGE_IDS) {
+      setStatus("viewer: message history limit reached — reconnecting");
+      socket.close();
+      return;
+    }
+    seenMessageIds.add(envelope.messageId);
     const body = envelope.body;
     if (body.case === "fullSnapshot") {
+      const decoded = decodeWorldSnapshotBody(body.value.payload);
+      if (!decoded) {
+        // Unknown version or malformed payload: do not trust the
+        // baseline_id and ask for a resync instead.
+        requestResync("invalid full snapshot payload");
+        return;
+      }
       baselineId = body.value.baselineId;
       waitingForFull = false;
-      const decoded = decodePlaceholderPayload(body.value.payload);
-      if (decoded) {
-        lastTick = decoded.tick;
-        upsertBodies(decoded.bodies);
-        setStatus(`viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length}`);
+      lastTick = decoded.tick;
+      seen.clear();
+      for (const record of decoded.bodies) {
+        upsertBody(record);
       }
+      removeMissing();
+      setStatus(
+        `viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
+      );
       return;
     }
     if (body.case === "snapshotDelta") {
@@ -203,12 +211,42 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         requestResync("baseline mismatch");
         return;
       }
-      const decoded = decodePlaceholderPayload(body.value.payload);
-      if (decoded) {
-        lastTick = decoded.tick;
-        upsertBodies(decoded.bodies);
-        setStatus(`viewer: delta tick=${decoded.tick} bodies=${decoded.bodies.length}`);
+      const decoded = decodeWorldSnapshotDelta(body.value.payload);
+      if (!decoded) {
+        // Unknown version or malformed payload: do not trust the
+        // diff and ask for a resync, otherwise a missed transition
+        // would silently keep the prior state.
+        requestResync("invalid snapshot delta payload");
+        return;
       }
+      // Validate the complete transition before changing the visible scene.
+      // The ordered socket stream cannot modify/leave an unknown body or
+      // enter a body already present in the current baseline.
+      if (decoded.entered.some(record => bodies.has(record.entityId.toString())) ||
+          decoded.modified.some(record => !bodies.has(record.entityId.toString())) ||
+          decoded.leftIds.some(id => !bodies.has(id.toString()))) {
+        requestResync("delta entity mismatch");
+        return;
+      }
+      for (const record of decoded.entered) {
+        upsertBody(record);
+      }
+      for (const record of decoded.modified) {
+        upsertBody(record);
+      }
+      for (const leftId of decoded.leftIds) {
+        const key = leftId.toString();
+        if (bodies.has(key)) {
+          const entry = bodies.get(key);
+          scene.remove(entry.mesh);
+          entry.mesh.geometry.dispose();
+          entry.mesh.material.dispose();
+          bodies.delete(key);
+        }
+      }
+      setStatus(
+        `viewer: delta tick=${lastTick} bodies=${bodies.size} (real bodies, +${decoded.entered.length}/~${decoded.modified.length}/-${decoded.leftIds.length})`,
+      );
       return;
     }
     if (body.case === "snapshotResyncRequired") {
@@ -224,17 +262,30 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     waitingForFull = true;
     baselineId = null;
     connectionId = null;
+    seenMessageIds.clear();
+    // Drop any bodies carried over from a prior connection: a new
+    // connection_id is a new session, the prior bodies are no longer
+    // authoritative.
+    for (const entry of bodies.values()) {
+      scene.remove(entry.mesh);
+      entry.mesh.geometry.dispose();
+      entry.mesh.material.dispose();
+    }
+    bodies.clear();
+    seen.clear();
     setStatus(`viewer: connecting ${wsUrl}`);
-    socket = new WebSocket(wsUrl);
-    socket.binaryType = "arraybuffer";
-    socket.addEventListener("open", () => {
+    const currentSocket = new WebSocket(wsUrl);
+    socket = currentSocket;
+    currentSocket.binaryType = "arraybuffer";
+    currentSocket.addEventListener("open", () => {
+      if (socket !== currentSocket) return;
       const hello = create(ClientHelloSchema, {
         role: ConnectionRole.VIEWER,
         offeredProtocolMajors: [1],
         offeredFeatures: [],
         aigentId: new Uint8Array(),
       });
-      socket.send(
+      currentSocket.send(
         toBinary(
           HandshakeFrameSchema,
           create(HandshakeFrameSchema, {
@@ -243,7 +294,8 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         ),
       );
     });
-    socket.addEventListener("message", (event) => {
+    currentSocket.addEventListener("message", (event) => {
+      if (socket !== currentSocket) return;
       const data = event.data;
       const bytes =
         data instanceof ArrayBuffer
@@ -251,75 +303,74 @@ export function startLiveViewer(targetCanvas, wsUrl) {
           : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       if (!handshakeDone) {
         try {
-          const frame = fromBinary(HandshakeFrameSchema, bytes);
+          const frame = decodeSnapshotBinary(HandshakeFrameSchema, bytes);
           if (frame.body.case === "serverHello") {
+            const hello = frame.body.value;
+            if (hello.selectedProtocolMajor !== 1 || hello.connectionId.length === 0 ||
+                hello.selectedFeatures.length !== 0 || hello.mode !== ConnectionMode.SPECTATE_ONLY ||
+                hello.role !== ConnectionRole.VIEWER || hello.sessionEpoch.length !== 0) {
+              setStatus("viewer: invalid ServerHello — reconnecting");
+              currentSocket.close();
+              return;
+            }
             handshakeDone = true;
-            connectionId = frame.body.value.connectionId;
+            connectionId = hello.connectionId;
             setStatus(
               `viewer: handshake ok major=${frame.body.value.selectedProtocolMajor} — waiting for snapshots`,
             );
             return;
           }
           if (frame.body.case === "handshakeReject") {
-            setStatus(`viewer: handshake rejected code=${frame.body.value.code}`);
+            setStatus(`viewer: handshake rejected: ${frame.body.value.message}`);
+            closed = true;
+            socket?.close();
             return;
           }
+          setStatus("viewer: invalid handshake frame — reconnecting");
+          currentSocket.close();
         } catch {
-          // Fall through to envelope decode only after handshake.
+          setStatus("viewer: malformed handshake frame");
+          currentSocket.close();
+          return;
         }
         return;
       }
       try {
         handleEnvelope(bytes);
       } catch (error) {
-        setStatus(`viewer: envelope error ${error.message ?? error}`);
+        setStatus(`viewer: envelope decode error: ${error?.message ?? error}`);
+        // A malformed frame breaks the live delta chain. Treat it the
+        // same as an unknown version: ask the server for a fresh full
+        // snapshot.
+        requestResync("malformed frame");
       }
     });
-    socket.addEventListener("close", () => {
-      setStatus("viewer: disconnected — retrying");
-      baselineId = null;
-      waitingForFull = true;
-      handshakeDone = false;
-      if (!closed) {
-        setTimeout(connect, 1000);
-      }
+    currentSocket.addEventListener("close", () => {
+      if (socket !== currentSocket) return;
+      if (closed) return;
+      setStatus("viewer: socket closed — reconnecting");
+      setTimeout(connect, 1000);
     });
-    socket.addEventListener("error", () => {
+    currentSocket.addEventListener("error", () => {
+      if (socket !== currentSocket) return;
       setStatus("viewer: socket error");
     });
   }
 
-  function animate() {
-    if (closed) {
-      return;
-    }
-    requestAnimationFrame(animate);
+  connect();
+
+  function tick() {
     for (const entry of bodies.values()) {
       entry.mesh.position.lerp(entry.target, 0.2);
     }
     renderer.render(scene, camera);
+    requestAnimationFrame(tick);
   }
-
-  connect();
-  animate();
-
-  return {
-    stop() {
-      closed = true;
-      socket?.close();
-    },
-    getLastTick: () => lastTick,
-    getBodyCount: () => bodies.size,
-  };
+  requestAnimationFrame(tick);
 }
 
 if (canvas instanceof HTMLCanvasElement) {
-  const params = new URLSearchParams(window.location.search);
-  const wsUrl = params.get("ws");
-  if (wsUrl) {
-    startLiveViewer(canvas, wsUrl);
-  } else {
-    createSmokeScene(canvas);
-    setStatus("viewer: smoke ok (add ?ws=ws://127.0.0.1:7600/ws for live)");
-  }
+  const params = new URLSearchParams(location.search);
+  const ws = params.get("ws") ?? "ws://127.0.0.1:7600/ws";
+  startLiveViewer(canvas, ws);
 }

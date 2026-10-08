@@ -1,0 +1,10 @@
+1. Real-body wire payload (FullSnapshot + SnapshotDelta) — server writes
+   from the entity store; carries entity_id, revision, mm position, shape.
+2. SnapshotDelta explicit enter/leave — never inferred from absence.
+3. baseline_id = immutable-generation digest; typed resync on stale client.
+4. Replaceable state coalesces; ordered events never coalesce.
+5. Viewer decoder + server encoder share a fixture; both pass.
+6. AOI 100-entity nearest-first on live path.
+7. Workload-harness 500 concurrent viewers holds 256 KiB coalesce.
+8. hold_observe clears only after full resync installs.
+9. Product gate green.

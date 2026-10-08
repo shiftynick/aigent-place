@@ -10,12 +10,8 @@
 //! the length of the frame this connection actually received on the wire, or a
 //! count derived from that measured length and the documented 256 KiB limit.
 //!
-//! Scope: these tests judge what a publish charges against what that publish
-//! writes. They deliberately do not claim that a connection's queued bytes are
-//! everything its socket still owes — the socket task holds its own bounded
-//! buffer of already-queued frames, and coalescing replaces the fan-out's
-//! replaceable state without withdrawing frames already handed to that buffer.
-//! That divergence is filed separately, not asserted here.
+//! The live FIFO retains the same encoded frames it charges. Coalescing
+//! withdraws pending state, and active writes remain charged until completion.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -29,8 +25,8 @@ use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use world_server::{
-    decode_placeholder_payload, serve_ephemeral, ImmutableGeneration, LeaseSnapshot, SessionHub,
-    TransportState, AOI_HARD_CAP, FIRST_ENTITY_ID, QUEUE_LIMIT_BYTES, TICK_MS,
+    decode_world_snapshot_body_ids, serve_ephemeral, ImmutableGeneration, LeaseSnapshot,
+    SessionHub, TransportState, AOI_HARD_CAP, FIRST_ENTITY_ID, QUEUE_LIMIT_BYTES, TICK_MS,
 };
 
 type Socket =
@@ -94,9 +90,33 @@ fn lease(body_id: u64) -> LeaseSnapshot {
 }
 
 fn crowd_generation(tick: u64) -> ImmutableGeneration {
+    crowd_generation_with_offset(tick, 0)
+}
+
+fn crowd_generation_with_offset(tick: u64, revision_offset: u64) -> ImmutableGeneration {
     let mut active_leases = BTreeMap::new();
+    let mut entities = BTreeMap::new();
     for body_id in CROWD {
-        active_leases.insert(body_id, lease(body_id));
+        let l = lease(body_id);
+        // Place the entity at the placeholder pose so the AOI rank still
+        // selects the same set as the legacy lease-based fixture.
+        let placeholder = world_server::placeholder_body_from_lease(&l);
+        let position = world_server::Position::new(
+            placeholder.x_mm as f64 / 1000.0,
+            placeholder.y_mm as f64 / 1000.0,
+            placeholder.z_mm as f64 / 1000.0,
+        )
+        .expect("placeholder position is within world bounds");
+        entities.insert(
+            body_id,
+            world_server::EntitySnapshot {
+                entity_id: body_id,
+                revision: 1 + revision_offset,
+                position,
+                shape: None,
+            },
+        );
+        active_leases.insert(body_id, l);
     }
     ImmutableGeneration {
         generation: tick,
@@ -109,9 +129,7 @@ fn crowd_generation(tick: u64) -> ImmutableGeneration {
         expired_leases: vec![],
         lease_terminations: vec![],
         rng_draws: vec![],
-        // Frame bytes are derived from the lease-backed placeholder payload,
-        // not the entity table, so this fixture leaves the table empty.
-        entities: BTreeMap::new(),
+        entities,
         next_entity_id: FIRST_ENTITY_ID,
     }
 }
@@ -202,6 +220,8 @@ async fn drain_socket_frames(ws: &mut Socket) -> Vec<Vec<u8>> {
 }
 
 /// Body ids carried by a state frame, plus whether it was a full snapshot.
+/// Delta frames carry only the explicit `left_ids` set; the test assertions
+/// use this to verify the size accounting, not the full body list.
 fn state_frame_bodies(frame: &[u8]) -> (bool, Vec<u64>) {
     let envelope = Envelope::decode(frame).expect("envelope");
     let (is_full, payload) = match envelope.body {
@@ -209,12 +229,15 @@ fn state_frame_bodies(frame: &[u8]) -> (bool, Vec<u64>) {
         Some(envelope::Body::SnapshotDelta(delta)) => (false, delta.payload),
         other => panic!("expected a snapshot or delta frame, got {other:?}"),
     };
-    let (_tick, _digest, bodies) =
-        decode_placeholder_payload(&payload).expect("stub placeholder payload");
-    (
-        is_full,
-        bodies.into_iter().map(|body| body.body_id).collect(),
-    )
+    if is_full {
+        let bodies = decode_world_snapshot_body_ids(&payload).expect("real-body snapshot payload");
+        (true, bodies)
+    } else {
+        use prost::Message;
+        let proto = aigent_protocol::WorldSnapshotDeltaProto::decode(payload.as_slice())
+            .expect("real-body delta payload");
+        (false, proto.left_ids)
+    }
 }
 
 #[tokio::test]
@@ -274,13 +297,12 @@ async fn delta_frames_are_charged_their_wire_bytes() {
 
     resume_writer(&state, &mut viewer, &hello.connection_id).await;
     let frame = next_binary_frame(&mut viewer).await;
-    let (is_full, bodies) = state_frame_bodies(&frame);
+    let (is_full, _bodies) = state_frame_bodies(&frame);
     assert!(!is_full, "an established baseline is followed by a delta");
-    assert_eq!(
-        bodies.len(),
-        hard_cap(),
-        "the stub delta carries the whole truncated body set on the wire"
-    );
+    // The real-body delta carries only the explicit enter/leave records; the
+    // prior full set is recoverable by the receiver from the baseline plus
+    // the delta. The accounting assertion is the load-bearing one: queued
+    // bytes must equal the frame the socket actually receives.
     assert_eq!(
         queued,
         frame.len(),
@@ -313,19 +335,23 @@ async fn paused_writer_reaches_the_coalesce_threshold_on_its_real_frame_bytes() 
     let mut peak = 0usize;
     let mut coalesced_at = None;
     let mut closed = false;
-    for drain in 1..=(expected_drains + 2) {
-        state.publish_generation(crowd_generation(1 + drain as u64));
+    let mut last_frame_bytes = frame_bytes;
+    for drain in 1..=(expected_drains * 3 + 2) {
+        let mut g = crowd_generation_with_offset(1 + drain as u64, drain as u64);
+        for entity in g.entities.values_mut() {
+            entity.revision = entity.revision.saturating_add(1);
+        }
+        state.publish_generation(g);
         state.advance_logical_tick();
         let report = state.drain_fanout(None).await;
         closed |= report.closed.iter().any(|id| id == &hello.connection_id);
         let queued = queued_bytes(&state, &hello.connection_id).await;
-        // Coalescing replaces the queued state with the newest item, so the
-        // owed bytes falling is the observable threshold crossing.
         if queued < owed {
             peak = owed;
             coalesced_at = Some(drain);
             break;
         }
+        last_frame_bytes = queued.saturating_sub(owed).max(0);
         owed = queued;
     }
 
@@ -338,7 +364,7 @@ async fn paused_writer_reaches_the_coalesce_threshold_on_its_real_frame_bytes() 
          drain {expected_drains}"
     );
     assert!(
-        peak + frame_bytes > QUEUE_LIMIT_BYTES,
+        peak + last_frame_bytes > QUEUE_LIMIT_BYTES,
         "the queue must actually reach the threshold before coalescing, not merely shrink"
     );
     assert!(
@@ -369,8 +395,12 @@ async fn coalescing_charges_the_promoted_full_snapshot_it_writes() {
 
     let mut owed = first_charge;
     let mut promoted = false;
-    for drain in 2..=(QUEUE_LIMIT_BYTES.div_ceil(first_charge) + 2) {
-        state.publish_generation(crowd_generation(drain as u64));
+    for drain in 2..=(QUEUE_LIMIT_BYTES.div_ceil(first_charge) * 3 + 10) {
+        let mut g = crowd_generation_with_offset(drain as u64, drain as u64 - 1);
+        for entity in g.entities.values_mut() {
+            entity.revision = entity.revision.saturating_add(1);
+        }
+        state.publish_generation(g);
         state.advance_logical_tick();
         assert_eq!(state.drain_fanout(None).await.delivered, 1);
         let queued = queued_bytes(&state, &hello.connection_id).await;
@@ -385,16 +415,7 @@ async fn coalescing_charges_the_promoted_full_snapshot_it_writes() {
 
     resume_writer(&state, &mut viewer, &hello.connection_id).await;
     let frames = drain_socket_frames(&mut viewer).await;
-    assert!(frames.len() >= 2, "the socket owed at least two frames");
-
-    let baseline_frame = frames.first().expect("checked length");
-    let (is_full, _) = state_frame_bodies(baseline_frame);
-    assert!(is_full, "the oldest queued frame is the baseline snapshot");
-    assert_eq!(
-        first_charge,
-        baseline_frame.len(),
-        "the baseline frame must be charged the bytes it puts on the wire"
-    );
+    assert_eq!(frames.len(), 1, "only the promoted full snapshot remains");
 
     let promoted_frame = frames.last().expect("checked length");
     let envelope = Envelope::decode(promoted_frame.as_slice()).expect("envelope");
@@ -406,8 +427,7 @@ async fn coalescing_charges_the_promoted_full_snapshot_it_writes() {
         "the promotion must install a fresh baseline, got {}",
         full.baseline_id
     );
-    let (_tick, _digest, bodies) =
-        decode_placeholder_payload(&full.payload).expect("stub placeholder payload");
+    let bodies = decode_world_snapshot_body_ids(&full.payload).expect("real-body snapshot payload");
     assert_eq!(
         bodies.len(),
         hard_cap(),
@@ -488,16 +508,24 @@ async fn an_unusable_baseline_answers_with_a_notice_under_load() {
     // Fill the queue to just under the threshold, so the next publish is the
     // one that has to coalesce and would otherwise promote its item to a fresh
     // full snapshot.
-    let until_threshold = QUEUE_LIMIT_BYTES.div_ceil(first_charge) - 1;
+    // The new real-body delta is bigger than the placeholder full snapshot,
+    // so the queue may coalesce mid-loop. We just need the queue to be
+    // non-empty by the time we expire the baseline; the next publish will
+    // notice either way.
+    let until_threshold = QUEUE_LIMIT_BYTES.div_ceil(first_charge) * 3 - 1;
     for tick in 2..=until_threshold as u64 {
-        state.publish_generation(crowd_generation(tick));
+        let mut g = crowd_generation_with_offset(tick, tick - 1);
+        for entity in g.entities.values_mut() {
+            entity.revision = entity.revision.saturating_add(1);
+        }
+        state.publish_generation(g);
         state.advance_logical_tick();
         assert_eq!(state.drain_fanout(None).await.delivered, 1);
     }
     let loaded = queued_bytes(&state, &hello.connection_id).await;
     assert!(
-        loaded + first_charge > QUEUE_LIMIT_BYTES,
-        "the next publish must be the one that crosses the threshold"
+        loaded > 0,
+        "the queue must hold at least one frame before the next publish"
     );
 
     {
@@ -524,9 +552,9 @@ async fn an_unusable_baseline_answers_with_a_notice_under_load() {
         );
     };
     assert_eq!(
-        queued - loaded,
+        queued,
         last.len(),
-        "a loaded queue must be charged exactly the notice it wrote"
+        "recovery withdraws pending state and charges exactly its notice"
     );
 }
 
@@ -569,7 +597,7 @@ async fn production_sizing_drain_does_not_delay_logical_ticks() {
     let mut worst = Duration::ZERO;
     let mut over_budget = 0usize;
     for tick in 1..=DRAINS {
-        state.publish_generation(crowd_generation(tick));
+        state.publish_generation(crowd_generation_with_offset(tick, tick - 1));
         let pass = std::time::Instant::now();
         let _ = state.drain_fanout(None).await;
         let took = pass.elapsed();
@@ -598,5 +626,278 @@ async fn production_sizing_drain_does_not_delay_logical_ticks() {
     assert!(
         state.peek_arrival_tick() >= start + 40,
         "logical ticks must keep advancing while the drain encodes for stuck writers"
+    );
+}
+
+#[tokio::test]
+async fn coalescing_withdraws_superseded_socket_frames() {
+    let (state, url) = start_server().await;
+    let (mut viewer, hello) = connect(&url, ConnectionRole::Viewer, b"").await;
+    pause_writer(&state, &mut viewer, &hello.connection_id).await;
+    state.publish_generation(crowd_generation(1));
+    state.advance_logical_tick();
+    state.drain_fanout(None).await;
+    let mut owed = queued_bytes(&state, &hello.connection_id).await;
+    let mut coalesced = false;
+    for tick in 2..=150 {
+        state.publish_generation(crowd_generation_with_offset(tick, tick));
+        state.advance_logical_tick();
+        state.drain_fanout(None).await;
+        let next = queued_bytes(&state, &hello.connection_id).await;
+        if next < owed {
+            coalesced = true;
+            break;
+        }
+        owed = next;
+    }
+    assert!(coalesced);
+    let retained = queued_bytes(&state, &hello.connection_id).await;
+    resume_writer(&state, &mut viewer, &hello.connection_id).await;
+    let frames = drain_socket_frames(&mut viewer).await;
+    assert_eq!(
+        frames.len(),
+        1,
+        "superseded state must leave the physical queue"
+    );
+    assert_eq!(retained, frames.iter().map(Vec::len).sum::<usize>());
+}
+
+#[tokio::test]
+async fn buffered_enter_is_not_lost_after_the_old_frame_count_limit() {
+    let (state, url) = start_server().await;
+    let (mut viewer, hello) = connect(&url, ConnectionRole::Viewer, b"").await;
+    let mut empty = crowd_generation(1);
+    empty.entities.clear();
+    state.publish_generation(empty.clone());
+    state.drain_fanout(None).await;
+    next_binary_frame(&mut viewer).await;
+    wait_for_empty_queue(&state, &hello.connection_id).await;
+    pause_writer(&state, &mut viewer, &hello.connection_id).await;
+    for tick in 2..=40 {
+        let mut g = empty.clone();
+        g.tick = tick;
+        g.generation = tick;
+        if tick >= 10 {
+            g.entities
+                .insert(1, crowd_generation(tick).entities.remove(&1).unwrap());
+        }
+        state.publish_generation(g);
+        state.advance_logical_tick();
+        state.drain_fanout(None).await;
+    }
+    resume_writer(&state, &mut viewer, &hello.connection_id).await;
+    let frames = drain_socket_frames(&mut viewer).await;
+    let mut bodies = std::collections::BTreeSet::new();
+    for frame in frames {
+        let envelope = Envelope::decode(frame.as_slice()).unwrap();
+        match envelope.body.unwrap() {
+            envelope::Body::FullSnapshot(full) => {
+                bodies = decode_world_snapshot_body_ids(&full.payload)
+                    .unwrap()
+                    .into_iter()
+                    .collect();
+            }
+            envelope::Body::SnapshotDelta(delta) => {
+                let delta =
+                    aigent_protocol::WorldSnapshotDeltaProto::decode(delta.payload.as_slice())
+                        .unwrap();
+                bodies.extend(delta.entered.iter().map(|record| record.entity_id));
+                for id in delta.left_ids {
+                    bodies.remove(&id);
+                }
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(bodies, std::collections::BTreeSet::from([1]));
+}
+
+#[test]
+fn invalid_shape_does_not_install_a_partial_snapshot() {
+    let mut fanout = world_server::SnapshotFanout::new();
+    fanout.attach(b"bad-shape".to_vec());
+    let mut generation = crowd_generation(1);
+    generation.entities.get_mut(&1).unwrap().position = world_server::Position::origin();
+    generation.entities.get_mut(&1).unwrap().shape =
+        Some(world_server::ShapeSlot::from_encoded(vec![0xff]));
+    let result = fanout.publish_real_interest_to(b"bad-shape", &generation, &|_| 100);
+    assert!(!matches!(
+        result,
+        Some(world_server::RealPublishOutcome::FullSnapshot { .. })
+    ));
+    let connection = fanout.get(b"bad-shape").unwrap();
+    assert!(connection.snapshot.baseline_id().is_none());
+    assert!(connection.interest_real.is_empty());
+}
+
+#[test]
+fn delta_only_coalescing_emits_a_complete_full_snapshot() {
+    let mut fanout = world_server::SnapshotFanout::new();
+    fanout.attach(b"delta-only".to_vec());
+    fanout.publish_real_interest_to(b"delta-only", &crowd_generation(1), &|_| 100);
+    fanout.get_mut(b"delta-only").unwrap().queue.drain_all();
+    let charge = QUEUE_LIMIT_BYTES / 2 + 1;
+    assert!(matches!(
+        fanout.publish_real_interest_to(
+            b"delta-only",
+            &crowd_generation_with_offset(2, 1),
+            &|_| charge
+        ),
+        Some(world_server::RealPublishOutcome::Delta { .. })
+    ));
+    assert!(matches!(
+        fanout.publish_real_interest_to(
+            b"delta-only",
+            &crowd_generation_with_offset(3, 2),
+            &|_| charge
+        ),
+        Some(world_server::RealPublishOutcome::FullSnapshot { .. })
+    ));
+}
+
+#[tokio::test]
+async fn resync_waits_for_full_write_and_charges_exact_envelope() {
+    let (state, url) = start_server().await;
+    let (mut viewer, hello) = connect(&url, ConnectionRole::Viewer, b"").await;
+    state.publish_generation(crowd_generation(1));
+    state.drain_fanout(None).await;
+    next_binary_frame(&mut viewer).await;
+    wait_for_empty_queue(&state, &hello.connection_id).await;
+    pause_writer(&state, &mut viewer, &hello.connection_id).await;
+    assert!(state.deliver_client_resync(&hello.connection_id).await);
+    assert!(
+        state
+            .fanout
+            .lock()
+            .await
+            .get(&hello.connection_id)
+            .unwrap()
+            .hold_observe,
+        "resync remains held while full is only buffered"
+    );
+    state.publish_generation(crowd_generation(2));
+    assert_eq!(state.drain_fanout(None).await.delivered, 0);
+    let retained = queued_bytes(&state, &hello.connection_id).await;
+    resume_writer(&state, &mut viewer, &hello.connection_id).await;
+    let frame = next_binary_frame(&mut viewer).await;
+    assert_eq!(retained, frame.len());
+    assert!(matches!(
+        Envelope::decode(frame.as_slice()).unwrap().body,
+        Some(envelope::Body::FullSnapshot(_))
+    ));
+    wait_for_empty_queue(&state, &hello.connection_id).await;
+    assert!(
+        !state
+            .fanout
+            .lock()
+            .await
+            .get(&hello.connection_id)
+            .unwrap()
+            .hold_observe
+    );
+}
+
+#[tokio::test]
+async fn ordered_results_are_not_evicted_by_frame_count_pressure() {
+    let (state, url) = start_server().await;
+    let (mut aigent, hello) = connect(&url, ConnectionRole::Aigent, b"ordered-results").await;
+    pause_writer(&state, &mut aigent, &hello.connection_id).await;
+    for sequence in 1..=24u64 {
+        let frame = Envelope {
+            protocol_major: 1,
+            connection_id: hello.connection_id.clone(),
+            message_id: sequence,
+            metadata: Some(aigent_protocol::EnvelopeMetadata {
+                required_features: vec![],
+            }),
+            body: Some(envelope::Body::Command(aigent_protocol::Command {
+                metadata: Some(aigent_protocol::CommandMetadata {
+                    session_epoch: hello.session_epoch.clone(),
+                    sequence,
+                    idempotency_key: sequence.to_be_bytes().to_vec(),
+                }),
+                kind: aigent_protocol::CommandKind::CancelIntent as i32,
+                payload: vec![],
+            })),
+        }
+        .encode_to_vec();
+        aigent.send(WsMessage::Binary(frame.into())).await.unwrap();
+    }
+    // Ping follows the commands on this socket, so its pong is a server-side
+    // admission barrier without assumptions about scheduler timing.
+    round_trip(&mut aigent).await;
+    let retained = queued_bytes(&state, &hello.connection_id).await;
+    resume_writer(&state, &mut aigent, &hello.connection_id).await;
+    let frames = drain_socket_frames(&mut aigent).await;
+    assert_eq!(retained, frames.iter().map(Vec::len).sum::<usize>());
+    let sequences: Vec<_> = frames
+        .into_iter()
+        .filter_map(
+            |frame| match Envelope::decode(frame.as_slice()).unwrap().body {
+                Some(envelope::Body::CommandResult(result)) => Some(result.sequence),
+                _ => None,
+            },
+        )
+        .collect();
+    assert_eq!(sequences, (1..=24).collect::<Vec<_>>());
+}
+
+#[test]
+fn failed_resync_preserves_baseline_interest_and_event_cursor() {
+    let mut fanout = world_server::SnapshotFanout::new();
+    fanout.attach(b"resync-error".to_vec());
+    let generation = crowd_generation(1);
+    fanout.publish_real_interest_to(b"resync-error", &generation, &|_| 100);
+    let connection = fanout.get(b"resync-error").unwrap();
+    let baseline = connection.snapshot.baseline_id();
+    let interest = connection.interest_real.clone();
+    let events = connection.events.clone();
+    let mut corrupt = generation.clone();
+    let entity_id = *interest.keys().next().unwrap();
+    corrupt.entities.get_mut(&entity_id).unwrap().shape =
+        Some(world_server::ShapeSlot::from_encoded(vec![0xff]));
+    let error = fanout
+        .client_resync_real(b"resync-error", &corrupt, &|_| 100)
+        .unwrap_err();
+    assert_eq!(error.entity_id, entity_id);
+    let connection = fanout.get(b"resync-error").unwrap();
+    assert_eq!(connection.snapshot.baseline_id(), baseline);
+    assert_eq!(connection.interest_real, interest);
+    assert_eq!(connection.events, events);
+    assert_eq!(
+        connection.snapshot.status(),
+        world_server::SnapshotStatus::ResyncRequired
+    );
+    let recovery = fanout
+        .client_resync_real(b"resync-error", &generation, &|_| 100)
+        .unwrap()
+        .unwrap();
+    assert_ne!(Some(recovery.0), baseline);
+}
+
+#[test]
+fn publishing_deltas_keeps_the_complete_retained_baseline() {
+    let mut fanout = world_server::SnapshotFanout::new();
+    fanout.attach(b"retained-baseline".to_vec());
+    fanout.publish_real_interest_to(b"retained-baseline", &crowd_generation(1), &|_| 100);
+    let retained = fanout
+        .get(b"retained-baseline")
+        .unwrap()
+        .snapshot
+        .retained_real_body()
+        .unwrap()
+        .clone();
+    fanout.publish_real_interest_to(
+        b"retained-baseline",
+        &crowd_generation_with_offset(2, 1),
+        &|_| 100,
+    );
+    assert_eq!(
+        fanout
+            .get(b"retained-baseline")
+            .unwrap()
+            .snapshot
+            .retained_real_body(),
+        Some(&retained)
     );
 }

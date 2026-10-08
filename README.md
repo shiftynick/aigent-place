@@ -41,15 +41,20 @@ outbound overflow isolates only the slow connection. Every observe payload —
 full snapshots, deltas, and resync baselines alike — is truncated to the
 100-entity AOI hard cap, nearest-first from that connection's focus. An aigent
 focuses on its own body; viewers hold the world origin until protocol v1 carries
-a camera. Known limitation: the stub payload is a flat body list with no
-enter/leave records, so a body that merely left the interest set currently looks
-the same to a client as one whose lease ended. `--listen` advances the world at
+a camera. Full snapshots carry authoritative entity IDs, revisions,
+millimetre positions, and shape trees; deltas carry explicit enter, modify,
+and leave records against a numbered baseline. Slow connections replace
+superseded state with a complete full snapshot and preserve ordered results.
+`--listen` advances the world at
 20 Hz and drains observe traffic. Against a listening server, run
 `npm run aigent:scripted-move` for a one-command scripted aigent that issues
 wire `MOVE` leases, prints authoritative results, and demonstrates idempotent
 replay. Open the viewer with `?ws=ws://127.0.0.1:7600/ws` (`npm run viewer:dev`
-or a built preview) to spectate placeholder body poses from live snapshots while
-the scripted aigent renews leases. Baseline loss triggers an in-band
+or a built preview) to spectate authoritative body poses with placeholder
+geometry from live snapshots while
+the scripted aigent renews leases. The viewer reconnects after 65,536 accepted
+envelopes to bound session validation memory; it installs a new full baseline.
+Baseline loss triggers an in-band
 `SnapshotResyncRequest` for a fresh full snapshot without reconnecting. Regenerate TypeScript bindings with
 `npm run protocol:generate` after editing `protocol/v1/aigent.proto`
 ([ADR-0008](docs/adr/0008-protocol-codegen-toolchain.md)). The accepted v1
@@ -60,9 +65,11 @@ compatibility decision is
 are the foundation for those generated server, browser, and owner-SDK bindings.
 The `protocol-conformance` binary exercises handshake, command, and snapshot
 resync scenarios against the in-memory server contract and is part of the
-product gate. The `workload-harness` binary measures tick-overrun and cadence
-distributions, exercises the degradation ladder, and fails on contractual
-threshold breaches.
+product gate. The `workload-harness` binary checks a 1,200-tick in-process simulation window,
+plus an eight-tick real fan-out slice for 500 viewers and 300 aigents. A
+160-tick slow-viewer probe checks coalescing and exact encoded-byte accounting.
+The degradation ladder and sustained-overflow isolation are gate checks. These
+bounded probes do not measure full-window host or socket throughput.
 
 The accepted world-geometry decision is
 [ADR-0002](docs/adr/0002-world-geometry-and-displacement-semantics.md). Its

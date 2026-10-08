@@ -1,0 +1,4 @@
+apps/viewer/src/wire/real-snapshot.js
+apps/viewer/test/real-snapshot.test.mjs
+protocol/v1/conformance/binary/world-snapshot-body.hex
+protocol/v1/conformance/binary/world-snapshot-delta.hex
