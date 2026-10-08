@@ -1,13 +1,10 @@
 import * as THREE from "three";
 
-// Bounds describe the current one-metre placeholders, not decoded shape trees.
-export function observedBounds(positions) {
+// Shape bounds already compose every local part transform. Keep fitting
+// independent of tessellation, interpolation and the entity's origin choice.
+export function observedBounds(shapeBounds) {
   const bounds = new THREE.Box3();
-  const halfCube = new THREE.Vector3(0.5, 0.5, 0.5);
-  for (const position of positions) {
-    bounds.expandByPoint(new THREE.Vector3().copy(position).sub(halfCube));
-    bounds.expandByPoint(new THREE.Vector3().copy(position).add(halfCube));
-  }
+  for (const shape of shapeBounds) bounds.union(shape);
   return bounds.isEmpty() ? null : bounds;
 }
 

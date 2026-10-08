@@ -3,6 +3,8 @@ import test from "node:test";
 import * as THREE from "three";
 import { observedBounds, fitObservedBounds, bodyColor } from "../src/camera.js";
 
+const cubeBounds = position => new THREE.Box3().setFromCenterAndSize(position, new THREE.Vector3(1, 1, 1));
+
 function assertBoundsVisible(camera, bounds) {
   camera.updateMatrixWorld();
   for (const x of [bounds.min.x, bounds.max.x]) {
@@ -35,7 +37,7 @@ test("fitted view exposes disjoint same-height bodies along the viewing directio
   const offset = 1.56 / (2 * Math.SQRT2);
   const far = new THREE.Vector3(-offset, 8.905, -offset);
   const near = new THREE.Vector3(offset, 8.905, offset);
-  const bounds = observedBounds([far, near]);
+  const bounds = observedBounds([far, near].map(cubeBounds));
   const nearCube = new THREE.Box3().setFromCenterAndSize(near, new THREE.Vector3(1, 1, 1));
   const farCube = new THREE.Box3().setFromCenterAndSize(far, new THREE.Vector3(1, 1, 1));
   assert.equal(nearCube.intersectsBox(farCube), false, "regression fixture cubes must be disjoint");
@@ -54,9 +56,9 @@ test("fitted view exposes disjoint same-height bodies along the viewing directio
   }
 });
 
-test("real Three camera fits elevated and separated one-metre placeholder bounds across aspects", () => {
+test("real Three camera fits supplied elevated and separated shape bounds across aspects", () => {
   const positions = [new THREE.Vector3(-25, 8.905, -5), new THREE.Vector3(30, 17, 20)];
-  const bounds = observedBounds(positions);
+  const bounds = observedBounds(positions.map(cubeBounds));
   assert.deepEqual(bounds.min.toArray(), [-25.5, 8.405, -5.5]);
   assert.deepEqual(bounds.max.toArray(), [30.5, 17.5, 20.5]);
   for (const aspect of [2, 4 / 3, 0.25]) {
@@ -70,16 +72,30 @@ test("real Three camera fits elevated and separated one-metre placeholder bounds
 
 test("single elevated body keeps movement space and empty observations have no bounds", () => {
   assert.equal(observedBounds([]), null);
-  const bounds = observedBounds([new THREE.Vector3(4, 8.905, 1)]);
+  const bounds = observedBounds([cubeBounds(new THREE.Vector3(4, 8.905, 1))]);
   const camera = new THREE.PerspectiveCamera(60, 4 / 3, 0.1, 1000);
   const controls = { target: new THREE.Vector3(), update() {} };
   fitObservedBounds(camera, controls, bounds);
   assert.ok(camera.position.distanceTo(controls.target) >= 6, "bounded movement retains room around one body");
   assert.equal(controls.target.y, 8.905);
-  assertBoundsVisible(camera, observedBounds([new THREE.Vector3(6, 8.905, 1)]));
+  assertBoundsVisible(camera, observedBounds([cubeBounds(new THREE.Vector3(6, 8.905, 1))]));
 });
 
 test("body color stays tied to stable entity ID and differentiates the fixture bodies", () => {
   assert.equal(bodyColor(1n).getHex(), bodyColor("1").getHex());
   assert.notEqual(bodyColor(1n).getHex(), bodyColor(2n).getHex());
+});
+
+test("shape bounds include offset roots, tall parts and asymmetry without placeholder padding", () => {
+  const first = new THREE.Box3(new THREE.Vector3(-8, 3, 4), new THREE.Vector3(-2, 15, 6));
+  const second = new THREE.Box3(new THREE.Vector3(10, -7, -20), new THREE.Vector3(11, -6, -19));
+  const bounds = observedBounds([first, second]);
+  assert.deepEqual(bounds.min.toArray(), [-8, -7, -20]);
+  assert.deepEqual(bounds.max.toArray(), [11, 15, 6]);
+  assert.deepEqual(first.min.toArray(), [-8, 3, 4], "fitting must not mutate shape bounds");
+  for (const aspect of [0.25, 1, 3]) {
+    const camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
+    fitObservedBounds(camera, { target: new THREE.Vector3(), update() {} }, bounds);
+    assertBoundsVisible(camera, bounds);
+  }
 });

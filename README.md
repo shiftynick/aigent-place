@@ -60,11 +60,11 @@ idempotent replay, and renews once after 150 ms. It reports `SUCCESS`
 only after snapshots show at least 1m of horizontal displacement with changed
 poses spanning at least 2s. Acceptance alone does not mean arrival. It reports
 `FAILURE` for rejection, connection failure, or an 8s deadline, and closes its
-socket on every outcome. The viewer shows authoritative body poses with
-placeholder geometry. It frames the first observed bodies automatically;
+socket on every outcome. The viewer shows each body's observed six-primitive
+shape, composed transforms and colour. It frames the first observed shapes automatically;
 drag to orbit, right-drag to pan, scroll to zoom, and use **Reset view** to
 frame the current bodies again. These controls change only the local camera.
-The labelled 1 m reference grid follows the fitted body height and is not
+The labelled 1 m reference grid sits below the fitted shapes and is not
 authoritative terrain. Set `AIGENT_WS_URL` to use another listen URL and
 `AIGENT_ID` to change the demo identity. Reusing a journal can leave a body
 already at the target; start fresh for each demonstration. The viewer
@@ -104,15 +104,30 @@ default two-body world and stops on an ambiguous larger cast. Stop each brain
 independently with Ctrl-C. Owner-run brains retain the same generated
 WebSocket connection and movement commands.
 
+The server assigns two distinct composed demo silhouettes by spawn order,
+independently of owner identity or runner/seeker role. Shapes pass live body
+budgets and use the existing authoritative grounding, collision and persistence
+path. The viewer renders boxes, spheres, capsules, cylinders, cones and solid
+panels with their supplied dimensions, parent transforms and RGBA. An absent
+colour uses neutral grey; material tags and joint names remain opaque metadata.
+A shapeless record retains its label and position without an invented cube.
+The viewer supports 256 parts and a 1 MiB presentation metadata/key budget per
+shape; malformed or unsupported shapes retain the complete last observation,
+request one replacement full, and stop the connection if that full is also
+unrenderable. Reload after the source observation is corrected.
+
 The viewer labels bodies by numeric ID, shows server-reported movement targets
 and recent observed paths, and lets you select and follow a body. A target
 means an active physical movement aim; it does not prove arrival, blockage,
 sleep or a brain's motivation. Labels are local; raw owner identity and
 client-written display text are not published. Dragging the camera ends follow;
-Reset fits the current observed bodies. The grid and cubes remain references,
-not authoritative terrain or complete shape-tree rendering. See
+Reset fits the current observed shapes. The grid remains a descriptive
+reference; authoritative terrain, far-world render rebasing and full
+interpolation acceptance remain unfinished in task-055. See
 [ADR-0011](docs/adr/0011-snapshot-self-binding-and-public-aims.md) for snapshot
-self binding and public-aim semantics. Trusted-inject identity and the
+self binding and public-aim semantics and
+[ADR-0012](docs/adr/0012-authoritative-shape-presentation-and-demo-bodies.md)
+for shape presentation and demo bodies. Trusted-inject identity and the
 unresolved full durable command-result recovery remain local-demo limitations.
 
 The accepted world-geometry decision is

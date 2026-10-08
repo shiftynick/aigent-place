@@ -2,13 +2,32 @@
 // real Chromium supplies separate proof of rendering and camera interaction.
 export const scenes = [];
 import { Vector3, PerspectiveCamera as RealCamera, BufferGeometry as RealGeometry } from "three";
-export { Vector3, Color, BufferAttribute } from "three";
+export { Vector3, Color, BufferAttribute, Group } from "three";
+const ownership = new WeakMap();
+const tracked = new WeakSet();
+export function graphicsResources(graphic) {
+  const resources = ownership.get(graphic) ?? new Set();
+  const visit = value => {
+    for (const resource of [value.geometry, ...(Array.isArray(value.material) ? value.material : [value.material])]) {
+      if (!resource) continue;
+      resources.add(resource);
+      if (!tracked.has(resource) && resource.addEventListener && resource.disposals === undefined) {
+        resource.disposals = 0;
+        resource.addEventListener("dispose", () => { resource.disposals += 1; });
+        tracked.add(resource);
+      }
+    }
+  };
+  if (graphic.traverse) graphic.traverse(visit); else visit(graphic);
+  ownership.set(graphic, resources);
+  return [...resources];
+}
 export const cameras = [];
 export const controls = [];
 export const renderers = [];
 export class Scene {
   constructor() { this.children = []; this.peakMeshes = 0; scenes.push(this); }
-  add(child) { this.children.push(child); this.peakMeshes = Math.max(this.peakMeshes, this.children.filter(value => value.isMesh).length); }
+  add(child) { graphicsResources(child); this.children.push(child); this.peakMeshes = Math.max(this.peakMeshes, this.children.filter(value => value.isMesh || value.isGroup).length); }
   remove(child) { this.children = this.children.filter(value => value !== child); }
 }
 export class BoxGeometry {

@@ -13,7 +13,7 @@ import {
   WorldSnapshotBodyProtoSchema,
   WorldSnapshotDeltaProtoSchema,
 } from "@aigent-place/protocol";
-import { scenes, cameras, controls, renderers } from "./fake-three.mjs";
+import { scenes, cameras, controls, renderers, graphicsResources } from "./fake-three.mjs";
 import { entity } from "./snapshot-fixtures.mjs";
 
 const hooks = registerHooks({
@@ -181,7 +181,7 @@ function harness(t) {
   }
   return {
     sockets, timers, scene, handshake, viewer, canvas, camera: cameras[0], controls: controls[0], renderer: renderers[0], observers, cancelledFrames, clearedTimers,
-    meshes: () => scene.children.filter(child => child.isMesh),
+    meshes: () => scene.children.filter(child => child.isGroup).map(child => { graphicsResources(child); return child; }),
     lines: () => scene.children.filter(child => child.isLine),
     choose: id => ui["#resident-list"].children.find(button => button.dataset.bodyId === String(id)).click(),
     frame: () => animations.shift()(),
@@ -190,9 +190,135 @@ function harness(t) {
 }
 
 function assertDisposed(mesh) {
-  assert.equal(mesh.geometry.disposals, 1, "geometry disposed once");
-  assert.equal(mesh.material.disposals, 1, "material disposed once");
+  for (const resource of graphicsResources(mesh)) assert.equal(resource.disposals, 1, "owned graphics disposed once");
 }
+
+function shapeParts(root) {
+  const parts = [];
+  root.traverse(value => { if (value.isMesh) parts.push(value); });
+  return parts;
+}
+
+function assertVectorClose(actual, expected) {
+  actual.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) < 1e-10,
+    `coordinate ${index}: expected ${expected[index]}, observed ${value}`));
+}
+
+test("live scene renders decoded primitive geometry and alpha instead of a local cube", t => {
+  const h = harness(t), socket = h.handshake();
+  const record = entity(1n);
+  record.shape.nodes[0].color = { red: 240, green: 80, blue: 20, alpha: 0 };
+  socket.receive(envelope("fullSnapshot", fullPayload([record])));
+  const root = h.meshes()[0], parts = shapeParts(root);
+  assert.equal(parts.length, 6);
+  assert.deepEqual(parts.map(part => part.geometry.type).sort(),
+    ["BoxGeometry", "BoxGeometry", "CapsuleGeometry", "ConeGeometry", "CylinderGeometry", "SphereGeometry"].sort());
+  const box = parts.find(part => part.geometry.parameters.width === 1.2);
+  assert.ok(box);
+  assert.equal(box.geometry.parameters.height, 0.8);
+  assert.equal(box.geometry.parameters.depth, 0.6);
+  assert.equal(box.material.opacity, 0, "present zero alpha is not a missing colour");
+  assert.deepEqual(root.position.toArray(), [1.5, 0, -2.25], "entity origin applied once");
+});
+
+test("shape-only cosmetic replacement releases old parts and keeps selected follow, aims and trails", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { aim: aim() })])));
+  const root = h.meshes()[0], oldParts = shapeParts(root), lines = h.lines();
+  h.choose(1n); ui["#follow-body"].click();
+  const replacement = entity(1n, { aim: aim() });
+  replacement.shape.nodes[0].color = { red: 250, green: 10, blue: 20, alpha: 128 };
+  replacement.shape.nodes[0].primitive.value.sizeYMm = 3200n;
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [replacement] })));
+  assert.equal(h.meshes()[0], root, "stable body handle survives geometry replacement");
+  assert.equal(ui["#selected-title"].textContent, "Body 1");
+  assert.equal(ui["#follow-body"].attributes["aria-pressed"], "true");
+  assert.deepEqual(h.lines(), lines);
+  assert.equal(lines[2].geometry.drawRange.count, 1, "stationary shape changes cannot extend history");
+  oldParts.forEach(part => assertDisposed(part));
+  const updated = shapeParts(root).find(part => part.geometry.parameters.width === 1.2);
+  assert.equal(updated.geometry.parameters.height, 3.2);
+  assert.equal(updated.material.opacity, 128 / 255);
+  h.frame();
+  assert.ok(Math.abs(h.controls.target.y - 0.02) < 1e-12, "follow uses shape centre");
+});
+
+test("complete malformed shape transition cannot remove or modify visible bodies before recovery", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n), entity(2n)])));
+  const roots = h.meshes(), oldParts = roots.map(shapeParts);
+  const broken = entity(3n); broken.shape.nodes[0].parentNodeId = 2;
+  socket.receive(envelope("snapshotDelta", deltaPayload({
+    leftIds: [2n], entered: [broken], modified: [entity(1n, { positionMm: { xMm: 9999n, yMm: 0n, zMm: 0n } })],
+  })));
+  assert.deepEqual(h.meshes(), roots);
+  assert.equal(roots[0].position.x, 1.5);
+  oldParts.flat().forEach(part => graphicsResources(part).forEach(resource => assert.equal(resource.disposals, 0)));
+  assert.equal(h.requests().length, 1);
+  assert.equal(ui["#follow-body"].disabled, true);
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)]), 9n));
+  assert.equal(h.meshes().length, 1, "valid replacement full recovers");
+  assert.equal(ui["#resident-count"].textContent, "1 observed");
+});
+
+test("unrenderable repeated fulls have bounded recovery and retain the complete last observation", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)])));
+  const root = h.meshes()[0];
+  const broken = entity(2n); broken.shape.nodes = [];
+  socket.receive(envelope("fullSnapshot", fullPayload([broken]), 8n));
+  assert.equal(h.meshes()[0], root);
+  assert.equal(h.requests().length, 1);
+  socket.receive(envelope("fullSnapshot", fullPayload([broken]), 9n));
+  assert.equal(h.meshes()[0], root);
+  assert.equal(h.requests().length, 1, "no unbounded resync request loop");
+  assert.equal(socket.closeCalls, 1);
+  assert.equal(h.timers.length, 0, "unsupported shape does not reconnect forever");
+  assert.match(sceneState.textContent, /cannot render/);
+});
+
+test("valid shapeless records retain position, public aim and numeric label without a cube", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { shape: undefined, aim: aim() })])));
+  const root = h.meshes()[0];
+  assert.equal(shapeParts(root).length, 0);
+  assert.deepEqual(root.position.toArray(), [1.5, 0, -2.25]);
+  assert.equal(h.lines()[0].visible, true);
+  assert.match(ui["#resident-list"].children[0].textContent, /Body 1 · no shape · target/);
+  assert.equal(h.requests().length, 0);
+  h.choose(1n); ui["#follow-body"].click(); h.frame();
+  assert.deepEqual(h.controls.target.toArray(), [1.5, 0, -2.25]);
+});
+
+test("individually valid entity coordinates cannot push a complete shape beyond the world bound", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)])));
+  const root = h.meshes()[0];
+  socket.receive(envelope("fullSnapshot", fullPayload([
+    entity(2n, { positionMm: { xMm: 100000000n, yMm: 0n, zMm: 0n } }),
+  ]), 8n));
+  assert.equal(h.meshes()[0], root);
+  assert.equal(ui["#resident-count"].textContent, "1 observed");
+  assert.equal(h.requests().length, 1);
+});
+
+test("offset tall shape controls and label use the full observed geometry", t => {
+  const h = harness(t), socket = h.handshake();
+  const record = entity(1n);
+  record.shape.nodes = [record.shape.nodes[0]];
+  record.shape.nodes[0].transform.translation = { xMm: 3000n, yMm: 4000n, zMm: -2000n };
+  record.shape.nodes[0].primitive.value = { sizeXMm: 2000n, sizeYMm: 10000n, sizeZMm: 1000n };
+  socket.receive(envelope("fullSnapshot", fullPayload([record])));
+  assertVectorClose(h.controls.target.toArray(), [4.5, 4, -4.25]);
+  h.choose(1n); ui["#follow-body"].click(); h.frame();
+  assertVectorClose(h.controls.target.toArray(), [4.5, 4, -4.25]);
+  const label = ui["#body-labels"].children[0];
+  const expected = h.controls.target.clone().set(4.5, 9.15, -4.25).project(h.camera);
+  assert.ok(Math.abs(parseFloat(label.style.left) - (expected.x + 1) * h.canvas.clientWidth / 2) < 1e-9);
+  assert.ok(Math.abs(parseFloat(label.style.top) - (1 - expected.y) * h.canvas.clientHeight / 2) < 1e-9);
+  resetButton.listeners.click();
+  assertVectorClose(h.controls.target.toArray(), [4.5, 4, -4.25]);
+});
 
 test("authoritative aim-only changes update reused targets and selected inspector without inventing movement", t => {
   const h = harness(t), socket = h.handshake();
@@ -287,11 +413,11 @@ test("selection and follow retain exact ID through full/resync, stop on leave or
   assert.equal(ui["#selected-title"].textContent, `Body ${id}`);
   ui["#follow-body"].click();
   assert.equal(ui["#follow-body"].attributes["aria-pressed"], "true");
-  assert.deepEqual(h.controls.target.toArray(), [4, 3, 1]);
+  assertVectorClose(h.controls.target.toArray(), [4, 3.02, 0.97]);
   const offset = h.camera.position.clone().sub(h.controls.target);
   socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(id, { positionMm: { xMm: 6000n, yMm: 3000n, zMm: 2000n }, aim: aim() })] })));
   h.frame();
-  assert.deepEqual(h.controls.target.toArray(), [4.4, 3, 1.2]);
+  assertVectorClose(h.controls.target.toArray(), [4.4, 3.02, 1.17]);
   assert.ok(h.camera.position.clone().sub(h.controls.target).distanceTo(offset) < 1e-10);
   socket.receive(serverEnvelope({ case: "snapshotResyncRequired", value: {} }));
   assert.equal(ui["#follow-body"].disabled, true);
@@ -312,7 +438,7 @@ test("selection and follow retain exact ID through full/resync, stop on leave or
   ui["#follow-body"].click();
   resetButton.listeners.click();
   assert.equal(ui["#follow-body"].attributes["aria-pressed"], "false");
-  assert.deepEqual(h.controls.target.toArray(), [4.25, 1.5, 0.375]);
+  assertVectorClose(h.controls.target.toArray(), [4.25, 1.52, 0.345]);
   ui["#follow-body"].click();
   const selectedGraphics = [h.meshes()[1], ...h.lines().slice(3)];
   socket.receive(envelope("snapshotDelta", deltaPayload({ leftIds: [id] }), 6n));
@@ -392,7 +518,7 @@ test("body graphics and local controls release once on leave, reconnect and disp
   const graphics = [h.meshes()[0], ...h.lines()];
   const button = ui["#resident-list"].children[0];
   resetButton.listeners.click(); resetButton.listeners.click();
-  graphics.forEach(graphic => assert.equal(graphic.geometry.disposals, 0));
+  graphics.forEach(graphic => graphicsResources(graphic).forEach(resource => assert.equal(resource.disposals, 0)));
   h.viewer.dispose(); h.viewer.dispose();
   graphics.forEach(assertDisposed);
   assert.equal(button.listeners.click, undefined);
@@ -408,12 +534,14 @@ test("first observed bounds frame elevated and separated bodies, deltas preserve
     entity(1n, { positionMm: { xMm: -25000n, yMm: 8905n, zMm: 0n } }),
     entity(2n, { positionMm: { xMm: 30000n, yMm: 17000n, zMm: 20000n } }),
   ])));
-  assert.deepEqual(h.controls.target.toArray(), [2.5, 12.9525, 10]);
-  assert.notEqual(h.meshes()[0].material.color.getHex(), h.meshes()[1].material.color.getHex());
+  assertVectorClose(h.controls.target.toArray(), [2.5, 12.9725, 9.97]);
+  assert.equal(shapeParts(h.meshes()[0])[0].material.color.getHex(), 0x0a141e);
+  assert.equal(shapeParts(h.meshes()[1])[0].material.color.getHex(), 0x0a141e,
+    "equal authoritative colours stay equal despite different body IDs");
   assert.equal(resetButton.disabled, false);
   const grid = h.scene.children.find(child => child.constructor.name === "GridHelper");
   assert.equal(grid.visible, true);
-  assert.ok(Math.abs(grid.position.y - 8.355) < 1e-10);
+  assert.ok(Math.abs(grid.position.y - 8.475) < 1e-10);
   h.controls.emit("start");
   h.camera.position.set(7, 30, 9);
   h.controls.target.set(2, 8, 5);
@@ -428,7 +556,7 @@ test("first observed bounds frame elevated and separated bodies, deltas preserve
   assert.equal(h.camera.aspect, 0.5);
   assert.deepEqual(h.camera.position.toArray(), [7, 30, 9], "manual resize does not jump");
   resetButton.listeners.click();
-  assert.deepEqual(h.controls.target.toArray(), [40, 18.5, 5]);
+  assertVectorClose(h.controls.target.toArray(), [40, 18.52, 4.97]);
   assert.notDeepEqual(h.camera.position.toArray(), [7, 30, 9]);
   assert.equal(h.requests().length, 0, "local navigation never sends a world command");
 });
@@ -444,7 +572,7 @@ test("empty baseline waits for first discovery and automatic framing fits a narr
   socket.receive(envelope("snapshotDelta", deltaPayload({ entered: [
     entity(1n, { positionMm: { xMm: 3000n, yMm: 8905n, zMm: -4000n } }),
   ] })));
-  assert.deepEqual(h.controls.target.toArray(), [3, 8.905, -4]);
+  assertVectorClose(h.controls.target.toArray(), [3, 8.925, -4.03]);
   assert.equal(sceneState.hidden, true);
   const distance = h.camera.position.distanceTo(h.controls.target);
   h.canvas.clientWidth = 150;
@@ -479,7 +607,7 @@ test("disconnect marks prior observation stale; disposal cancels recovery and re
   socket.emit("error");
   assert.equal(status.textContent, disposedStatus, "late socket errors cannot update a disposed viewer");
   assert.equal(h.sockets.length, 1, "disposed viewer cannot reconnect");
-  assert.equal(mesh.geometry.disposals, 1, "late socket cannot resurrect disposed state");
+  assertDisposed(mesh);
 });
 
 test("actual viewer applies full replacement and entered/modified/left to rendered targets", t => {

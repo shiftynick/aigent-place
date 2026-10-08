@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { bodyColor } from "./camera.js";
+import { prepareShapeTree, createShapeVisual } from "./shape-visuals.js";
 
 export const TRAIL_CAP = 64;
 const TRAIL_STEP_METRES = 0.002;
@@ -28,22 +29,71 @@ function writePoints(geometry, points) {
 }
 
 /** One body's reusable graphics, owned and disposed by its observation entry. */
-export function createResidentVisual(scene, entityId) {
+export function createResidentVisual(scene, entityId, shape) {
+  let plan = prepareShapeTree(shape);
+  let shapeVisual = createShapeVisual(plan);
   const color = bodyColor(entityId);
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }));
-  const aimLine = new THREE.Line(lineGeometry(2), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }));
-  const marker = new THREE.LineLoop(lineGeometry(32), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }));
-  const trailLine = new THREE.Line(lineGeometry(TRAIL_CAP), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 }));
-  const graphics = [mesh, aimLine, marker, trailLine];
-  for (const graphic of graphics) {
-    graphic.frustumCulled = false;
-    scene.add(graphic);
+  // A stable root keeps caller-controlled interpolation/follow position when
+  // a complete shape is replaced. Public node colors belong to its children.
+  const mesh = new THREE.Group();
+  const graphics = [mesh];
+  function makeLine(capacity, Constructor, opacity) {
+    const geometry = lineGeometry(capacity);
+    let material;
+    try {
+      material = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+      const graphic = new Constructor(geometry, material);
+      graphics.push(graphic);
+      return graphic;
+    } catch (error) {
+      geometry.dispose();
+      material?.dispose();
+      throw error;
+    }
+  }
+  let aimLine, marker, trailLine;
+  try {
+    mesh.add(shapeVisual.root);
+    aimLine = makeLine(2, THREE.Line, 0.9);
+    marker = makeLine(32, THREE.LineLoop, 0.95);
+    trailLine = makeLine(TRAIL_CAP, THREE.Line, 0.5);
+    for (const graphic of graphics) {
+      graphic.frustumCulled = false;
+      scene.add(graphic);
+    }
+  } catch (error) {
+    shapeVisual.dispose();
+    for (const graphic of graphics) {
+      scene.remove(graphic);
+      if (graphic !== mesh) {
+        graphic.geometry.dispose();
+        graphic.material.dispose();
+      }
+    }
+    mesh.clear();
+    throw error;
   }
   aimLine.visible = marker.visible = false;
   const trail = [];
   let disposed = false;
 
   function update(record, position) {
+    if (disposed) return;
+    const nextPlan = prepareShapeTree(record.shape);
+    if (nextPlan.key !== plan.key) {
+      const replacement = createShapeVisual(nextPlan);
+      try {
+        mesh.add(replacement.root);
+      } catch (error) {
+        mesh.remove(replacement.root);
+        replacement.dispose();
+        throw error;
+      }
+      mesh.remove(shapeVisual.root);
+      shapeVisual.dispose();
+      shapeVisual = replacement;
+      plan = nextPlan;
+    }
     if (sampleAuthoritativePosition(trail, position)) writePoints(trailLine.geometry, trail);
     const aim = record.aim;
     aimLine.visible = marker.visible = aim !== undefined;
@@ -62,12 +112,16 @@ export function createResidentVisual(scene, entityId) {
   function dispose() {
     if (disposed) return;
     disposed = true;
+    shapeVisual.dispose();
     for (const graphic of graphics) {
       scene.remove(graphic);
-      graphic.geometry.dispose();
-      graphic.material.dispose();
+      if (graphic !== mesh) {
+        graphic.geometry.dispose();
+        graphic.material.dispose();
+      }
     }
+    mesh.clear();
     trail.length = 0;
   }
-  return { mesh, aimLine, marker, trailLine, trail, update, dispose };
+  return { mesh, aimLine, marker, trailLine, trail, update, dispose, get localBounds() { return shapeVisual.localBounds.clone(); } };
 }

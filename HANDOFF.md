@@ -23,7 +23,11 @@ Typed MOVE, observed displacement, navigation and the bounded local admission
 prerequisites are complete. Full durable result/restart recovery remains
 `task-6036971654000001`, with writer-failure diagnostics in `task-042`.
 
-Round2 is `task-067`: sustained runner/seeker demo brains and spectator
+Round2 `task-067` is delivered through PR71 as protected squash
+`67e1846be2413c6bbb0d75e78eb3ba851e4a44f0`, merged 2026-10-08T21:00:10Z.
+Both the exact-head required check and main-push gate passed; root verified
+the reviewed tree and sole expected parent. Task/worker branches and worktrees
+were preserved privately and removed. It delivered sustained runner/seeker demo brains and spectator
 aims/trails/selection/follow. A fresh live critic and two separate clean
 adversarial design reviews selected the revised pair. Accepted ADR0011,
 under the operator's explicit delegation, adds private self binding in every
@@ -37,20 +41,41 @@ compiling mutations. Root SDK47/47 and a fresh final-client190s run plus
 recorded analyzer pass all14 criteria. Both fresh rung1 cold axes are complete
 and adjudicated with no demonstrated code defect. A new independent evidence
 auditor reproduced physical measurements and verified private mutation receipts
-and current manifests. Closeout documentation review, final post-closeout gate
-and protected PR delivery remain; see the task log and cold-review.md. Consult task067 for
-exact evidence and current status. No future
-round is selected before this result. The accepted front and concise proposal
+and current manifests. Scoped closeout review and the final post-closeout full
+gate (101.8 seconds) completed and were adjudicated before delivery. The
+delivery helper exited 1 during branch cleanup because GitHub auto-deleted
+the head between its read and delete; root independently verified the merge,
+exact tree and absent head. This failure is retained, not reported as exit 0.
+Consult task067 for exact evidence and verification limits. The accepted front and concise proposal
 records are linked in `PLANNING-JOURNAL.md`.
+
+Round3 is now `task-068`: render authoritative six-primitive shapes and create
+distinct validated server-owned demo bodies. A fresh live critic and a separate
+fresh adversarial proposal challenge selected this revised ONE-improvement
+scope under the operator's delegation. Accepted ADR0012 records geometry,
+colour, opaque material metadata, bounded atomic graphics and spawn semantics.
+The patches are integrated. Root's121 viewer tests and the worker's307 world
+tests pass. The first fresh spectator found weak shared colours; a palette fix
+and new review passed, with close-pass occlusion and label overlap recorded.
+Cold code R1 then confirmed a collision gap before a newborn's first MOVE.
+The repair rechecks application geometry before allocation/binding and reserves
+successful newborns only within this tick; dormant-body behavior stays tested.
+Nine compiling repair mutants fail as intended. Root's focused creation and
+validator checks pass. The rebuilt190s fresh run passes14 physical and11 wire/
+shape checks; new spectator R3 passes appearance/controls with occlusion/label
+limits. Root narrow-view and actual-disconnect checks pass. Fresh full cold
+axes R2 completed and were adjudicated; no new production defect was found.
+Final full gate and protected delivery remain required before round4.
+This is a partial of task-055, which remains open. Rounds4/5 are unselected.
 
 ## Product facts and remaining work
 
 The live path carries real shapes, position records and explicit full/delta
 transitions. Server movement consumes typed MOVE leases; STOP/CANCEL have
-real effects. The task067 branch adds sustained demo brains and placeholder-body aims,
-trails, selection and follow; protected delivery is pending.
-Six-primitive rendering, authoritative terrain transport, origin rebasing and
-full interpolation acceptance remain `task-055`. Sleep/wake/restore/unstick
+real effects. Main includes sustained demo brains and public movement aims,
+trails, selection and follow. The task068 branch implements shape rendering
+and distinct physical demo bodies. Authoritative terrain transport/rendering,
+origin rebasing and full interpolation acceptance remain `task-055`. Sleep/wake/restore/unstick
 is `task-052`; atomic set_shape is `task-053`. Those cards are unfinished.
 Snapshots still lack terrain and rich motivation. Task067's private binding
 and physical aims are current state, not a durable command-result fix or a
@@ -67,7 +92,7 @@ Use Node from `.nvmrc` and Rust from `rust-toolchain.toml`:
 
 ```sh
 node .agents/skills/task-tracker/scripts/task.mjs board
-node .agents/skills/task-tracker/scripts/task.mjs show task-067
+node .agents/skills/task-tracker/scripts/task.mjs show task-068
 node scripts/check.mjs
 ```
 

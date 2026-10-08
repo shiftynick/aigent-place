@@ -3,6 +3,7 @@ import "./style.css";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { observedBounds, fitObservedBounds, bodyColor } from "./camera.js";
 import { createResidentVisual } from "./resident-visuals.js";
+import { prepareShapeTree } from "./shape-visuals.js";
 import { create, toBinary } from "@bufbuild/protobuf";
 import {
   ClientHelloSchema,
@@ -84,9 +85,8 @@ function createSmokeScene(targetCanvas) {
 /**
  * Live spectator that decodes `WorldSnapshotBodyProto` /
  * `WorldSnapshotDeltaProto` from the server and renders one Three.js
- * mesh per entity. Actual visual mesh selection from the shape tree
- * is task-055; this card wires the decoder in lockstep with the
- * server encoder. The returned handle resets local framing or releases
+ * shape tree per entity (ADR-0012). Terrain and far-world rebasing remain
+ * separate work. The returned handle resets local framing or releases
  * the socket, camera controls, render loop and graphics resources.
  */
 export function startLiveViewer(targetCanvas, wsUrl) {
@@ -118,6 +118,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   let fittedBounds = null;
   let reconnectTimer = null;
   let animationFrame = null;
+  let shapeRecoveryAttempts = 0;
   /** @type {Uint8Array | null} */
   let connectionId = null;
   let nextMessageId = 1n;
@@ -125,6 +126,45 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   const seen = new Set();
   /** @type {Set<bigint>} */
   const seenMessageIds = new Set();
+
+  function shapeCenter(entry) {
+    return entry.visual.localBounds.getCenter(new THREE.Vector3()).add(entry.mesh.position);
+  }
+
+  function currentShapeBounds() {
+    return observedBounds(Array.from(bodies.values(), entry => entry.visual.localBounds.clone().translate(entry.target)));
+  }
+
+  // Validate a complete transition before baseline changes, departures or
+  // allocations. A bounded retry can recover a damaged frame; a permanently
+  // unsupported shape must not generate an endless full/resync exchange.
+  function canRenderRecords(records) {
+    try {
+      for (const record of records) {
+        const plan = prepareShapeTree(record.shape);
+        const position = record.positionMm;
+        const bounds = plan.localBounds.clone().translate(new THREE.Vector3(
+          mmToMeters(position.xMm), mmToMeters(position.yMm), mmToMeters(position.zMm),
+        ));
+        if ([...bounds.min.toArray(), ...bounds.max.toArray()].some(value => Math.abs(value) > 100_000)) {
+          throw new Error("composed shape is outside the world bound");
+        }
+      }
+      return true;
+    } catch (error) {
+      shapeRecoveryAttempts += 1;
+      if (shapeRecoveryAttempts === 1) {
+        requestResync(`shape presentation unavailable: ${error.message}`);
+      } else {
+        markObservation(false, "Shape presentation unavailable · last observation");
+        setStatus(`viewer: shape presentation unavailable: ${error.message}`);
+        setSceneState("This observation contains a shape the viewer cannot render. Visible bodies are the last observation. Reload to retry.");
+        closed = true;
+        socket?.close();
+      }
+      return false;
+    }
+  }
 
   function refreshInspector() {
     const entry = bodies.get(selectedId);
@@ -170,8 +210,9 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     following = !following;
     if (following) {
       automaticView = false;
-      camera.position.add(new THREE.Vector3().subVectors(entry.mesh.position, controls.target));
-      controls.target.copy(entry.mesh.position);
+      const center = shapeCenter(entry);
+      camera.position.add(new THREE.Vector3().subVectors(center, controls.target));
+      controls.target.copy(center);
       controls.update();
     }
     refreshInspector();
@@ -186,7 +227,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   function resetView() {
     following = false;
     refreshInspector();
-    const bounds = observedBounds(Array.from(bodies.values(), entry => entry.target));
+    const bounds = currentShapeBounds();
     if (!bounds) return;
     automaticView = true;
     initialFitPending = false;
@@ -252,7 +293,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     const target = new THREE.Vector3(mmToMeters(xMm), mmToMeters(yMm), mmToMeters(zMm));
     let entry = bodies.get(key);
     if (!entry) {
-      const visual = createResidentVisual(scene, record.entityId);
+      const visual = createResidentVisual(scene, record.entityId, record.shape);
       const mesh = visual.mesh;
       mesh.position.copy(target);
       const button = residentList ? document.createElement("button") : null;
@@ -275,10 +316,10 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       entry = { mesh, target, record, visual, button, label, onSelect };
       bodies.set(key, entry);
     }
+    entry.visual.update(record, target);
     entry.target.copy(target);
     entry.record = record;
-    entry.visual.update(record, target);
-    if (entry.button) entry.button.textContent = `Body ${key}${record.aim ? " · target" : ""}`;
+    if (entry.button) entry.button.textContent = `Body ${key}${record.shape ? "" : " · no shape"}${record.aim ? " · target" : ""}`;
   }
 
   function requestResync(reason) {
@@ -353,6 +394,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         requestResync("invalid full snapshot payload");
         return;
       }
+      if (!canRenderRecords(decoded.bodies)) return;
       baselineId = body.value.baselineId;
       waitingForFull = false;
       lastTick = decoded.tick;
@@ -364,6 +406,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       for (const record of decoded.bodies) {
         upsertBody(record);
       }
+      shapeRecoveryAttempts = 0;
       updateSceneState();
       setStatus(
         `viewer: full baseline tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
@@ -396,6 +439,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         requestResync("delta entity mismatch");
         return;
       }
+      if (!canRenderRecords([...decoded.entered, ...decoded.modified])) return;
       for (const leftId of decoded.leftIds) removeBody(leftId.toString());
       for (const record of decoded.entered) {
         upsertBody(record);
@@ -403,6 +447,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       for (const record of decoded.modified) {
         upsertBody(record);
       }
+      shapeRecoveryAttempts = 0;
       updateSceneState();
       setStatus(
         `viewer: delta baseline tick=${lastTick} bodies=${bodies.size} (real bodies, +${decoded.entered.length}/~${decoded.modified.length}/-${decoded.leftIds.length})`,
@@ -425,6 +470,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     seenMessageIds.clear();
     initialFitPending = true;
     fittedBounds = null;
+    shapeRecoveryAttempts = 0;
     grid.visible = false;
     // Drop any bodies carried over from a prior connection: a new
     // connection_id is a new session, the prior bodies are no longer
@@ -535,14 +581,17 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     }
     const followed = following && observationFresh ? bodies.get(selectedId) : null;
     if (followed) {
-      camera.position.add(new THREE.Vector3().subVectors(followed.mesh.position, controls.target));
-      controls.target.copy(followed.mesh.position);
+      const center = shapeCenter(followed);
+      camera.position.add(new THREE.Vector3().subVectors(center, controls.target));
+      controls.target.copy(center);
     }
     controls.update();
     if (bodyLabels) {
       camera.updateMatrixWorld();
       for (const entry of bodies.values()) {
-        const point = entry.mesh.position.clone().add(new THREE.Vector3(0, 0.8, 0)).project(camera);
+        const point = entry.visual.localBounds.getCenter(new THREE.Vector3());
+        point.y = entry.visual.localBounds.max.y + 0.15;
+        point.add(entry.mesh.position).project(camera);
         entry.label.hidden = Math.abs(point.x) > 1 || Math.abs(point.y) > 1 || point.z < -1 || point.z > 1;
         entry.label.style.left = `${(point.x + 1) * targetCanvas.clientWidth / 2}px`;
         entry.label.style.top = `${(1 - point.y) * targetCanvas.clientHeight / 2}px`;
