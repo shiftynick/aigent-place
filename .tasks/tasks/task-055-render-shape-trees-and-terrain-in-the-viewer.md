@@ -6,7 +6,7 @@ priority: p1
 tags: [milestone:shape-collision-slice, area:viewer]
 blockedBy: [task-054]
 createdAt: "2026-08-06T13:25:52Z"
-updatedAt: "2026-08-06T13:25:52Z"
+updatedAt: "2026-10-08T19:51:08Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ The viewer renders placeholder geometry at snapshot positions. Render authoritat
 ## Log
 
 - 2026-08-06T13:25:52Z — created (status: backlog)
+- 2026-10-08T19:51:08Z — note: Round2 task067 fresh live spectator and root images verify close-position label overlap remains a low presentation issue after60degree initial camera correction. Record label de-overlap or an occlusion-visible selected-body mark in viewer presentation follow-up; keep coordinates authoritative and make no fake world separation. Current body list still selects correct ID, so task067 acceptance passes. This is not approval to start task055 or a world collision fix.

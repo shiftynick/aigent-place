@@ -8,8 +8,9 @@
     ".": "./src/index.js"
   },
   "scripts": {
-    "test": "node --test ./test/sdk-exports.test.mjs ./test/scripted-move.test.mjs",
-    "aigent:scripted-move": "node ./scripts/scripted-move.mjs"
+    "test": "node --test ./test/*.test.mjs",
+    "aigent:scripted-move": "node ./scripts/scripted-move.mjs",
+    "aigent:demo": "node ./scripts/demo.mjs"
   },
   "dependencies": {
     "@aigent-place/protocol": "0.1.0",

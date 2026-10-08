@@ -220,6 +220,8 @@ pub struct ConnectionOutbound {
     /// viewer camera, so spectators keep the default origin focus.
     pub focus_body_id: Option<u64>,
     pub role: ConnectionRole,
+    /// Negotiated aigent identity, private to this connection. Absent for viewers.
+    pub aigent_id: Option<Vec<u8>>,
     /// Active viewer AOI policy cap (ignored for aigents).
     pub viewer_aoi_cap: u32,
     /// Last delivered ordered interest set.
@@ -249,6 +251,7 @@ impl Default for ConnectionOutbound {
             focus: FocusPoint::origin(),
             focus_body_id: None,
             role: ConnectionRole::Viewer,
+            aigent_id: None,
             viewer_aoi_cap: AOI_HARD_CAP,
             interest: Vec::new(),
             interest_real: BTreeMap::new(),
@@ -675,6 +678,16 @@ impl ConnectionOutbound {
         ),
         RealInterestError,
     > {
+        let self_body_id = self
+            .aigent_id
+            .as_deref()
+            .and_then(|id| generation.aigent_bodies.get(id).copied());
+        if self_body_id == Some(0) {
+            return Err(RealInterestError::Encoding(SnapshotEncodeError {
+                entity_id: 0,
+                cause: "invalid zero self-body binding".into(),
+            }));
+        }
         let cap = aoi_cap_for_role(self.role, self.viewer_aoi_cap);
         let next = truncate_nearest(&aoi_candidates_from_entities(generation), self.focus, cap)
             .map_err(RealInterestError::Aoi)?;
@@ -686,11 +699,12 @@ impl ConnectionOutbound {
             left_ids: Vec::new(),
         };
         for entity_id in next {
-            let record = RealEntityRecord::from_snapshot(
+            let record = RealEntityRecord::from_snapshot_with_lease(
                 generation
                     .entities
                     .get(&entity_id)
                     .expect("ranked entity exists"),
+                generation.active_leases.get(&entity_id),
             )
             .map_err(RealInterestError::Encoding)?;
             match self.interest_real.get(&entity_id) {
@@ -710,6 +724,7 @@ impl ConnectionOutbound {
         Ok((
             WorldSnapshotBody {
                 tick: generation.tick,
+                self_body_id,
                 generation_digest: generation.digest(),
                 bodies,
             },
@@ -815,6 +830,7 @@ impl SnapshotFanout {
             return Some(RealPublishOutcome::ResyncRequired { required });
         }
         let delta = WorldSnapshotDelta {
+            self_body_id: body.self_body_id,
             generation_digest: generation.digest(),
             entered: diff.entered,
             modified: diff.modified,
@@ -943,4 +959,160 @@ pub enum RealFrameShape<'a> {
     },
     /// A resync-required notice. No state reached the wire.
     ResyncRequired { notice: &'a SnapshotResyncRequired },
+}
+
+#[cfg(test)]
+mod aim_binding_tests {
+    use super::*;
+    use crate::entity::{EntitySnapshot, Position};
+    use crate::lease::LeaseSnapshot;
+    use crate::{World, WorldConfig, QUEUE_LIMIT_BYTES};
+    use aigent_protocol::{WorldSnapshotBodyProto, WorldSnapshotDeltaProto};
+    use prost::Message;
+
+    fn generation() -> ImmutableGeneration {
+        let mut world = World::new(WorldConfig::default());
+        let mut generation = world.advance_tick().unwrap().clone();
+        generation.entities.insert(
+            7,
+            EntitySnapshot {
+                entity_id: 7,
+                revision: 1,
+                position: Position::origin(),
+                shape: None,
+            },
+        );
+        generation.aigent_bodies.insert(b"a".to_vec(), 7);
+        generation.active_leases.insert(
+            7,
+            LeaseSnapshot {
+                body_id: 7,
+                aigent_id: b"a".to_vec(),
+                sequence: 1,
+                granted_tick: 1,
+                expire_tick: 201,
+                target_x_mm: 1500,
+                target_z_mm: -500,
+                speed_mm_per_s: 500,
+                consecutive_no_progress_ticks: 0,
+            },
+        );
+        generation
+    }
+
+    // The exact released protobuf size includes the optional fields. Queue
+    // pressure below is existing ordered traffic, not a fabricated state size.
+    fn size(frame: &RealFrameShape<'_>) -> usize {
+        match frame {
+            RealFrameShape::Full { body, .. } => encode_world_snapshot_body(body).len(),
+            RealFrameShape::Delta { delta, .. } => encode_world_snapshot_delta(delta).len(),
+            RealFrameShape::ResyncRequired { .. } => 64,
+        }
+    }
+
+    fn fanout() -> SnapshotFanout {
+        let mut fanout = SnapshotFanout::new();
+        fanout.attach(b"c".to_vec());
+        fanout.get_mut(b"c").unwrap().role = ConnectionRole::Aigent;
+        fanout.get_mut(b"c").unwrap().aigent_id = Some(b"a".to_vec());
+        fanout
+    }
+
+    fn full(outcome: RealPublishOutcome) -> WorldSnapshotBodyProto {
+        let RealPublishOutcome::FullSnapshot { wire_bytes, .. } = outcome else {
+            panic!("expected promoted full");
+        };
+        WorldSnapshotBodyProto::decode(wire_bytes.as_slice()).unwrap()
+    }
+
+    #[test]
+    fn both_pressure_promotions_retain_current_private_binding_and_aim() {
+        let mut fanout = fanout();
+        let mut generation = generation();
+        fanout
+            .publish_real_interest_to(b"c", &generation, &size)
+            .unwrap();
+        let pressure = QUEUE_LIMIT_BYTES - fanout.get(b"c").unwrap().queue.queued_bytes() - 1;
+        assert!(fanout.get_mut(b"c").unwrap().queue.enqueue_event(pressure));
+        generation.active_leases.get_mut(&7).unwrap().target_x_mm = 2500;
+        let promoted = full(
+            fanout
+                .publish_real_interest_to(b"c", &generation, &size)
+                .unwrap(),
+        );
+        assert_eq!(promoted.self_body_id, Some(7));
+        assert_eq!(promoted.bodies[0].aim.as_ref().unwrap().target_x_mm, 2500);
+        let promoted = full(fanout.coalesce_real_pending(b"c", &size).unwrap());
+        assert_eq!(promoted.self_body_id, Some(7));
+        assert_eq!(promoted.bodies[0].aim.as_ref().unwrap().target_x_mm, 2500);
+        assert_eq!(
+            fanout
+                .get(b"c")
+                .unwrap()
+                .snapshot
+                .retained_real_body()
+                .unwrap()
+                .self_body_id,
+            Some(7)
+        );
+    }
+
+    #[test]
+    fn metadata_only_changes_and_removals_are_deltas_and_resync_replaces_binding() {
+        let mut fanout = fanout();
+        let mut generation = generation();
+        fanout
+            .publish_real_interest_to(b"c", &generation, &size)
+            .unwrap();
+        generation.active_leases.get_mut(&7).unwrap().target_z_mm = 2000;
+        let RealPublishOutcome::Delta { wire_bytes, .. } = fanout
+            .publish_real_interest_to(b"c", &generation, &size)
+            .unwrap()
+        else {
+            panic!("delta");
+        };
+        let delta = WorldSnapshotDeltaProto::decode(wire_bytes.as_slice()).unwrap();
+        assert_eq!(delta.self_body_id, Some(7));
+        assert_eq!(delta.modified.len(), 1);
+        assert_eq!(delta.modified[0].revision, 1);
+        assert_eq!(delta.modified[0].aim.as_ref().unwrap().target_z_mm, 2000);
+        generation.active_leases.clear();
+        generation.aigent_bodies.clear();
+        let RealPublishOutcome::Delta { wire_bytes, .. } = fanout
+            .publish_real_interest_to(b"c", &generation, &size)
+            .unwrap()
+        else {
+            panic!("delta");
+        };
+        let delta = WorldSnapshotDeltaProto::decode(wire_bytes.as_slice()).unwrap();
+        assert_eq!(delta.self_body_id, None);
+        assert_eq!(delta.modified.len(), 1);
+        assert!(delta.modified[0].aim.is_none());
+        let (_, body, _, _) = fanout
+            .client_resync_real(b"c", &generation, &size)
+            .unwrap()
+            .unwrap();
+        assert_eq!(body.self_body_id, None);
+        assert!(body.bodies[0].aim.is_none());
+        let promoted = full(fanout.coalesce_real_pending(b"c", &size).unwrap());
+        assert_eq!(promoted.self_body_id, None);
+        assert!(promoted.bodies[0].aim.is_none());
+    }
+
+    #[test]
+    fn invalid_projection_fails_closed_without_binding_or_aim() {
+        let mut fanout = fanout();
+        let mut generation = generation();
+        generation.aigent_bodies.insert(b"a".to_vec(), 0);
+        assert!(matches!(
+            fanout.publish_real_interest_to(b"c", &generation, &size),
+            Some(RealPublishOutcome::EncodingFailed { .. })
+        ));
+        generation.aigent_bodies.insert(b"a".to_vec(), 7);
+        generation.active_leases.get_mut(&7).unwrap().speed_mm_per_s = 0;
+        assert!(matches!(
+            fanout.publish_real_interest_to(b"c", &generation, &size),
+            Some(RealPublishOutcome::EncodingFailed { .. })
+        ));
+    }
 }

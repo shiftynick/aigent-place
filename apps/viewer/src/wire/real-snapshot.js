@@ -108,7 +108,16 @@ export function decodeSnapshotBinary(schema, bytes) {
 function validEntity(record) {
   const position = record.positionMm;
   return record.entityId !== 0n && record.revision !== 0n && position !== undefined &&
-    [position.xMm, position.yMm, position.zMm].every(axis => axis >= -WORLD_BOUND_MM && axis <= WORLD_BOUND_MM);
+    [position.xMm, position.yMm, position.zMm].every(validCoordinate) && validAim(record.aim);
+}
+
+function validCoordinate(value) {
+  return typeof value === "bigint" && value >= -WORLD_BOUND_MM && value <= WORLD_BOUND_MM;
+}
+
+function validAim(aim) {
+  return aim === undefined || (validCoordinate(aim.targetXMm) && validCoordinate(aim.targetZMm) &&
+    Number.isInteger(aim.speedMmPerS) && aim.speedMmPerS > 0 && aim.speedMmPerS <= 0xffffffff);
 }
 
 function uniqueIds(ids) {
@@ -124,8 +133,8 @@ function uniqueIds(ids) {
  */
 export function decodeWorldSnapshotBody(bytes) {
   const body = decodeSnapshotBinary(WorldSnapshotBodyProtoSchema, bytes);
-  if (body.version !== 1 || body.generationDigest.length !== 32 ||
-      !body.bodies.every(validEntity) || !uniqueIds(body.bodies.map(record => record.entityId))) return null;
+  if (body.version !== 1 || body.generationDigest.length !== 32 || body.selfBodyId === 0n ||
+      body.bodies.length > 100 || !body.bodies.every(validEntity) || !uniqueIds(body.bodies.map(record => record.entityId))) return null;
   return body;
 }
 
@@ -136,7 +145,8 @@ export function decodeWorldSnapshotBody(bytes) {
 export function decodeWorldSnapshotDelta(bytes) {
   const delta = decodeSnapshotBinary(WorldSnapshotDeltaProtoSchema, bytes);
   const records = [...delta.entered, ...delta.modified];
-  if (delta.version !== 1 || delta.generationDigest.length !== 32 ||
+  if (delta.version !== 1 || delta.generationDigest.length !== 32 || delta.selfBodyId === 0n ||
+      records.length > 100 || delta.leftIds.length > 100 ||
       !records.every(validEntity) || !uniqueIds([...records.map(record => record.entityId), ...delta.leftIds])) return null;
   return delta;
 }

@@ -1139,7 +1139,34 @@ export declare const SnapshotDeltaSchema: GenMessage<SnapshotDelta>;
  * Versioned at the message level: a decoder that sees an unknown `version` must
  * treat the frame as resync-required rather than guess. Real bodies replace the
  * legacy `AIGB` placeholder; see task-054 and ARCHITECTURE §4.
+ * Public physical movement aim from the same published generation as the pose.
  *
+ * @generated from message aigent.protocol.v1.MoveAim
+ */
+export declare type MoveAim = Message<"aigent.protocol.v1.MoveAim"> & {
+  /**
+   * @generated from field: sint64 target_x_mm = 1;
+   */
+  targetXMm: bigint;
+
+  /**
+   * @generated from field: sint64 target_z_mm = 2;
+   */
+  targetZMm: bigint;
+
+  /**
+   * @generated from field: uint32 speed_mm_per_s = 3;
+   */
+  speedMmPerS: number;
+};
+
+/**
+ * Describes the message aigent.protocol.v1.MoveAim.
+ * Use `create(MoveAimSchema)` to create a new message.
+ */
+export declare const MoveAimSchema: GenMessage<MoveAim>;
+
+/**
  * @generated from message aigent.protocol.v1.RealEntityRecord
  */
 export declare type RealEntityRecord = Message<"aigent.protocol.v1.RealEntityRecord"> & {
@@ -1162,6 +1189,11 @@ export declare type RealEntityRecord = Message<"aigent.protocol.v1.RealEntityRec
    * @generated from field: aigent.protocol.v1.ShapeTree shape = 4;
    */
   shape?: ShapeTree | undefined;
+
+  /**
+   * @generated from field: optional aigent.protocol.v1.MoveAim aim = 5;
+   */
+  aim?: MoveAim | undefined;
 };
 
 /**
@@ -1197,6 +1229,13 @@ export declare type WorldSnapshotBodyProto = Message<"aigent.protocol.v1.WorldSn
    * @generated from field: repeated aigent.protocol.v1.RealEntityRecord bodies = 4;
    */
   bodies: RealEntityRecord[];
+
+  /**
+   * Restated private binding; absence means unbound. Viewers receive no binding.
+   *
+   * @generated from field: optional uint64 self_body_id = 5;
+   */
+  selfBodyId?: bigint | undefined;
 };
 
 /**
@@ -1238,6 +1277,11 @@ export declare type WorldSnapshotDeltaProto = Message<"aigent.protocol.v1.WorldS
    * @generated from field: repeated uint64 left_ids = 5;
    */
   leftIds: bigint[];
+
+  /**
+   * @generated from field: optional uint64 self_body_id = 6;
+   */
+  selfBodyId?: bigint | undefined;
 };
 
 /**

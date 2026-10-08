@@ -1,6 +1,8 @@
 import * as THREE from "three";
+import "./style.css";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { observedBounds, fitObservedBounds, bodyColor } from "./camera.js";
+import { createResidentVisual } from "./resident-visuals.js";
 import { create, toBinary } from "@bufbuild/protobuf";
 import {
   ClientHelloSchema,
@@ -20,6 +22,14 @@ const status = document.querySelector("#status");
 const canvas = document.querySelector("#viewport");
 const sceneState = document.querySelector("#scene-state");
 const resetButton = document.querySelector("#reset-view");
+const followButton = document.querySelector("#follow-body");
+const residentList = document.querySelector("#resident-list");
+const bodyLabels = document.querySelector("#body-labels");
+const selectedTitle = document.querySelector("#selected-title");
+const selectedAim = document.querySelector("#selected-aim");
+const selectedPosition = document.querySelector("#selected-position");
+const observationStatus = document.querySelector("#observation-status");
+const residentCount = document.querySelector("#resident-count");
 const MAX_MESSAGE_IDS = 65_536;
 const SERVER_BODIES = new Set([
   "commandResult", "protocolError", "percept", "fullSnapshot", "snapshotDelta",
@@ -90,8 +100,12 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   grid.visible = false;
   scene.add(grid);
 
-  /** @type {Map<string, { mesh: THREE.Mesh, target: THREE.Vector3, record: import("@aigent-place/protocol").RealEntityRecord }>} */
+  // Entries own their graphics and DOM; records/targets are authoritative,
+  // while mesh positions are display interpolation only.
   const bodies = new Map();
+  let selectedId = null;
+  let following = false;
+  let observationFresh = false;
   let baselineId = null;
   let waitingForFull = true;
   let handshakeDone = false;
@@ -112,7 +126,66 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   /** @type {Set<bigint>} */
   const seenMessageIds = new Set();
 
+  function refreshInspector() {
+    const entry = bodies.get(selectedId);
+    if (selectedTitle) selectedTitle.textContent = entry ? `Body ${selectedId}` : "Choose a body";
+    if (selectedPosition) selectedPosition.textContent = entry
+      ? `Observed position: x ${entry.target.x.toFixed(2)} m · z ${entry.target.z.toFixed(2)} m` : "Select a body to inspect its movement.";
+    if (selectedAim) {
+      const aim = entry?.record.aim;
+      if (aim) {
+        const x = mmToMeters(aim.targetXMm), z = mmToMeters(aim.targetZMm);
+        const distance = Math.hypot(x - entry.target.x, z - entry.target.z);
+        selectedAim.textContent = `${observationFresh ? "Current" : "Last observed"} movement target: x ${x.toFixed(2)} m · z ${z.toFixed(2)} m · ${distance.toFixed(2)} m away · ${aim.speedMmPerS / 1000} m/s`;
+        const nearby = [...bodies].filter(([id]) => id !== selectedId)
+          .map(([id, other]) => ({ id, distance: Math.hypot(x - other.target.x, z - other.target.z) }))
+          .filter(other => other.distance <= 1.5)
+          .sort((a, b) => a.distance - b.distance || (BigInt(a.id) < BigInt(b.id) ? -1 : 1))[0];
+        if (nearby) selectedAim.textContent += ` · Target ${nearby.distance.toFixed(2)} m horizontally from Body ${nearby.id}`;
+      } else selectedAim.textContent = entry
+        ? (observationFresh ? "No active movement aim" : "Last observation: no active movement aim") : "";
+    }
+    if (followButton) {
+      followButton.disabled = !entry || !observationFresh;
+      followButton.textContent = following ? "Stop following" : "Follow body";
+      followButton.setAttribute("aria-pressed", String(following));
+    }
+    if (residentCount) residentCount.textContent = `${bodies.size} observed`;
+    for (const [id, item] of bodies) {
+      item.button?.setAttribute("aria-pressed", String(id === selectedId));
+      item.label?.classList.toggle("selected", id === selectedId);
+    }
+  }
+
+  function selectBody(id) {
+    if (!bodies.has(id)) return;
+    selectedId = id;
+    following = false;
+    refreshInspector();
+  }
+
+  function toggleFollow() {
+    const entry = bodies.get(selectedId);
+    if (!entry || !observationFresh) return;
+    following = !following;
+    if (following) {
+      automaticView = false;
+      camera.position.add(new THREE.Vector3().subVectors(entry.mesh.position, controls.target));
+      controls.target.copy(entry.mesh.position);
+      controls.update();
+    }
+    refreshInspector();
+  }
+
+  function markObservation(fresh, message) {
+    observationFresh = fresh;
+    if (observationStatus) observationStatus.textContent = message;
+    refreshInspector();
+  }
+
   function resetView() {
+    following = false;
+    refreshInspector();
     const bounds = observedBounds(Array.from(bodies.values(), entry => entry.target));
     if (!bounds) return;
     automaticView = true;
@@ -127,17 +200,19 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   function updateSceneState() {
     if (bodies.size === 0) {
       grid.visible = false;
-      setSceneState("Connected. No bodies in the current observation. Start the scripted aigent to see movement.");
+      setSceneState("Connected. No bodies in the current observation. Start the scripted aigent or plaza demo to see movement.");
     } else {
       if (initialFitPending) resetView();
       setSceneState("");
     }
     if (resetButton) resetButton.disabled = bodies.size === 0;
+    markObservation(true, bodies.size ? `Observing ${bodies.size} ${bodies.size === 1 ? "body" : "bodies"}` : "Connected · empty observation");
   }
 
-  function manualView() { automaticView = false; }
+  function manualView() { automaticView = false; following = false; refreshInspector(); }
   controls.addEventListener("start", manualView);
   resetButton?.addEventListener("click", resetView);
+  followButton?.addEventListener("click", toggleFollow);
 
   function resize() {
     const width = Math.max(1, targetCanvas.clientWidth);
@@ -151,13 +226,21 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   resizeObserver?.observe(targetCanvas);
   if (!resizeObserver) window.addEventListener?.("resize", resize);
 
+  function removeBody(key) {
+    const entry = bodies.get(key);
+    if (!entry) return;
+    entry.visual.dispose();
+    entry.button?.removeEventListener("click", entry.onSelect);
+    entry.button?.remove();
+    entry.label?.remove();
+    bodies.delete(key);
+    if (selectedId === key) { selectedId = null; following = false; }
+  }
+
   function removeMissing() {
-    for (const [key, entry] of bodies) {
+    for (const key of bodies.keys()) {
       if (!seen.has(key)) {
-        scene.remove(entry.mesh);
-        entry.mesh.geometry.dispose();
-        entry.mesh.material.dispose();
-        bodies.delete(key);
+        removeBody(key);
       }
     }
   }
@@ -169,22 +252,40 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     const target = new THREE.Vector3(mmToMeters(xMm), mmToMeters(yMm), mmToMeters(zMm));
     let entry = bodies.get(key);
     if (!entry) {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshStandardMaterial({ color: bodyColor(record.entityId) }),
-      );
+      const visual = createResidentVisual(scene, record.entityId);
+      const mesh = visual.mesh;
       mesh.position.copy(target);
-      scene.add(mesh);
-      entry = { mesh, target, record };
+      const button = residentList ? document.createElement("button") : null;
+      const label = bodyLabels ? document.createElement("span") : null;
+      const onSelect = () => selectBody(key);
+      if (button) {
+        button.type = "button";
+        button.className = "resident-button";
+        button.dataset.bodyId = key;
+        button.style.setProperty("--body-color", `#${bodyColor(record.entityId).getHexString()}`);
+        button.addEventListener("click", onSelect);
+        residentList.append(button);
+      }
+      if (label) {
+        label.textContent = `Body ${key}`;
+        label.className = "body-label";
+        label.style.setProperty("--body-color", `#${bodyColor(record.entityId).getHexString()}`);
+        bodyLabels.append(label);
+      }
+      entry = { mesh, target, record, visual, button, label, onSelect };
       bodies.set(key, entry);
     }
     entry.target.copy(target);
     entry.record = record;
+    entry.visual.update(record, target);
+    if (entry.button) entry.button.textContent = `Body ${key}${record.aim ? " · target" : ""}`;
   }
 
   function requestResync(reason) {
     waitingForFull = true;
     baselineId = null;
+    markObservation(false, "Refreshing · last observed positions");
+    setSceneState("Refreshing observation. Visible bodies and targets are the last observation.");
     if (!socket || socket.readyState !== WebSocket.OPEN || !connectionId) {
       setStatus(`viewer: ${reason} — reconnecting for full snapshot`);
       socket?.close();
@@ -256,13 +357,16 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       waitingForFull = false;
       lastTick = decoded.tick;
       seen.clear();
+      for (const record of decoded.bodies) seen.add(record.entityId.toString());
+      // Release departures before allocations, including an entire AOI
+      // replacement, so even transient graphics ownership stays <=100 bodies.
+      removeMissing();
       for (const record of decoded.bodies) {
         upsertBody(record);
       }
-      removeMissing();
       updateSceneState();
       setStatus(
-        `viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
+        `viewer: full baseline tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
       );
       return;
     }
@@ -287,25 +391,17 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       // enter a body already present in the current baseline.
       if (decoded.entered.some(record => bodies.has(record.entityId.toString())) ||
           decoded.modified.some(record => !bodies.has(record.entityId.toString())) ||
-          decoded.leftIds.some(id => !bodies.has(id.toString()))) {
+          decoded.leftIds.some(id => !bodies.has(id.toString())) ||
+          bodies.size + decoded.entered.length - decoded.leftIds.length > 100) {
         requestResync("delta entity mismatch");
         return;
       }
+      for (const leftId of decoded.leftIds) removeBody(leftId.toString());
       for (const record of decoded.entered) {
         upsertBody(record);
       }
       for (const record of decoded.modified) {
         upsertBody(record);
-      }
-      for (const leftId of decoded.leftIds) {
-        const key = leftId.toString();
-        if (bodies.has(key)) {
-          const entry = bodies.get(key);
-          scene.remove(entry.mesh);
-          entry.mesh.geometry.dispose();
-          entry.mesh.material.dispose();
-          bodies.delete(key);
-        }
       }
       updateSceneState();
       setStatus(
@@ -333,14 +429,10 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     // Drop any bodies carried over from a prior connection: a new
     // connection_id is a new session, the prior bodies are no longer
     // authoritative.
-    for (const entry of bodies.values()) {
-      scene.remove(entry.mesh);
-      entry.mesh.geometry.dispose();
-      entry.mesh.material.dispose();
-    }
-    bodies.clear();
+    for (const key of bodies.keys()) removeBody(key);
     seen.clear();
     if (resetButton) resetButton.disabled = true;
+    markObservation(false, "Connecting to the world");
     setStatus(`viewer: connecting ${wsUrl}`);
     setSceneState("Connecting to the world server. Camera controls are local and read-only.");
     const currentSocket = new WebSocket(wsUrl);
@@ -388,11 +480,13 @@ export function startLiveViewer(targetCanvas, wsUrl) {
               `viewer: handshake ok major=${frame.body.value.selectedProtocolMajor} — waiting for snapshots`,
             );
             setSceneState("Connected. Waiting for the first full observation.");
+            markObservation(false, "Connected · waiting for observation");
             return;
           }
           if (frame.body.case === "handshakeReject") {
             setStatus(`viewer: handshake rejected: ${frame.body.value.message}`);
             setSceneState("Connection rejected. Check the server address and reload to retry.");
+            markObservation(false, "Connection rejected");
             closed = true;
             socket?.close();
             return;
@@ -420,12 +514,14 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       if (socket !== currentSocket) return;
       if (closed) return;
       setStatus("viewer: socket closed — reconnecting");
+      markObservation(false, "Disconnected · last observed positions");
       setSceneState("Disconnected. Any visible bodies are the last observation. Retrying in 1 second.");
       reconnectTimer = setTimeout(connect, 1000);
     });
     currentSocket.addEventListener("error", () => {
       if (closed || socket !== currentSocket) return;
       setStatus("viewer: socket error");
+      markObservation(false, "Connection error · last observed positions");
       setSceneState("Cannot reach the world server. Check that it is running and the WebSocket address is correct.");
     });
   }
@@ -437,7 +533,21 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     for (const entry of bodies.values()) {
       entry.mesh.position.lerp(entry.target, 0.2);
     }
+    const followed = following && observationFresh ? bodies.get(selectedId) : null;
+    if (followed) {
+      camera.position.add(new THREE.Vector3().subVectors(followed.mesh.position, controls.target));
+      controls.target.copy(followed.mesh.position);
+    }
     controls.update();
+    if (bodyLabels) {
+      camera.updateMatrixWorld();
+      for (const entry of bodies.values()) {
+        const point = entry.mesh.position.clone().add(new THREE.Vector3(0, 0.8, 0)).project(camera);
+        entry.label.hidden = Math.abs(point.x) > 1 || Math.abs(point.y) > 1 || point.z < -1 || point.z > 1;
+        entry.label.style.left = `${(point.x + 1) * targetCanvas.clientWidth / 2}px`;
+        entry.label.style.top = `${(1 - point.y) * targetCanvas.clientHeight / 2}px`;
+      }
+    }
     renderer.render(scene, camera);
     animationFrame = requestAnimationFrame(tick);
   }
@@ -453,14 +563,10 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     resizeObserver?.disconnect();
     window.removeEventListener?.("resize", resize);
     resetButton?.removeEventListener("click", resetView);
+    followButton?.removeEventListener("click", toggleFollow);
     controls.removeEventListener("start", manualView);
     controls.dispose();
-    for (const entry of bodies.values()) {
-      scene.remove(entry.mesh);
-      entry.mesh.geometry.dispose();
-      entry.mesh.material.dispose();
-    }
-    bodies.clear();
+    for (const key of bodies.keys()) removeBody(key);
     scene.remove(grid);
     grid.geometry.dispose();
     for (const material of Array.isArray(grid.material) ? grid.material : [grid.material]) material.dispose();

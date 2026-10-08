@@ -13,9 +13,9 @@
 
 use aigent_protocol::{
     envelope, shape_node::Primitive, BoxPrimitive, Envelope, EnvelopeMetadata, EventCursor,
-    FullSnapshot, LocalTransform, OrderedEvent, Quaternion, RealEntityRecord as WireEntityRecord,
-    ShapeNode, ShapeTree, SnapshotDelta, SnapshotResyncRequired, Vector3Millimeters,
-    WorldSnapshotBodyProto, WorldSnapshotDeltaProto,
+    FullSnapshot, LocalTransform, MoveAim, OrderedEvent, Quaternion,
+    RealEntityRecord as WireEntityRecord, ShapeNode, ShapeTree, SnapshotDelta,
+    SnapshotResyncRequired, Vector3Millimeters, WorldSnapshotBodyProto, WorldSnapshotDeltaProto,
 };
 use prost::Message;
 use std::collections::BTreeMap;
@@ -958,6 +958,14 @@ fn expected_real_records(
                 .shape
                 .as_ref()
                 .map(|shape| ShapeTree::decode(shape.as_bytes()).expect("load shape")),
+            aim: generation
+                .active_leases
+                .get(&entity.entity_id)
+                .map(|lease| MoveAim {
+                    target_x_mm: lease.target_x_mm,
+                    target_z_mm: lease.target_z_mm,
+                    speed_mm_per_s: lease.speed_mm_per_s,
+                }),
         })
         .collect()
 }

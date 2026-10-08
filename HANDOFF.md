@@ -16,30 +16,45 @@ PR #69 was fixed and squash-merged into main as
 The accidental local main merge was preserved outside the repository and
 removed. The final source tree and required remote gate were verified.
 
-Round 1 is `task-064`, restoring a visible bounded live movement demo. Two
-isolated workers handle the Node sample and camera visibility; a third fixes
-the admission-clock defect found during validation. The root owns
-integration and delivery. Consult that card for current implementation,
-review, gate and PR status. After it is delivered, run a fresh critique for
-round 2. Do not preselect the remaining four rounds. The accepted front and
-proposal records are linked in `PLANNING-JOURNAL.md`.
+Round1 `task-064` is delivered through PR70 as protected squash
+`9274ffe63876fbb95879ac905178575426f1fdf0`; exact-head and main-push gates
+passed. Its task and worker branches/worktrees were preserved then cleaned.
+Typed MOVE, observed displacement, navigation and the bounded local admission
+prerequisites are complete. Full durable result/restart recovery remains
+`task-6036971654000001`, with writer-failure diagnostics in `task-042`.
 
-The live baseline proved that the documented Node sample sent an invalid
-empty MOVE and stayed alive after failure. A typed external probe moved a
-real body, but Chromium showed an empty viewport even with bodies=1 because
-of the fixed framing. Round 1 requires a rebuilt server, fresh journal, one
-aigent, at least 1 m observed displacement over at least 2 seconds, actual
-browser visibility, and bounded clean exits. This is a tracer, not emergence.
+Round2 is `task-067`: sustained runner/seeker demo brains and spectator
+aims/trails/selection/follow. A fresh live critic and two separate clean
+adversarial design reviews selected the revised pair. Accepted ADR0011,
+under the operator's explicit delegation, adds private self binding in every
+canonical full/delta and public physical target/speed aims from the same
+generation. All three isolated workers are integrated; root owns review and delivery.
+Independent190s runtime passed both bodies'90s motion, fresh physical meetings,
+same-body reconnect, peer reaction and separate STOP/exit checks. Native and
+a fresh30s spectator read pass after the60degree camera correction; the initial
+full gate passes. Lost initial bootstrap recovery is repaired with an actual CLI red and two
+compiling mutations. Root SDK47/47 and a fresh final-client190s run plus
+recorded analyzer pass all14 criteria. Both fresh rung1 cold axes are complete
+and adjudicated with no demonstrated code defect. A new independent evidence
+auditor reproduced physical measurements and verified private mutation receipts
+and current manifests. Closeout documentation review, final post-closeout gate
+and protected PR delivery remain; see the task log and cold-review.md. Consult task067 for
+exact evidence and current status. No future
+round is selected before this result. The accepted front and concise proposal
+records are linked in `PLANNING-JOURNAL.md`.
 
 ## Product facts and remaining work
 
 The live path carries real shapes, position records and explicit full/delta
 transitions. Server movement consumes typed MOVE leases; STOP/CANCEL have
-real effects. The current viewer rendering and demo are task-064's scope.
+real effects. The task067 branch adds sustained demo brains and placeholder-body aims,
+trails, selection and follow; protected delivery is pending.
 Six-primitive rendering, authoritative terrain transport, origin rebasing and
 full interpolation acceptance remain `task-055`. Sleep/wake/restore/unstick
 is `task-052`; atomic set_shape is `task-053`. Those cards are unfinished.
-Snapshots still lack terrain, general self-body binding and activity goals.
+Snapshots still lack terrain and rich motivation. Task067's private binding
+and physical aims are current state, not a durable command-result fix or a
+public owner-written goals channel. Authentication remains `task-040`.
 
 The cadence audit and retrospective ran before this program. Their findings,
 existing-card mapping and follow-ups (`task-065`, `task-066`) are recorded in
@@ -52,7 +67,7 @@ Use Node from `.nvmrc` and Rust from `rust-toolchain.toml`:
 
 ```sh
 node .agents/skills/task-tracker/scripts/task.mjs board
-node .agents/skills/task-tracker/scripts/task.mjs show task-064
+node .agents/skills/task-tracker/scripts/task.mjs show task-067
 node scripts/check.mjs
 ```
 

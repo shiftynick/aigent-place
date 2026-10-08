@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import { create, toBinary } from "@bufbuild/protobuf";
+import { BinaryReader, BinaryWriter } from "@bufbuild/protobuf/wire";
 import {
   RealEntityRecordSchema,
   WorldSnapshotBodyProtoSchema,
@@ -18,6 +19,76 @@ const bodyBytes = (overrides = {}) => toBinary(WorldSnapshotBodyProtoSchema,
   create(WorldSnapshotBodyProtoSchema, { version: 1, tick: 42n, generationDigest: digest, bodies: [], ...overrides }));
 const deltaBytes = (overrides = {}) => toBinary(WorldSnapshotDeltaProtoSchema,
   create(WorldSnapshotDeltaProtoSchema, { version: 1, generationDigest: digest, ...overrides }));
+
+test("optional self-body binding rejects an encoded present zero in full and delta while preserving absence/nonzero", () => {
+  for (const [schema, encode, decode] of [
+    [WorldSnapshotBodyProtoSchema, bodyBytes, decodeWorldSnapshotBody],
+    [WorldSnapshotDeltaProtoSchema, deltaBytes, decodeWorldSnapshotDelta],
+  ]) {
+    const field = schema.fields.find(candidate => candidate.localName === "selfBodyId");
+    const zeroField = new BinaryWriter().tag(field.number, 0).uint64(0n).finish();
+    const presentZero = encode({ selfBodyId: 0n });
+    assert.deepEqual(presentZero, Uint8Array.of(...encode(), ...zeroField), "zero is physically encoded, not omitted");
+    assert.equal(decode(presentZero), null);
+    assert.equal(decode(encode()).selfBodyId, undefined);
+    assert.equal(decode(encode({ selfBodyId: 9007199254740993n })).selfBodyId, 9007199254740993n);
+  }
+});
+
+test("optional physical aims retain signed integer targets and validate bounds/speed in every record set", () => {
+  const valid = { targetXMm: -100000000n, targetZMm: 100000000n, speedMmPerS: 0xffffffff };
+  const source = entity(1n, { aim: valid });
+  assert.deepEqual(decodeWorldSnapshotBody(bodyBytes({ bodies: [source] })).bodies[0].aim, create(RealEntityRecordSchema, source).aim);
+  assert.equal(decodeWorldSnapshotDelta(deltaBytes({ modified: [source] })).modified[0].aim.targetXMm, valid.targetXMm);
+  for (const invalid of [
+    { ...valid, targetXMm: -100000001n }, { ...valid, targetZMm: 100000001n },
+    { ...valid, speedMmPerS: 0 },
+  ]) {
+    const record = entity(1n, { aim: invalid });
+    assert.equal(decodeWorldSnapshotBody(bodyBytes({ bodies: [record] })), null);
+    assert.equal(decodeWorldSnapshotDelta(deltaBytes({ entered: [record] })), null);
+    assert.equal(decodeWorldSnapshotDelta(deltaBytes({ modified: [record] })), null);
+  }
+  assert.equal(decodeWorldSnapshotBody(bodyBytes({ bodies: [entity(1n)] })).bodies[0].aim, undefined);
+});
+
+test("aim known-field overflow and wire corruption fail framing while unknown aim fields remain compatible", () => {
+  const source = entity(1n, { aim: { targetXMm: -1500n, targetZMm: 2500n, speedMmPerS: 500 } });
+  const bytes = bodyBytes({ bodies: [source] });
+  // Locate the nested aim by generated descriptors rather than hand-copy its wire.
+  function alterAim(suffix) {
+    const recordBytes = toBinary(RealEntityRecordSchema, create(RealEntityRecordSchema, source));
+    const aimField = RealEntityRecordSchema.fields.find(field => field.localName === "aim");
+    const originalAim = source.aim;
+    const recordWithUnknown = create(RealEntityRecordSchema, { ...source, aim: originalAim });
+    const aimBytes = toBinary(aimField.message, recordWithUnknown.aim);
+    const replaced = Uint8Array.of(...aimBytes, ...suffix);
+    const writer = new BinaryWriter();
+    const reader = new BinaryReader(recordBytes);
+    while (reader.pos < reader.len) {
+      const start = reader.pos, [number, wire] = reader.tag();
+      if (number === aimField.number) { reader.bytes(); writer.tag(number, wire).bytes(replaced); }
+      else { reader.skip(wire, number); writer.raw(recordBytes.subarray(start, reader.pos)); }
+    }
+    const modifiedRecord = writer.finish();
+    const bodyField = WorldSnapshotBodyProtoSchema.fields.find(field => field.localName === "bodies");
+    const frame = bodyBytes(), result = new BinaryWriter().raw(frame);
+    result.tag(bodyField.number, 2).bytes(modifiedRecord);
+    return result.finish();
+  }
+  assert.ok(decodeWorldSnapshotBody(bytes));
+  assert.ok(decodeWorldSnapshotBody(alterAim([0xa0, 6, 7])));
+  assert.throws(() => decodeWorldSnapshotBody(alterAim([24, 0x80, 0x80, 0x80, 0x80, 0x10])), /uint32/);
+  assert.throws(() => decodeWorldSnapshotBody(alterAim([13, 1, 0, 0, 0])), /wire type/);
+});
+
+test("observer records obey the100-body bound before rendering allocation", () => {
+  const records = Array.from({ length: 101 }, (_, index) => entity(BigInt(index + 1)));
+  assert.equal(decodeWorldSnapshotBody(bodyBytes({ bodies: records })), null);
+  assert.equal(decodeWorldSnapshotDelta(deltaBytes({ entered: records })), null);
+  assert.equal(decodeWorldSnapshotDelta(deltaBytes({ leftIds: records.map(record => record.entityId) })), null);
+  assert.ok(decodeWorldSnapshotBody(bodyBytes({ bodies: records.slice(0, 100) })));
+});
 
 function fixtureBytes(name) {
   const hex = fs.readFileSync(new URL(`../../../protocol/v1/conformance/binary/${name}`, import.meta.url), "utf8");
