@@ -178,6 +178,14 @@ pub enum CommandOutcome {
     },
 }
 
+/// Failure of local effect admission, before either in-memory result cache.
+/// This hook does not implement the full durable-generation admission pipeline.
+#[derive(Debug)]
+pub(crate) enum AdmissionFailure<E> {
+    Rejected(CommandRejectionCode),
+    Fatal(E),
+}
+
 #[derive(Debug, Clone)]
 struct IdempotencyRecord {
     content_digest: Vec<u8>,
@@ -456,12 +464,33 @@ impl SessionHub {
     }
 
     pub fn submit_command(&mut self, command: CommandSubmit) -> CommandOutcome {
+        let outcome = self.submit_command_with_admission(command, |_, _, _| {
+            Ok::<(), AdmissionFailure<std::convert::Infallible>>(())
+        });
+        match outcome {
+            Ok(outcome) => outcome,
+            Err(error) => match error {},
+        }
+    }
+
+    /// Apply a synchronous local-effect gate only to a novel decoded exact-next
+    /// command. Replays and classifications never call the gate. A domain
+    /// rejection is cached; a fatal failure leaves both caches and cursor alone.
+    pub(crate) fn submit_command_with_admission<E>(
+        &mut self,
+        command: CommandSubmit,
+        admit: impl FnOnce(
+            &[u8],
+            &CommandSubmit,
+            &DecodedCommandPayload,
+        ) -> Result<(), AdmissionFailure<E>>,
+    ) -> Result<CommandOutcome, E> {
         let related = (command.message_id > 0).then_some(command.message_id);
         let Some(connection) = self.connections.get(&command.connection_id).cloned() else {
-            return CommandOutcome::ProtocolError {
+            return Ok(CommandOutcome::ProtocolError {
                 code: ProtocolErrorCode::InvalidEnvelope,
                 related_message_id: related,
-            };
+            });
         };
         if connection.displaced
             || command.protocol_major != connection.protocol_major
@@ -477,45 +506,45 @@ impl SessionHub {
                 && command.sequence > 0
                 && !command.idempotency_key.is_empty()
             {
-                return reject_result(
+                return Ok(reject_result(
                     command.message_id,
                     command.sequence,
                     command.idempotency_key,
                     CommandRejectionCode::StaleSessionEpoch,
                     false,
-                );
+                ));
             }
-            return CommandOutcome::ProtocolError {
+            return Ok(CommandOutcome::ProtocolError {
                 code: ProtocolErrorCode::InvalidEnvelope,
                 related_message_id: related,
-            };
+            });
         }
         for feature in &command.required_features {
             if connection.selected_features.get(&feature.feature_id) != Some(&feature.version()) {
-                return CommandOutcome::ProtocolError {
+                return Ok(CommandOutcome::ProtocolError {
                     code: ProtocolErrorCode::UnsupportedFeature,
                     related_message_id: related,
-                };
+                });
             }
         }
         if connection.mode != ConnectionMode::CommandCapable {
-            return reject_result(
+            return Ok(reject_result(
                 command.message_id,
                 command.sequence,
                 command.idempotency_key,
                 CommandRejectionCode::SpectateOnly,
                 false,
-            );
+            ));
         }
         let session = connection.session.as_ref().expect("command-capable");
         if command.session_epoch != session.active_epoch {
-            return reject_result(
+            return Ok(reject_result(
                 command.message_id,
                 command.sequence,
                 command.idempotency_key,
                 CommandRejectionCode::StaleSessionEpoch,
                 false,
-            );
+            ));
         }
 
         if command.sequence < session.next_sequence {
@@ -524,36 +553,38 @@ impl SessionHub {
                     && prior.idempotency_key == command.idempotency_key
                     && prior.kind == command.kind
                 {
-                    return CommandOutcome::Result {
+                    return Ok(CommandOutcome::Result {
                         command_message_id: command.message_id,
                         sequence: command.sequence,
                         idempotency_key: command.idempotency_key,
                         result: prior.result.clone(),
                         replayed: true,
-                    };
+                    });
                 }
             }
-            return reject_result(
+            return Ok(reject_result(
                 command.message_id,
                 command.sequence,
                 command.idempotency_key,
                 CommandRejectionCode::SequenceContentConflict,
                 false,
-            );
+            ));
         }
         if command.sequence > session.next_sequence {
-            return reject_result(
+            return Ok(reject_result(
                 command.message_id,
                 command.sequence,
                 command.idempotency_key,
                 CommandRejectionCode::SequenceGap,
                 false,
-            );
+            ));
         }
 
         // Exact-next: kind availability before cross-epoch idempotency.
         if !kind_available(command.kind) {
-            return self.record_exact_rejection(&command, CommandRejectionCode::UnsupportedMessage);
+            return Ok(
+                self.record_exact_rejection(&command, CommandRejectionCode::UnsupportedMessage)
+            );
         }
 
         let aigent_id = connection.aigent_id.clone().expect("aigent");
@@ -564,16 +595,25 @@ impl SessionHub {
         );
         let (result, replayed) = if let Some(prior) = self.idempotency.get(&key) {
             if prior.content_digest != command.content_digest || prior.kind != command.kind {
-                return self
-                    .record_exact_rejection(&command, CommandRejectionCode::IdempotencyConflict);
+                return Ok(self
+                    .record_exact_rejection(&command, CommandRejectionCode::IdempotencyConflict));
             }
             (prior.result.clone(), true)
         } else {
             let result = match admit_domain_command(command.kind, &command.payload_bytes) {
                 Ok(result) => result,
                 Err(code) => {
-                    return self.record_exact_rejection(&command, code);
+                    return Ok(self.record_exact_rejection(&command, code));
                 }
+            };
+            let admission = match result.decoded_payload() {
+                Some(decoded) => admit(&aigent_id, &command, decoded),
+                None => Ok(()),
+            };
+            let result = match admission {
+                Ok(()) => result,
+                Err(AdmissionFailure::Rejected(code)) => AuthoritativeResult::rejected(code),
+                Err(AdmissionFailure::Fatal(error)) => return Err(error),
             };
             self.idempotency.insert(
                 key,
@@ -587,13 +627,13 @@ impl SessionHub {
         };
 
         self.store_sequence_result(&command, result.clone());
-        CommandOutcome::Result {
+        Ok(CommandOutcome::Result {
             command_message_id: command.message_id,
             sequence: command.sequence,
             idempotency_key: command.idempotency_key,
             result,
             replayed,
-        }
+        })
     }
 
     fn record_exact_rejection(
@@ -726,4 +766,215 @@ fn select_features(
     }
     selected.sort_by(|left, right| left.feature_id.cmp(&right.feature_id));
     Ok(selected)
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+
+    fn connect(hub: &mut SessionHub, connection_id: &[u8]) -> Vec<u8> {
+        match hub.handshake(ClientHello {
+            role: ConnectionRole::Aigent,
+            offered_majors: vec![1],
+            offered_features: vec![],
+            aigent_id: Some(b"admission-a".to_vec()),
+            connection_id: connection_id.to_vec(),
+            identity: IdentityBinding::TestTrustedInject {
+                aigent_id: b"admission-a".to_vec(),
+            },
+        }) {
+            HandshakeOutcome::Accepted {
+                session_epoch: Some(epoch),
+                ..
+            } => epoch,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn stop(connection_id: &[u8], epoch: &[u8], sequence: u64, key: &[u8]) -> CommandSubmit {
+        CommandSubmit {
+            connection_id: connection_id.to_vec(),
+            protocol_major: 1,
+            message_id: sequence,
+            session_epoch: epoch.to_vec(),
+            sequence,
+            idempotency_key: key.to_vec(),
+            kind: CommandKind::Stop,
+            content_digest: vec![1],
+            payload_bytes: vec![],
+            required_features: vec![],
+        }
+    }
+
+    fn must_not_admit(
+        _: &[u8],
+        _: &CommandSubmit,
+        _: &DecodedCommandPayload,
+    ) -> Result<(), AdmissionFailure<()>> {
+        panic!("classified command/replay cannot call local effect admission")
+    }
+
+    #[test]
+    fn local_rejection_caches_key_sequence_and_cross_epoch_replay() {
+        let mut hub = SessionHub::new_v1();
+        let epoch = connect(&mut hub, b"one");
+        let command = stop(b"one", &epoch, 1, b"conflict-key");
+        let rejected = hub
+            .submit_command_with_admission(command.clone(), |_, _, _| {
+                Err::<(), _>(AdmissionFailure::<()>::Rejected(
+                    CommandRejectionCode::Conflict,
+                ))
+            })
+            .unwrap();
+        assert!(matches!(
+            rejected,
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Rejected {
+                    code: CommandRejectionCode::Conflict
+                },
+                replayed: false,
+                ..
+            }
+        ));
+        assert_eq!(hub.idempotency.len(), 1);
+        assert_eq!(
+            hub.connections[b"one".as_slice()]
+                .session
+                .as_ref()
+                .unwrap()
+                .next_sequence,
+            2
+        );
+        assert!(matches!(
+            hub.submit_command_with_admission(command, must_not_admit)
+                .unwrap(),
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Rejected {
+                    code: CommandRejectionCode::Conflict
+                },
+                replayed: true,
+                ..
+            }
+        ));
+        let epoch2 = connect(&mut hub, b"two");
+        assert!(matches!(
+            hub.submit_command_with_admission(
+                stop(b"two", &epoch2, 1, b"conflict-key"),
+                must_not_admit
+            )
+            .unwrap(),
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Rejected {
+                    code: CommandRejectionCode::Conflict
+                },
+                replayed: true,
+                ..
+            }
+        ));
+        let mut changed = stop(b"two", &epoch2, 2, b"conflict-key");
+        changed.kind = CommandKind::CancelIntent;
+        assert!(matches!(
+            hub.submit_command_with_admission(changed, must_not_admit)
+                .unwrap(),
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Rejected {
+                    code: CommandRejectionCode::IdempotencyConflict
+                },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn fatal_local_admission_leaves_both_caches_and_cursor_retryable() {
+        let mut hub = SessionHub::new_v1();
+        let epoch = connect(&mut hub, b"one");
+        let command = stop(b"one", &epoch, 1, b"fatal-key");
+        assert!(matches!(
+            hub.submit_command_with_admission(command.clone(), |_, _, _| Err::<(), _>(
+                AdmissionFailure::Fatal("terminal")
+            )),
+            Err("terminal")
+        ));
+        assert!(hub.idempotency.is_empty());
+        let session = hub.connections[b"one".as_slice()].session.as_ref().unwrap();
+        assert_eq!(session.next_sequence, 1);
+        assert!(session.sequences.is_empty());
+        assert!(matches!(
+            hub.submit_command_with_admission(command.clone(), |_, _, _| Ok::<
+                (),
+                AdmissionFailure<()>,
+            >(())),
+            Ok(CommandOutcome::Result {
+                result: AuthoritativeResult::Accepted { .. },
+                replayed: false,
+                ..
+            })
+        ));
+        assert!(matches!(
+            hub.submit_command_with_admission(command, must_not_admit)
+                .unwrap(),
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Accepted { .. },
+                replayed: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classifications_and_decoding_failures_do_not_invoke_local_admission() {
+        let mut hub = SessionHub::new_v1();
+        let epoch = connect(&mut hub, b"one");
+        let accepted = stop(b"one", &epoch, 1, b"accepted-key");
+        hub.submit_command(accepted.clone());
+        hub.submit_command_with_admission(accepted, must_not_admit)
+            .unwrap();
+        hub.submit_command_with_admission(stop(b"one", &epoch, 1, b"changed-key"), must_not_admit)
+            .unwrap();
+        hub.submit_command_with_admission(stop(b"one", &epoch, 3, b"gap"), must_not_admit)
+            .unwrap();
+        hub.submit_command_with_admission(
+            stop(b"one", b"stale-epoch", 2, b"stale"),
+            must_not_admit,
+        )
+        .unwrap();
+        let mut unavailable = stop(b"one", &epoch, 2, b"unavailable");
+        unavailable.kind = CommandKind::Unspecified;
+        hub.submit_command_with_admission(unavailable, must_not_admit)
+            .unwrap();
+        let mut malformed_move = stop(b"one", &epoch, 3, b"malformed");
+        malformed_move.kind = CommandKind::Move;
+        hub.submit_command_with_admission(malformed_move, must_not_admit)
+            .unwrap();
+        let mut feature = stop(b"one", &epoch, 4, b"feature");
+        feature
+            .required_features
+            .push(FeatureOffer::exact("missing", 1));
+        hub.submit_command_with_admission(feature, must_not_admit)
+            .unwrap();
+        hub.submit_command_with_admission(stop(b"missing", &epoch, 1, b"missing"), must_not_admit)
+            .unwrap();
+        hub.handshake(ClientHello {
+            role: ConnectionRole::Viewer,
+            offered_majors: vec![1],
+            offered_features: vec![],
+            aigent_id: None,
+            connection_id: b"viewer".to_vec(),
+            identity: IdentityBinding::TestTrustedInject { aigent_id: vec![] },
+        });
+        assert!(matches!(
+            hub.submit_command_with_admission(
+                stop(b"viewer", b"", 1, b"viewer-key"),
+                must_not_admit
+            )
+            .unwrap(),
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Rejected {
+                    code: CommandRejectionCode::SpectateOnly
+                },
+                ..
+            }
+        ));
+    }
 }

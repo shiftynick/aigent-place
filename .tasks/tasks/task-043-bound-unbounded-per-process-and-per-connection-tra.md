@@ -6,7 +6,7 @@ priority: p2
 tags: [area:network, phase:debt]
 blockedBy: []
 createdAt: "2026-08-06T13:17:42Z"
-updatedAt: "2026-08-06T13:17:42Z"
+updatedAt: "2026-10-08T14:11:34Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ Debt left by the live-connection-slice milestone. Two structures in the live tra
 ## Log
 
 - 2026-08-06T13:17:42Z — created (status: backlog)
+- 2026-10-08T14:11:34Z — note: Audit 2026-10-08 @4e3e070: cleanup_connection removes sockets/fanout but SessionHub lacks release and retains historical connections/epoch results. Include explicit session-release cleanup and reconnect-churn bounds while preserving required cross-epoch retry retention.

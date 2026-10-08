@@ -1,0 +1,46 @@
+{
+  "ok": false,
+  "packet": {
+    "taskId": "task-064",
+    "round": 2,
+    "dir": "/home/shifty/Work/aigent-place/.tasks/review-packets/task-064-r2"
+  },
+  "provider": "claude",
+  "model": "claude-fable-5",
+  "axes": {
+    "SPEC": {
+      "status": "failed",
+      "exitCode": 1,
+      "error": null,
+      "stderrTail": "(node:3093063) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/shifty/Work/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to /home/shifty/Work/aigent-place/package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "result": {
+        "provider": "claude",
+        "status": "failed",
+        "exitCode": 1,
+        "modelRequested": "claude-fable-5",
+        "warnings": [],
+        "durationMs": 76342
+      },
+      "finalText": null
+    },
+    "STANDARDS": {
+      "status": "failed",
+      "exitCode": 1,
+      "error": null,
+      "stderrTail": "(node:3093064) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/shifty/Work/aigent-place/.agent-foundry/agent-headless/cli.js is not specified and it doesn't parse as CommonJS.\nReparsing as ES module because module syntax was detected. This incurs a performance overhead.\nTo eliminate this warning, add \"type\": \"module\" to /home/shifty/Work/aigent-place/package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "result": {
+        "provider": "claude",
+        "status": "failed",
+        "exitCode": 1,
+        "modelRequested": "claude-fable-5",
+        "warnings": [],
+        "durationMs": 139114
+      },
+      "finalText": null
+    }
+  },
+  "incomplete": [
+    "SPEC",
+    "STANDARDS"
+  ]
+}

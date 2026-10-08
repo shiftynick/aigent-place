@@ -6,7 +6,7 @@ priority: p1
 tags: [milestone:shape-collision-slice, area:server]
 blockedBy: [task-048, task-051]
 createdAt: "2026-08-06T13:25:34Z"
-updatedAt: "2026-08-06T13:25:34Z"
+updatedAt: "2026-10-08T16:48:03Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ SetShapePayload exists in the protocol but has no server implementation. Impleme
 ## Log
 
 - 2026-08-06T13:25:34Z — created (status: backlog)
+- 2026-10-08T16:48:03Z — note: Completed task-064 cold r2 reports the unchanged SetShape skeleton accepts payload bytes without validation or effects. Preserve full candidate decode, typed validation and atomic effect acceptance here; this is not fixed by local queue admission.

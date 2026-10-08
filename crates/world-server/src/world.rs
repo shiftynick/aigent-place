@@ -108,6 +108,8 @@ impl QueuedCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorldError {
     DuplicateCommandTuple,
+    /// A sealed terminal tick has no unstarted successor for new commands.
+    TickExhausted,
     StaleArrivalTick {
         arrival_tick: u64,
         next_tick: u64,
@@ -126,6 +128,7 @@ impl fmt::Display for WorldError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DuplicateCommandTuple => write!(f, "duplicate canonical command tuple"),
+            Self::TickExhausted => write!(f, "no unstarted command tick remains"),
             Self::StaleArrivalTick {
                 arrival_tick,
                 next_tick,
@@ -470,6 +473,26 @@ impl World {
         self.clock.next_tick()
     }
 
+    /// Earliest tick whose input batch has not started. An async tentative
+    /// generation has already sealed its commands, even before durable install.
+    pub(crate) fn next_command_tick(&self) -> Result<u64, WorldError> {
+        match &self.tentative {
+            Some(tentative) => tentative
+                .generation
+                .tick
+                .checked_add(1)
+                .ok_or(WorldError::TickExhausted),
+            None if self
+                .published
+                .as_ref()
+                .is_some_and(|generation| generation.tick == u64::MAX) =>
+            {
+                Err(WorldError::TickExhausted)
+            }
+            None => Ok(self.clock.next_tick()),
+        }
+    }
+
     #[must_use]
     pub fn published(&self) -> Option<&ImmutableGeneration> {
         self.published.as_ref()
@@ -481,20 +504,38 @@ impl World {
     }
 
     /// Enqueue a command. Arrival order of this call does not affect evaluation order.
-    /// `arrival_tick` must be the current or a future tick (`>= next_tick`).
+    /// `arrival_tick` must be at least the earliest unstarted tick. A submitted
+    /// async generation has already sealed its input batch.
     pub fn enqueue(&mut self, command: QueuedCommand) -> Result<(), WorldError> {
-        let next_tick = self.clock.next_tick();
-        if command.arrival_tick < next_tick {
-            return Err(WorldError::StaleArrivalTick {
-                arrival_tick: command.arrival_tick,
-                next_tick,
-            });
+        self.enqueue_batch(vec![command])
+    }
+
+    /// Insert a complete local effect batch only after every command passes
+    /// tick/key validation. This is queue admission, not durable installation.
+    pub(crate) fn enqueue_batch(&mut self, commands: Vec<QueuedCommand>) -> Result<(), WorldError> {
+        if commands.is_empty() {
+            return Ok(());
         }
-        let key = command.key();
-        if self.pending.iter().any(|existing| existing.key() == key) {
-            return Err(WorldError::DuplicateCommandTuple);
+        let next_tick = self.next_command_tick()?;
+        let mut keys = BTreeSet::new();
+        for command in &commands {
+            if command.arrival_tick < next_tick {
+                return Err(WorldError::StaleArrivalTick {
+                    arrival_tick: command.arrival_tick,
+                    next_tick,
+                });
+            }
+            let key = command.key();
+            let mut pending = self.pending.iter().chain(
+                self.tentative
+                    .iter()
+                    .flat_map(|tick| tick.remaining_pending.iter()),
+            );
+            if pending.any(|existing| existing.key() == key) || !keys.insert(key) {
+                return Err(WorldError::DuplicateCommandTuple);
+            }
         }
-        self.pending.push(command);
+        self.pending.extend(commands);
         Ok(())
     }
 
@@ -1389,6 +1430,303 @@ mod tests {
             }
             .encode_to_vec(),
         )
+    }
+
+    #[test]
+    fn enqueue_rejects_arrival_when_sealed_tick_has_no_successor() {
+        let mut world = World::new(WorldConfig::default());
+        let mut generation = world.advance_tick().unwrap().clone();
+        // A terminal sealed generation cannot reserve tick zero or MAX again.
+        generation.tick = u64::MAX;
+        world.tentative = Some(TentativeTick {
+            leases: world.leases.clone(),
+            entities: world.entities.clone(),
+            aigent_bodies: world.aigent_bodies.clone(),
+            world_value: world.world_value,
+            rulesets: world.rulesets.clone(),
+            generation,
+            restored_pending: Vec::new(),
+            remaining_pending: Vec::new(),
+        });
+        assert!(
+            world
+                .enqueue(QueuedCommand {
+                    arrival_tick: u64::MAX,
+                    aigent_id: b"terminal-arrival".to_vec(),
+                    sequence: 1,
+                    effect: CommandEffect::BumpWorldValue { delta: 1 },
+                })
+                .is_err(),
+            "no eligible tick remains after a sealed MAX tick"
+        );
+        assert!(
+            world.pending.is_empty(),
+            "exhausted reservation cannot enqueue an effect"
+        );
+        // TickClock saturates: a terminal completed generation must remain
+        // unavailable after tentative state is installed and removed.
+        world.published = Some(world.tentative.take().unwrap().generation);
+        assert_eq!(
+            world.enqueue(QueuedCommand {
+                arrival_tick: u64::MAX,
+                aigent_id: b"completed-terminal-arrival".to_vec(),
+                sequence: 1,
+                effect: CommandEffect::BumpWorldValue { delta: 1 },
+            }),
+            Err(WorldError::TickExhausted)
+        );
+        assert!(world.pending.is_empty());
+    }
+
+    #[test]
+    fn effect_batch_second_collision_leaves_pending_unchanged() {
+        let mut world = World::new(WorldConfig::default());
+        let original = QueuedCommand {
+            arrival_tick: 1,
+            aigent_id: b"existing".to_vec(),
+            sequence: 1,
+            effect: CommandEffect::BumpWorldValue { delta: 9 },
+        };
+        world.enqueue(original.clone()).unwrap();
+        let before = world.pending.clone();
+        let first = QueuedCommand {
+            arrival_tick: 1,
+            aigent_id: b"new".to_vec(),
+            sequence: 1,
+            effect: CommandEffect::BumpWorldValue { delta: 3 },
+        };
+        assert_eq!(
+            world.enqueue_batch(vec![first, original]),
+            Err(WorldError::DuplicateCommandTuple)
+        );
+        assert_eq!(world.pending, before);
+        assert_eq!(world.advance_tick().unwrap().world_value, 9);
+    }
+
+    #[test]
+    fn effect_batch_internal_duplicate_leaves_pending_unchanged() {
+        let mut world = World::new(WorldConfig::default());
+        let first = QueuedCommand {
+            arrival_tick: 1,
+            aigent_id: b"same".to_vec(),
+            sequence: 1,
+            effect: CommandEffect::BumpWorldValue { delta: 3 },
+        };
+        let mut second = first.clone();
+        second.effect = CommandEffect::BumpWorldValue { delta: 4 };
+        assert_eq!(
+            world.enqueue_batch(vec![first, second]),
+            Err(WorldError::DuplicateCommandTuple)
+        );
+        assert!(world.pending.is_empty());
+        assert_eq!(world.advance_tick().unwrap().world_value, 0);
+    }
+
+    async fn assert_terminal_wire_classification(role: aigent_protocol::ConnectionRole) {
+        use crate::{
+            AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, ConnectionRole,
+            HandshakeOutcome, IdentityBinding, SessionHub, TransportState,
+        };
+        use aigent_protocol::{
+            command_result, envelope, handshake_frame, Command, CommandKind, CommandMetadata,
+            Envelope, HandshakeFrame,
+        };
+        use futures_util::{SinkExt, StreamExt};
+        use sha2::{Digest, Sha256};
+        use std::sync::Arc;
+        use tokio_tungstenite::tungstenite::Message as WsMessage;
+        let mut hub = SessionHub::new_v1();
+        let epoch = match hub.handshake(ClientHello {
+            role: ConnectionRole::Aigent,
+            offered_majors: vec![1],
+            offered_features: vec![],
+            aigent_id: Some(b"terminal-a".to_vec()),
+            connection_id: b"prior".to_vec(),
+            identity: IdentityBinding::TestTrustedInject {
+                aigent_id: b"terminal-a".to_vec(),
+            },
+        }) {
+            HandshakeOutcome::Accepted {
+                session_epoch: Some(epoch),
+                ..
+            } => epoch,
+            other => panic!("{other:?}"),
+        };
+        assert!(matches!(
+            hub.submit_command(CommandSubmit {
+                connection_id: b"prior".to_vec(),
+                protocol_major: 1,
+                message_id: 1,
+                session_epoch: epoch,
+                sequence: 1,
+                idempotency_key: b"cached-stop".to_vec(),
+                kind: CommandKind::Stop,
+                content_digest: Sha256::digest([]).to_vec(),
+                payload_bytes: vec![],
+                required_features: vec![],
+            }),
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Accepted { .. },
+                ..
+            }
+        ));
+        let mut world = World::new(WorldConfig::default());
+        let mut generation = world.advance_tick().unwrap().clone();
+        generation.tick = u64::MAX;
+        world.published = Some(generation);
+        let state = TransportState::new_with_world(hub, false, world);
+        let (addr, server) = crate::serve_ephemeral(Arc::clone(&state)).await.unwrap();
+        let server_task = tokio::spawn(async move {
+            let _ = server.await;
+        });
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws"))
+            .await
+            .unwrap();
+        ws.send(WsMessage::Binary(
+            HandshakeFrame {
+                body: Some(handshake_frame::Body::ClientHello(
+                    aigent_protocol::ClientHello {
+                        role: role as i32,
+                        offered_protocol_majors: vec![1],
+                        offered_features: vec![],
+                        aigent_id: if role == aigent_protocol::ConnectionRole::Aigent {
+                            b"terminal-a".to_vec()
+                        } else {
+                            vec![]
+                        },
+                    },
+                )),
+            }
+            .encode_to_vec()
+            .into(),
+        ))
+        .await
+        .unwrap();
+        let WsMessage::Binary(bytes) = ws.next().await.unwrap().unwrap() else {
+            panic!("hello must succeed");
+        };
+        let Some(handshake_frame::Body::ServerHello(hello)) =
+            HandshakeFrame::decode(bytes.as_ref()).unwrap().body
+        else {
+            panic!("expected ServerHello");
+        };
+        ws.send(WsMessage::Binary(
+            Envelope {
+                protocol_major: 1,
+                connection_id: hello.connection_id.clone(),
+                message_id: 1,
+                metadata: Some(aigent_protocol::EnvelopeMetadata {
+                    required_features: vec![],
+                }),
+                body: Some(envelope::Body::Command(Command {
+                    metadata: Some(CommandMetadata {
+                        session_epoch: hello.session_epoch.clone(),
+                        sequence: 1,
+                        idempotency_key: b"cached-stop".to_vec(),
+                    }),
+                    kind: CommandKind::Stop as i32,
+                    payload: vec![],
+                })),
+            }
+            .encode_to_vec()
+            .into(),
+        ))
+        .await
+        .unwrap();
+        let response = tokio::time::timeout(Duration::from_secs(1), ws.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let WsMessage::Binary(bytes) = response else {
+            panic!("terminal state must retain role/replay classification: {response:?}");
+        };
+        let envelope = Envelope::decode(bytes.as_ref()).unwrap();
+        let Some(envelope::Body::CommandResult(result)) = envelope.body else {
+            panic!("must be role/replay result rather than storage error");
+        };
+        if role == aigent_protocol::ConnectionRole::Viewer {
+            assert!(
+                matches!(result.outcome, Some(command_result::Outcome::Rejected(ref rejection)) if rejection.code == aigent_protocol::CommandRejectionCode::SpectateOnly as i32)
+            );
+        } else {
+            assert!(
+                matches!(result.outcome, Some(command_result::Outcome::Accepted(_))),
+                "cached command must replay at terminal world"
+            );
+            ws.send(WsMessage::Binary(
+                Envelope {
+                    protocol_major: 1,
+                    connection_id: hello.connection_id.clone(),
+                    message_id: 2,
+                    metadata: Some(aigent_protocol::EnvelopeMetadata {
+                        required_features: vec![],
+                    }),
+                    body: Some(envelope::Body::Command(Command {
+                        metadata: Some(CommandMetadata {
+                            session_epoch: hello.session_epoch.clone(),
+                            sequence: 2,
+                            idempotency_key: b"fatal-stop".to_vec(),
+                        }),
+                        kind: CommandKind::Stop as i32,
+                        payload: vec![],
+                    })),
+                }
+                .encode_to_vec()
+                .into(),
+            ))
+            .await
+            .unwrap();
+            let closed = tokio::time::timeout(Duration::from_secs(1), ws.next())
+                .await
+                .unwrap()
+                .transpose()
+                .unwrap();
+            assert!(
+                closed.is_none() || matches!(closed, Some(WsMessage::Close(_))),
+                "terminal novel mutation closes without publishing a storage error: {closed:?}"
+            );
+            assert!(state.stamped_arrivals.lock().await.is_empty());
+            // Restore an admissible test state. Fatal admission must not have
+            // consumed sequence or inserted its key into either result cache.
+            state.world.lock().await.published = None;
+            let retried = state.sessions.lock().await.submit_command(CommandSubmit {
+                connection_id: hello.connection_id.clone(),
+                protocol_major: 1,
+                message_id: 3,
+                session_epoch: hello.session_epoch.clone(),
+                sequence: 2,
+                idempotency_key: b"fatal-stop".to_vec(),
+                kind: CommandKind::Stop,
+                content_digest: Sha256::digest([]).to_vec(),
+                payload_bytes: vec![],
+                required_features: vec![],
+            });
+            assert!(
+                matches!(
+                    retried,
+                    CommandOutcome::Result {
+                        result: AuthoritativeResult::Accepted { .. },
+                        replayed: false,
+                        ..
+                    }
+                ),
+                "fatal admission must leave the same sequence/key novel and retryable: {retried:?}"
+            );
+        }
+        drop(ws);
+        server_task.abort();
+        let _ = server_task.await;
+    }
+
+    #[tokio::test]
+    async fn terminal_world_preserves_spectate_only_wire_rejection() {
+        assert_terminal_wire_classification(aigent_protocol::ConnectionRole::Viewer).await;
+    }
+
+    #[tokio::test]
+    async fn terminal_world_preserves_cached_cross_epoch_wire_replay() {
+        assert_terminal_wire_classification(aigent_protocol::ConnectionRole::Aigent).await;
     }
 
     #[test]

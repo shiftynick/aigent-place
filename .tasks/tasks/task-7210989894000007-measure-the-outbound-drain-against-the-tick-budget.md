@@ -6,7 +6,7 @@ priority: p2
 tags: [area:network, phase:debt]
 blockedBy: []
 createdAt: "2026-08-06T16:26:40Z"
-updatedAt: "2026-08-06T16:26:40Z"
+updatedAt: "2026-10-08T14:11:34Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ Raised by cold review during task-041 and adjudicated as harness work rather tha
 ## Log
 
 - 2026-08-06T16:26:40Z — created (status: backlog)
+- 2026-10-08T14:11:34Z — note: Audit 2026-10-08 @4e3e070: current harness now carries real serialized bodies; the remaining gap is actual transport loop/drain timing and lock contention on the live tick schedule. Measure that path at 300 aigents/500 viewers rather than repeating the stale logical-size-only finding.

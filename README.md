@@ -46,13 +46,29 @@ millimetre positions, and shape trees; deltas carry explicit enter, modify,
 and leave records against a numbered baseline. Slow connections replace
 superseded state with a complete full snapshot and preserve ordered results.
 `--listen` advances the world at
-20 Hz and drains observe traffic. Against a listening server, run
-`npm run aigent:scripted-move` for a one-command scripted aigent that issues
-wire `MOVE` leases, prints authoritative results, and demonstrates idempotent
-replay. Open the viewer with `?ws=ws://127.0.0.1:7600/ws` (`npm run viewer:dev`
-or a built preview) to spectate authoritative body poses with placeholder
-geometry from live snapshots while
-the scripted aigent renews leases. The viewer reconnects after 65,536 accepted
+20 Hz and drains observe traffic. For the bounded local movement demo, start a
+new server with a fresh journal path (for example,
+`cargo run -p world-server -- --listen --journal /tmp/aigent-demo-fresh.sqlite`;
+choose an unused path for each run). Use the Node.js version in `.nvmrc`.
+Open the viewer with `?ws=ws://127.0.0.1:7600/ws` (`npm run viewer:dev`
+or a built preview), then run `npm run aigent:scripted-move`.
+The script requires a fresh world with only one aigent. It follows the sole
+observed body; protocol v1 does not supply a general self-body identity binding.
+It sends a generated typed `MOVE` toward x=1.5m, z=0 at 0.5m/s on the fresh
+default-terrain first-spawn route, checks accepted command results and an
+idempotent replay, and renews once after 150 ms. It reports `SUCCESS`
+only after snapshots show at least 1m of horizontal displacement with changed
+poses spanning at least 2s. Acceptance alone does not mean arrival. It reports
+`FAILURE` for rejection, connection failure, or an 8s deadline, and closes its
+socket on every outcome. The viewer shows authoritative body poses with
+placeholder geometry. It frames the first observed bodies automatically;
+drag to orbit, right-drag to pan, scroll to zoom, and use **Reset view** to
+frame the current bodies again. These controls change only the local camera.
+The labelled 1 m reference grid follows the fitted body height and is not
+authoritative terrain. Set `AIGENT_WS_URL` to use another listen URL and
+`AIGENT_ID` to change the demo identity. Reusing a journal can leave a body
+already at the target; start fresh for each demonstration. The viewer
+reconnects after 65,536 accepted
 envelopes to bound session validation memory; it installs a new full baseline.
 Baseline loss triggers an in-band
 `SnapshotResyncRequest` for a fresh full snapshot without reconnecting. Regenerate TypeScript bindings with

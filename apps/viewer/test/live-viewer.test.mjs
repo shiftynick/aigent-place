@@ -13,19 +13,26 @@ import {
   WorldSnapshotBodyProtoSchema,
   WorldSnapshotDeltaProtoSchema,
 } from "@aigent-place/protocol";
-import { scenes } from "./fake-three.mjs";
+import { scenes, cameras, controls, renderers } from "./fake-three.mjs";
 import { entity } from "./snapshot-fixtures.mjs";
 
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === "three" && context.parentURL.endsWith("/src/main.js")) {
+    if ((specifier === "three" || specifier === "three/addons/controls/OrbitControls.js") && context.parentURL.endsWith("/src/main.js")) {
       return { url: new URL("./fake-three.mjs", import.meta.url).href, shortCircuit: true };
     }
     return nextResolve(specifier, context);
   },
 });
 const status = { textContent: "" };
-globalThis.document = { querySelector: selector => selector === "#status" ? status : undefined };
+const sceneState = { textContent: "", hidden: false };
+const resetButton = {
+  disabled: true,
+  listeners: {},
+  addEventListener(name, callback) { this.listeners[name] = callback; },
+  removeEventListener(name) { delete this.listeners[name]; },
+};
+globalThis.document = { querySelector: selector => ({ "#status": status, "#scene-state": sceneState, "#reset-view": resetButton })[selector] };
 globalThis.HTMLCanvasElement = class {};
 const { startLiveViewer } = await import("../src/main.js");
 hooks.deregister();
@@ -99,12 +106,16 @@ function appendUnknownMessageField(schema, bytes, name, suffix) {
 }
 
 function harness(t) {
-  const globals = ["WebSocket", "window", "requestAnimationFrame", "setTimeout"];
+  const globals = ["WebSocket", "window", "requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "ResizeObserver"];
   const previous = globals.map(name => [name, globalThis[name]]);
-  t.after(() => { for (const [name, value] of previous) globalThis[name] = value; });
+  let viewer;
+  t.after(() => { viewer?.dispose(); for (const [name, value] of previous) globalThis[name] = value; });
   const sockets = [];
   const animations = [];
   const timers = [];
+  const cancelledFrames = [];
+  const clearedTimers = [];
+  const observers = [];
   class FakeSocket {
     static OPEN = 1;
     constructor(url) { this.url = url; this.readyState = 0; this.listeners = {}; this.sent = []; this.closeCalls = 0; sockets.push(this); }
@@ -117,12 +128,21 @@ function harness(t) {
   globalThis.WebSocket = FakeSocket;
   globalThis.window = { devicePixelRatio: 1 };
   globalThis.requestAnimationFrame = callback => animations.push(callback);
+  globalThis.cancelAnimationFrame = id => cancelledFrames.push(id);
   globalThis.setTimeout = (callback, delay) => { timers.push({ callback, delay }); return timers.length; };
+  globalThis.clearTimeout = id => clearedTimers.push(id);
+  globalThis.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; this.disconnections = 0; observers.push(this); }
+    observe() {}
+    disconnect() { this.disconnections += 1; }
+  };
   scenes.length = 0;
+  cameras.length = controls.length = renderers.length = 0;
   status.textContent = "";
   incomingIdentity = connectionId;
   nextIncomingMessageId = 1n;
-  startLiveViewer({ clientWidth: 800, clientHeight: 600 }, "ws://viewer.test/ws");
+  const canvas = { clientWidth: 800, clientHeight: 600 };
+  viewer = startLiveViewer(canvas, "ws://viewer.test/ws");
   const scene = scenes[0];
   function handshake(socket = sockets.at(-1), transform = bytes => bytes, identity = connectionId) {
     socket.readyState = FakeSocket.OPEN;
@@ -138,7 +158,7 @@ function harness(t) {
     return socket;
   }
   return {
-    sockets, timers, scene, handshake,
+    sockets, timers, scene, handshake, viewer, canvas, camera: cameras[0], controls: controls[0], renderer: renderers[0], observers, cancelledFrames, clearedTimers,
     meshes: () => scene.children.filter(child => child.isMesh),
     frame: () => animations.shift()(),
     requests: (socket = sockets.at(-1)) => socket.sent.slice(1).map(bytes => fromBinary(EnvelopeSchema, bytes)),
@@ -149,6 +169,87 @@ function assertDisposed(mesh) {
   assert.equal(mesh.geometry.disposals, 1, "geometry disposed once");
   assert.equal(mesh.material.disposals, 1, "material disposed once");
 }
+
+test("first observed bounds frame elevated and separated bodies, deltas preserve manual framing, and reset fits current targets", t => {
+  const h = harness(t);
+  const socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([
+    entity(1n, { positionMm: { xMm: -25000n, yMm: 8905n, zMm: 0n } }),
+    entity(2n, { positionMm: { xMm: 30000n, yMm: 17000n, zMm: 20000n } }),
+  ])));
+  assert.deepEqual(h.controls.target.toArray(), [2.5, 12.9525, 10]);
+  assert.notEqual(h.meshes()[0].material.color.getHex(), h.meshes()[1].material.color.getHex());
+  assert.equal(resetButton.disabled, false);
+  const grid = h.scene.children.find(child => child.constructor.name === "GridHelper");
+  assert.equal(grid.visible, true);
+  assert.ok(Math.abs(grid.position.y - 8.355) < 1e-10);
+  h.controls.emit("start");
+  h.camera.position.set(7, 30, 9);
+  h.controls.target.set(2, 8, 5);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [
+    entity(1n, { revision: 2n, positionMm: { xMm: 50000n, yMm: 20000n, zMm: -10000n } }),
+  ] })));
+  assert.deepEqual(h.camera.position.toArray(), [7, 30, 9]);
+  assert.deepEqual(h.controls.target.toArray(), [2, 8, 5]);
+  assert.match(status.textContent, /delta baseline tick=42/);
+  h.canvas.clientWidth = 300;
+  h.observers[0].callback();
+  assert.equal(h.camera.aspect, 0.5);
+  assert.deepEqual(h.camera.position.toArray(), [7, 30, 9], "manual resize does not jump");
+  resetButton.listeners.click();
+  assert.deepEqual(h.controls.target.toArray(), [40, 18.5, 5]);
+  assert.notDeepEqual(h.camera.position.toArray(), [7, 30, 9]);
+  assert.equal(h.requests().length, 0, "local navigation never sends a world command");
+});
+
+test("empty baseline waits for first discovery and automatic framing fits a narrow resize", t => {
+  const h = harness(t);
+  assert.match(sceneState.textContent, /Connecting/);
+  const socket = h.handshake();
+  assert.match(sceneState.textContent, /Waiting for the first/);
+  socket.receive(envelope("fullSnapshot", fullPayload()));
+  assert.match(sceneState.textContent, /No bodies.*scripted aigent/);
+  assert.equal(resetButton.disabled, true);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ entered: [
+    entity(1n, { positionMm: { xMm: 3000n, yMm: 8905n, zMm: -4000n } }),
+  ] })));
+  assert.deepEqual(h.controls.target.toArray(), [3, 8.905, -4]);
+  assert.equal(sceneState.hidden, true);
+  const distance = h.camera.position.distanceTo(h.controls.target);
+  h.canvas.clientWidth = 150;
+  h.observers[0].callback();
+  assert.equal(h.camera.aspect, 0.25);
+  assert.ok(h.camera.position.distanceTo(h.controls.target) > distance, "narrow aspect needs greater distance");
+  socket.receive(envelope("snapshotDelta", deltaPayload({ leftIds: [1n] })));
+  assert.match(sceneState.textContent, /No bodies/);
+  assert.equal(resetButton.disabled, true);
+});
+
+test("disconnect marks prior observation stale; disposal cancels recovery and releases resources once", t => {
+  const h = harness(t);
+  const socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)])));
+  const mesh = h.meshes()[0];
+  socket.close();
+  assert.match(sceneState.textContent, /Disconnected.*last observation.*Retrying/);
+  h.viewer.dispose();
+  h.viewer.dispose();
+  assertDisposed(mesh);
+  assert.equal(h.controls.disposals, 1);
+  assert.equal(h.renderer.disposals, 1);
+  assert.equal(h.meshes().length, 0);
+  assert.equal(h.observers[0].disconnections, 1);
+  assert.equal(h.clearedTimers.length, 1);
+  assert.equal(h.cancelledFrames.length, 1);
+  assert.equal(resetButton.listeners.click, undefined);
+  h.timers[0].callback();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(2n)])));
+  const disposedStatus = status.textContent;
+  socket.emit("error");
+  assert.equal(status.textContent, disposedStatus, "late socket errors cannot update a disposed viewer");
+  assert.equal(h.sockets.length, 1, "disposed viewer cannot reconnect");
+  assert.equal(mesh.geometry.disposals, 1, "late socket cannot resurrect disposed state");
+});
 
 test("actual viewer applies full replacement and entered/modified/left to rendered targets", t => {
   const h = harness(t);

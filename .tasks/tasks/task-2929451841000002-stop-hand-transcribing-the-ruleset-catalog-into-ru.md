@@ -6,7 +6,7 @@ priority: p2
 tags: [area:server]
 blockedBy: []
 createdAt: "2026-08-06T14:57:42Z"
-updatedAt: "2026-08-06T14:57:42Z"
+updatedAt: "2026-10-08T14:11:34Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,4 @@ crates/world-server/src/ruleset.rs holds a hand-written subset of the ruleset/v1
 ## Log
 
 - 2026-08-06T14:57:42Z — created (status: backlog)
+- 2026-10-08T14:11:34Z — note: Audit 2026-10-08 @4e3e070: shape_budget_catalog_contract now guards five shape paths. Narrow remaining contract drift to movement runtime rows and explicitly labelled prototype governance defaults (1/2 versus normative1200/6000). Avoid duplicating completed shape guards.
