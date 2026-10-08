@@ -1,0 +1,3 @@
+# Low documentation fix verification
+
+Before: planning paragraph assigned durable result ordering and listen-loop failure to task-042, contradicting the actual later task-042 scope note and explicit durability card. After: exact three-line correction assigns durable publication and restart recovery to task-6036971654000001 and keeps diagnostics/global writer handling in task-042. Complete current cards and before/after delta are supplied. New task-6036971654000002 covers previously unowned PlaceObject. No behavior changed, so behavioral mutation tests are not applicable to this prose correction. The applicable full repository gate was rerun after the last edit; its real outcome is in evidence.md.

@@ -6,7 +6,7 @@ priority: p2
 tags: [area:reliability, phase:debt]
 blockedBy: []
 createdAt: "2026-08-06T13:17:31Z"
-updatedAt: "2026-08-10T08:12:46Z"
+updatedAt: "2026-10-08T16:36:15Z"
 ---
 
 <!-- task-tracker:description -->
@@ -19,3 +19,6 @@ Debt left by the live-connection-slice milestone. The listen loop swallows every
 
 - 2026-08-06T13:17:31Z — created (status: backlog)
 - 2026-08-10T08:12:46Z — note: Task-039 cold review inventory update: after async SQLite becomes the live --listen path, include the second poll_durable call inside the Submitted/Busy arm (current transport.rs near the if let Ok(Some(...)) branch); it can silently discard a same-tick writer error in addition to the top-of-loop and advance branches already listed.
+- 2026-10-08T14:11:34Z — note: Audit 2026-10-08 @4e3e070 confirms ignored enqueue/drain/writer errors in the live path: Accepted can precede dropped effects. Keep correlated typed failure/admission and diagnostics as the bounded first step; broader durable replay redesign remains separate.
+- 2026-10-08T16:10:46Z — note: Task064 cold r1 exposed newly expanded reconnect/Busy canonical-tuple collision. Task064 now replaces the listen effect swallows with local admission before new-result caching, atomic spawn/effect preflight against pending and tentative.remaining_pending, stable typed Conflict, and uncached internal fatal close. Root integrated patch52d715369143426bbdad75de689afa25da8f8f2ca150483e6078dadfa1b366ac; focused worker regressions/mutations/crate gates pass, finalroot runtime/gate/coldreview pending. Reconcile this fixed enqueue subset after protected task064 delivery. Durable poll/advance/drain diagnostics, global writer-failure lifecycle and durable-before-result delivery remain open; do not mark042done.
+- 2026-10-08T16:36:15Z — note: Scope reconciliation after independent r2 source review: task-064 repairs only local queue admission and atomic spawn/effect rejection, pending protected delivery. This card retains loop writer/drain failure diagnostics and visible global writer failure handling. Full durable-before-result publication and restart reconstruction of sequence/idempotency outcomes are now explicit task-6036971654000001 work; task-042 alone must not be reported as implementing ADR 0005 durable replay.

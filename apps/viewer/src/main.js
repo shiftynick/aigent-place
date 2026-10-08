@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { observedBounds, fitObservedBounds, bodyColor } from "./camera.js";
 import { create, toBinary } from "@bufbuild/protobuf";
 import {
   ClientHelloSchema,
@@ -16,6 +18,8 @@ import {
 
 const status = document.querySelector("#status");
 const canvas = document.querySelector("#viewport");
+const sceneState = document.querySelector("#scene-state");
+const resetButton = document.querySelector("#reset-view");
 const MAX_MESSAGE_IDS = 65_536;
 const SERVER_BODIES = new Set([
   "commandResult", "protocolError", "percept", "fullSnapshot", "snapshotDelta",
@@ -30,6 +34,13 @@ function mmToMeters(mm) {
 function setStatus(text) {
   if (status) {
     status.textContent = text;
+  }
+}
+
+function setSceneState(text) {
+  if (sceneState) {
+    sceneState.textContent = text;
+    sceneState.hidden = text.length === 0;
   }
 }
 
@@ -65,13 +76,19 @@ function createSmokeScene(targetCanvas) {
  * `WorldSnapshotDeltaProto` from the server and renders one Three.js
  * mesh per entity. Actual visual mesh selection from the shape tree
  * is task-055; this card wires the decoder in lockstep with the
- * server encoder.
+ * server encoder. The returned handle resets local framing or releases
+ * the socket, camera controls, render loop and graphics resources.
  */
 export function startLiveViewer(targetCanvas, wsUrl) {
   const { renderer, scene, camera, cube } = createSmokeScene(targetCanvas);
   scene.remove(cube);
   cube.geometry.dispose();
   cube.material.dispose();
+  const controls = new OrbitControls(camera, targetCanvas);
+  controls.minDistance = 0.5;
+  const grid = new THREE.GridHelper(20, 20, 0x7c8da8, 0x35445b);
+  grid.visible = false;
+  scene.add(grid);
 
   /** @type {Map<string, { mesh: THREE.Mesh, target: THREE.Vector3, record: import("@aigent-place/protocol").RealEntityRecord }>} */
   const bodies = new Map();
@@ -81,6 +98,12 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   let lastTick = 0n;
   let socket = null;
   let closed = false;
+  let disposed = false;
+  let initialFitPending = true;
+  let automaticView = true;
+  let fittedBounds = null;
+  let reconnectTimer = null;
+  let animationFrame = null;
   /** @type {Uint8Array | null} */
   let connectionId = null;
   let nextMessageId = 1n;
@@ -88,6 +111,45 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   const seen = new Set();
   /** @type {Set<bigint>} */
   const seenMessageIds = new Set();
+
+  function resetView() {
+    const bounds = observedBounds(Array.from(bodies.values(), entry => entry.target));
+    if (!bounds) return;
+    automaticView = true;
+    initialFitPending = false;
+    fittedBounds = bounds;
+    fitObservedBounds(camera, controls, bounds);
+    const center = bounds.getCenter(new THREE.Vector3());
+    grid.position.set(center.x, bounds.min.y - 0.05, center.z);
+    grid.visible = true;
+  }
+
+  function updateSceneState() {
+    if (bodies.size === 0) {
+      grid.visible = false;
+      setSceneState("Connected. No bodies in the current observation. Start the scripted aigent to see movement.");
+    } else {
+      if (initialFitPending) resetView();
+      setSceneState("");
+    }
+    if (resetButton) resetButton.disabled = bodies.size === 0;
+  }
+
+  function manualView() { automaticView = false; }
+  controls.addEventListener("start", manualView);
+  resetButton?.addEventListener("click", resetView);
+
+  function resize() {
+    const width = Math.max(1, targetCanvas.clientWidth);
+    const height = Math.max(1, targetCanvas.clientHeight);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    if (automaticView && fittedBounds) fitObservedBounds(camera, controls, fittedBounds);
+  }
+  const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+  resizeObserver?.observe(targetCanvas);
+  if (!resizeObserver) window.addEventListener?.("resize", resize);
 
   function removeMissing() {
     for (const [key, entry] of bodies) {
@@ -109,7 +171,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     if (!entry) {
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshStandardMaterial({ color: 0x4f8cff }),
+        new THREE.MeshStandardMaterial({ color: bodyColor(record.entityId) }),
       );
       mesh.position.copy(target);
       scene.add(mesh);
@@ -198,6 +260,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
         upsertBody(record);
       }
       removeMissing();
+      updateSceneState();
       setStatus(
         `viewer: live tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
       );
@@ -244,8 +307,9 @@ export function startLiveViewer(targetCanvas, wsUrl) {
           bodies.delete(key);
         }
       }
+      updateSceneState();
       setStatus(
-        `viewer: delta tick=${lastTick} bodies=${bodies.size} (real bodies, +${decoded.entered.length}/~${decoded.modified.length}/-${decoded.leftIds.length})`,
+        `viewer: delta baseline tick=${lastTick} bodies=${bodies.size} (real bodies, +${decoded.entered.length}/~${decoded.modified.length}/-${decoded.leftIds.length})`,
       );
       return;
     }
@@ -263,6 +327,9 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     baselineId = null;
     connectionId = null;
     seenMessageIds.clear();
+    initialFitPending = true;
+    fittedBounds = null;
+    grid.visible = false;
     // Drop any bodies carried over from a prior connection: a new
     // connection_id is a new session, the prior bodies are no longer
     // authoritative.
@@ -273,12 +340,14 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     }
     bodies.clear();
     seen.clear();
+    if (resetButton) resetButton.disabled = true;
     setStatus(`viewer: connecting ${wsUrl}`);
+    setSceneState("Connecting to the world server. Camera controls are local and read-only.");
     const currentSocket = new WebSocket(wsUrl);
     socket = currentSocket;
     currentSocket.binaryType = "arraybuffer";
     currentSocket.addEventListener("open", () => {
-      if (socket !== currentSocket) return;
+      if (closed || socket !== currentSocket) return;
       const hello = create(ClientHelloSchema, {
         role: ConnectionRole.VIEWER,
         offeredProtocolMajors: [1],
@@ -295,7 +364,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       );
     });
     currentSocket.addEventListener("message", (event) => {
-      if (socket !== currentSocket) return;
+      if (closed || socket !== currentSocket) return;
       const data = event.data;
       const bytes =
         data instanceof ArrayBuffer
@@ -318,10 +387,12 @@ export function startLiveViewer(targetCanvas, wsUrl) {
             setStatus(
               `viewer: handshake ok major=${frame.body.value.selectedProtocolMajor} — waiting for snapshots`,
             );
+            setSceneState("Connected. Waiting for the first full observation.");
             return;
           }
           if (frame.body.case === "handshakeReject") {
             setStatus(`viewer: handshake rejected: ${frame.body.value.message}`);
+            setSceneState("Connection rejected. Check the server address and reload to retry.");
             closed = true;
             socket?.close();
             return;
@@ -349,24 +420,53 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       if (socket !== currentSocket) return;
       if (closed) return;
       setStatus("viewer: socket closed — reconnecting");
-      setTimeout(connect, 1000);
+      setSceneState("Disconnected. Any visible bodies are the last observation. Retrying in 1 second.");
+      reconnectTimer = setTimeout(connect, 1000);
     });
     currentSocket.addEventListener("error", () => {
-      if (socket !== currentSocket) return;
+      if (closed || socket !== currentSocket) return;
       setStatus("viewer: socket error");
+      setSceneState("Cannot reach the world server. Check that it is running and the WebSocket address is correct.");
     });
   }
 
   connect();
 
   function tick() {
+    if (closed) return;
     for (const entry of bodies.values()) {
       entry.mesh.position.lerp(entry.target, 0.2);
     }
+    controls.update();
     renderer.render(scene, camera);
-    requestAnimationFrame(tick);
+    animationFrame = requestAnimationFrame(tick);
   }
-  requestAnimationFrame(tick);
+  animationFrame = requestAnimationFrame(tick);
+
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    closed = true;
+    if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+    socket?.close();
+    resizeObserver?.disconnect();
+    window.removeEventListener?.("resize", resize);
+    resetButton?.removeEventListener("click", resetView);
+    controls.removeEventListener("start", manualView);
+    controls.dispose();
+    for (const entry of bodies.values()) {
+      scene.remove(entry.mesh);
+      entry.mesh.geometry.dispose();
+      entry.mesh.material.dispose();
+    }
+    bodies.clear();
+    scene.remove(grid);
+    grid.geometry.dispose();
+    for (const material of Array.isArray(grid.material) ? grid.material : [grid.material]) material.dispose();
+    renderer.dispose();
+  }
+  return { resetView, dispose };
 }
 
 if (canvas instanceof HTMLCanvasElement) {

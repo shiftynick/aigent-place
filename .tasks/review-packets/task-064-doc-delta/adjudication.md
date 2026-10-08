@@ -1,0 +1,3 @@
+# Scoped documentation delta adjudication
+
+Fresh rung-1 Claude Fable 5 STANDARDS axis succeeded, exit 0; wrapper exit 0 in 32.6 seconds. PASS with full CHECKED. Root verified the exact planning paragraph against task-6036971654000001 and task-042, and PlaceObject ownership against task-6036971654000002; SetShape/Unstick retain their original cards. No new runtime or contract change. Full gate after the last prose edit passed 95.5 seconds. Accept the scoped pass. Original full-task STANDARDS residual durability and geometry findings remain explicitly deferred; this is not a clean full-task STANDARDS PASS.

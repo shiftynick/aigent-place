@@ -90,3 +90,99 @@ Operator-approved attack order: `task-044` and `task-041` land before
 `task-054`, because real shape trees are far larger than the fixed-size
 placeholder body and would otherwise expose missing AOI truncation and
 undercounted outbound bytes inside a larger change. Status: accepted.
+
+## 2026-10-08 — five-round-live-demo
+
+**Goal:** Improve the live spectator experience and world activity equally,
+so lively, goal-driven aigents produce events worth following.
+
+**Done when:** Five sequential rounds each finish one or two selected
+improvements, fresh independent proposal challenge and code review, real
+runtime validation, and protected PR delivery before the next critique.
+
+Announcement: Watch the world through a viewer that makes its activity easy
+to follow. Demo aigents pursue goals and react to what happens around them.
+The program improves both the inhabitants and the spectator experience;
+owner-run brains retain their integration path.
+
+Operator authority: the six-decision interview ended with "confirmed,
+proceed" on 2026-10-08. The operator chose equal viewer/world weight, lively
+aigents and emergent stories, goal-driven demo brains, and focused rounds.
+The operator allowed product/architecture changes and delegated selection
+of all proposals to the orchestrator after independent adversarial review.
+This supplies planning and product-decision authority for the five rounds;
+hooks, enforcement, and protected PR requirements still apply.
+
+Approved front selected after the round-1 critique and independent challenge:
+
+1. `task-064` — restore a visible, bounded live movement demonstration.
+   Separate workers repair the actual Node demo and camera visibility. The
+   combined finish line uses a rebuilt server, a fresh journal, one aigent,
+   at least 1 m of observed displacement over at least 2 seconds, real
+   Chromium visibility, and clean success/failure exits within 10 seconds.
+
+Round-1 proposal records: `.tasks/review-packets/task-064-proposals/`.
+Rounds 2–5 are selected only after observing the preceding round. This entry
+does not preselect a reactive cast or claim that the first tracer is emergence.
+
+The first combined runtime found an existing admission-clock defect: after
+durability pauses, wall-paced scheduling can put commands far ahead of the
+world tick, so motion arrives after the demo deadline. A released SQLite
+write-lock reproduces it; a newly started control passes. A separate clean
+challenge approved a bounded prerequisite repair inside `task-064`: derive
+command admission from the earliest unstarted world tick, reject admission
+into sealed in-flight ticks, and retain the wall-paced slow-client pressure
+clock. This implements accepted ADR-0005 without a wire or persisted-schema
+change. Failure/retry, MOVE/STOP ordering, pressure expiry and arithmetic
+boundaries require regression evidence. It is part of the selected reliable
+demo outcome, not a third feature. The initial browser load also exposed a
+Vite optimizer reload race; the validator now waits for an actual rendered
+canvas and empty baseline before launching the sole demo aigent.
+
+The first cold review found that reconnecting during a sealed writer stall
+can reset the command sequence and collide with a queued effect. A separate
+source adjudicator confirmed it and challenged the bounded repair: admit a
+complete local spawn/effect batch before caching a new result, cache a typed
+collision rejection for stable retries, and leave fatal admission uncached.
+Terminal tick exhaustion keeps role/replay classification and uses an
+internal diagnostic and generic close, without a global writer-failure code.
+The review also removes SDK test timing limits outside the approved rubric.
+These fixes remain prerequisites within task-064. Durable-result publication
+and restart recovery remain `task-6036971654000001` work; listen-loop failure
+diagnostics and writer-failure handling remain `task-042` work.
+
+Assumptions: owner-side demo brains suffice; no live-model credentials are
+needed; the server remains authoritative unless a later independently
+challenged and recorded decision changes the product contract. Existing
+`task-052`, `task-053`, and `task-055` remain unfinished and retain their full
+acceptance criteria. Round 1 does not claim terrain, general self-body
+binding, six-primitive rendering, or navigation beyond the current AOI.
+
+### Cadence audit and retrospective
+
+Before this new milestone boundary, a read-only whole-repository audit at
+`4e3e070fd2e6eb990a44f9a01390855cd1ac0816` examined both churn reports and the
+transport/world/heightfield, movement, persistence, viewer/SDK, gate, and
+orientation sources. Seven findings cleared the evidence bar: the actual
+Node demo diverged from its test (`task-064`); connected idle bodies become
+non-colliding (`task-052`); SessionHub retains closed connections (`task-043`);
+workload timing excludes live scheduled fanout (`task-7210989894000007`);
+transport failures escape authoritative results (`task-042`); runtime catalog
+guards remain partial (`task-2929451841000002`); and orientation facts have
+drifted (`task-065`). Five reuse existing cards; two are new cards. File size
+alone, independent runtime/oracle geometry, unfinished product verbs, and
+unbounded replay redesign were considered and dropped. No new review lens
+was added: existing executable-example and lifecycle lenses cover these
+findings; round 1 directly runs the real Node entry point.
+
+The first recorded retrospective covers 2026-07-29–2026-10-08. The signal
+sweep examined 83 cards: 8 friction notes, 4 forced transitions, 12 cards
+with review churn, and 102 failed recorded runs, including deliberate reds.
+One pattern cleared the three-occurrence bar: `task-003`, `task-060`, and
+`task-061` were marked done before required evidence or findings were
+resolved, then reopened. A bounded point-of-use correction is `task-066`,
+tagged `needs:operator`; implementation is outside the app program.
+No pruning is justified without two recorded inactive windows. Watched:
+shell/commit syntax mismatch (`task-046`, `task-047`) and provider/wrapper
+timeout mismatch (`task-048`, `task-049`, already addressed by Foundry).
+`LOCAL-CHANGES.md` has no unsent or packeted upstream entries.

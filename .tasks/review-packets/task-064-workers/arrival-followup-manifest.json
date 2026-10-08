@@ -1,0 +1,115 @@
+{
+  "worktree": "/home/shifty/Work/aigent-place-task064-arrival",
+  "base_tree": "324e21f056dd5105144de5c0e526388f7b280ca9",
+  "patch": "/home/shifty/.local/state/aigent-place/improvement-loop-2026-10-08/round1-arrival-followup.patch",
+  "patch_sha256": "52d715369143426bbdad75de689afa25da8f8f2ca150483e6078dadfa1b366ac",
+  "sources": {
+    "crates/world-server/src/session.rs": "cd2f1b2045f55068c401b5b46370207421630dd2070a6117e549d2b805a054f4",
+    "crates/world-server/src/transport.rs": "6103a6b9793e6aca9aa7c2c0b1ce888795ed2d1c5ee46cc7c3ada53d75184b51",
+    "crates/world-server/src/world.rs": "5c3fd3727184c4e06eff6639c49f98a2b2e3a0f6fa39273b8f13d5fa7fa58b9c",
+    "crates/world-server/tests/listen_journal_behavior.rs": "241648c20cf0926a29012af7c91aa5e33bb3bdb17e3099027f807ecc67054c5c"
+  },
+  "mutation_results": [
+    {
+      "mutation": "ignore-local-rejection",
+      "command": "cargo test -p world-server --test listen_journal_behavior reconnect_during_busy_rejects_collision_and_preserves_replays",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "forget-rejected-key-cache",
+      "command": "cargo test -p world-server --lib local_rejection_caches_key_sequence_and_cross_epoch_replay",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "consume-sequence-on-fatal",
+      "command": "cargo test -p world-server --lib fatal_local_admission_leaves_both_caches_and_cursor_retryable",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "cache-key-on-fatal",
+      "command": "cargo test -p world-server --lib fatal_local_admission_leaves_both_caches_and_cursor_retryable",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "callback-on-sequence-replay",
+      "command": "cargo test -p world-server --lib classifications_and_decoding_failures_do_not_invoke_local_admission",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "callback-on-key-replay",
+      "command": "cargo test -p world-server --lib local_rejection_caches_key_sequence_and_cross_epoch_replay",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "callback-before-valid-move-decode",
+      "command": "cargo test -p world-server --lib classifications_and_decoding_failures_do_not_invoke_local_admission",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "ignore-tentative-remaining-duplicates",
+      "command": "cargo test -p world-server --test listen_journal_behavior reconnect_during_retry_busy_rejects_tentative_remaining_collision",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "append-partial-effect-batch",
+      "command": "cargo test -p world-server --lib effect_batch_second_collision_leaves_pending_unchanged",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "ignore-internal-batch-duplicates",
+      "command": "cargo test -p world-server --lib effect_batch_internal_duplicate_leaves_pending_unchanged",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "terminal-check-before-classification",
+      "command": "cargo test -p world-server --lib terminal_world_preserves",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "publish-terminal-as-storage-failure",
+      "command": "cargo test -p world-server --lib terminal_world_preserves_cached_cross_epoch_wire_replay",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "silently-admit-no-free-demo-slot",
+      "command": "cargo test -p world-server --lib full_demo_spawn_grid_rejects_without_a_partial_batch",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    },
+    {
+      "mutation": "reject-existing-geometry-skeletons",
+      "command": "cargo test -p world-server --lib geometry_skeletons_admit_without_local_effects",
+      "exit": 101,
+      "compiled_and_ran_red": true
+    }
+  ],
+  "evidence_log_sha256": "e60be7821fb7380a3f60111a8f1061a78d311bb8ea158ce9142dee3ce7e28f0c",
+  "worker_card_sha256": "aec389a704b4ae1e4d6b6c0635fa3a99b608e0897765503f5f3f08ccc5dbaad2",
+  "final_checks": {
+    "cargo fmt --all -- --check": {
+      "exit": 0,
+      "duration_s": 0.3
+    },
+    "cargo clippy -p world-server --all-targets -- -D warnings": {
+      "exit": 0,
+      "duration_s": 3.5
+    },
+    "cargo test -p world-server": {
+      "exit": 0,
+      "duration_s": 14.6,
+      "passed": 279
+    }
+  }
+}

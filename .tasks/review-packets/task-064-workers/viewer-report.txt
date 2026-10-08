@@ -1,0 +1,45 @@
+Round 1 task-064 viewer worker patch handoff
+
+Mutation ceiling: patch, apps/viewer/** only. Root owns lifecycle/integration/README/full gate/cold axes. No commit/push/claim/status move.
+Worktree: /home/shifty/Work/aigent-place-task064-viewer
+Patch: /home/shifty/.local/state/aigent-place/improvement-loop-2026-10-08/round1-viewer.patch
+SHA256: 2efb709c5c31eb813bdf598686bc5244efc0a49e5dda4649945e2e818dfb5b73
+Scope: 8 files, +376/-40. Export uses git diff --binary HEAD -- apps/viewer. New owned paths staged by name. No task-board changes in patch.
+
+Observed implementation:
+- src/camera.js: actual THREE Box3 placeholder bounds, aspect-aware bounding-sphere fit, minimum 3m radius for bounded movement, stable ID-derived finite color palette.
+- src/main.js: OrbitControls; first nonempty trusted snapshot auto-fit; normal full/delta updates preserve framing; local reset fits current authoritative targets; ResizeObserver refits last automatic fit and preserves manual camera; explicit labelled reference grid; state messages; returned resetView/dispose handle releases timer/socket/frame/observer/controls/graphics and blocks late callbacks.
+- index.html/style.css: visible controls/reset/connection help/reference scale, useful connecting/empty/disconnected overlay. 1m placeholder cubes; no terrain claim.
+- Delta status explicitly says baseline tick because generated delta has no tick field.
+- test/camera.test.mjs: real Three projection of all bounding-box corners across wide and narrow aspects, elevated/separated bounds, empty case, 2m room for tracer, stable palette.
+- test/live-viewer.test.mjs/fake-three.mjs: preserve existing strict generated wire guard tests; use actual Three camera/vector math while mocking graphics/input boundary; behavioral state/camera/reset/resize/disposal assertions. package.json wires new camera tests into existing gate command.
+
+Observed final checks (exact evidence in task-064-viewer-log.md):
+- npm run test:real-snapshot -w @aigent-place/viewer: 61/61, exit0 after final source edits and mutation restoration.
+- npm run viewer:build: exit0 final source. Existing Vite >500kB chunk warning only.
+- npm run viewer:smoke: exit0 final build.
+- git diff --check HEAD -- apps/viewer: exit0.
+- python3 viewer-mutations.py: exit0; 13 separately compiling/running behavioral mutations each caused test assertion reds, never syntax failures. Full red logs retained as mutation-*.log. Source restored with finally after each.
+- python3 browser-mutations.py: exit0; disabled OrbitControls enableRotate/enablePan/enableZoom each caused the specific actual-render assertion red. Logs/screenshots in browser-mutation-* directories. Sources restored.
+- sh browser-controls.sh: exit0 on final source; real Three/WebGL Chromium verified orbit/pan/zoom rendered changes, manual-frame stability across ordinary deltas, reset restoring fitted viewport, narrow resize.
+- sh browser-disconnected.sh: exit0; actual stopped-server state retained the last observation and retry notice.
+
+Observed visual/runtime evidence:
+- empty.png: useful live empty observation guidance.
+- observed-bodies.png: actual server encoder entity1 at (0,8905,0)mm and entity2 at (2000,8905,0)mm visibly framed in Chromium with ID-dependent green/amber placeholder colors.
+- clients.log: generated typed MOVE then STOP fixture commands accepted; authoritative entered records and positions. Fixture is viewer evidence only, not the SDK movement acceptance path.
+- controls-{initial,orbit,held-deltas,pan,zoom,reset,narrow}.png: real-render camera proof.
+- narrow-full.png: both elevated bodies visible at 360px width, reference scale and controls accessible.
+- disconnected.png: actual server shutdown shows Disconnected/last observation/retry message.
+- viewer-clients.mjs, browser-controls.py/.sh, browser-disconnected.py/.sh and both mutation runners retain exact fixture/test commands for replay. Scripts are external evidence artifacts, not part of product patch.
+
+Observed warm self-pass: source/test/markup/style diff read against task rubric3-4, REVIEW-STANDARDS and ENGINEERING-STANDARDS; fixed late disposed error callbacks and scene ownership cleanup. Documentation stays within viewer; root handles README.
+
+Limitations and remaining root verification:
+- Own viewer visual session used the existing target/debug/world-server binary with a fresh private journal. Root must perform the required fresh rebuild/fresh journal/single-aigent >=1m over >=2s moving-demo check using SDK patch.
+- Browser Use/CDP wheel acknowledgment can time out even when Chromium applies zoom. Browser oracle explicitly reports the timeout and checks actual canvas pixels. A delivered input event alone is not counted as proof.
+- No shape-tree rendering/terrain/world rebase/interpolation-completion claim. Existing per-frame position lerp remains unchanged. Camera bounds match currently rendered one-metre placeholders.
+- Fixed 20m reference grid and 12-color palette are presentation choices; grid need not span arbitrary wide scenes and palette does not promise unique colors for all IDs.
+- Full repository gate and separate cold SPEC/STANDARDS reviews remain root-owned and are not claimed passing here.
+
+Observed cleanup: own Node fixture clients, world-server17611, Vite15184, Chromium19223, and BU_NAME task064-viewer daemon stopped. ss verified all three ports free. No root/baseline browser process touched.

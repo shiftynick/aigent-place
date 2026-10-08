@@ -154,3 +154,37 @@ fn sync_path_still_publishes_only_after_commit() {
     assert_eq!(gen.world_value, 2);
     assert_eq!(world.journal().last_committed().unwrap().world_value, 2);
 }
+
+#[test]
+fn async_writer_rejects_new_command_in_already_sealed_tick() {
+    let path = temp_db("sealed-arrival");
+    let mut world = World::with_journal(
+        WorldConfig::default(),
+        DurableJournal::async_sqlite(&path).unwrap(),
+    );
+    bump(&mut world, 1, 1, 3);
+    assert_eq!(
+        world.advance_tick_nonblocking().unwrap(),
+        TickAdvance::Submitted { generation: 1 }
+    );
+    let late = world.enqueue(QueuedCommand {
+        arrival_tick: 1,
+        aigent_id: b"a".to_vec(),
+        sequence: 2,
+        effect: CommandEffect::BumpWorldValue { delta: 4 },
+    });
+    assert_eq!(
+        late,
+        Err(world_server::WorldError::StaleArrivalTick {
+            arrival_tick: 1,
+            next_tick: 2
+        })
+    );
+    bump(&mut world, 2, 2, 4);
+    assert_eq!(world.wait_durable().unwrap().world_value, 3);
+    let second = world.advance_tick().unwrap();
+    assert_eq!(second.world_value, 7);
+    assert_eq!(second.applied_commands[0].arrival_tick, 2);
+    drop(world);
+    let _ = std::fs::remove_file(&path);
+}

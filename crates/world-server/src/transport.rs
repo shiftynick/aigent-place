@@ -13,9 +13,9 @@ use crate::generation::ImmutableGeneration;
 use crate::outbound::{ObserveOutcome, StateKind, QUEUE_LIMIT_BYTES};
 use crate::persist::DurableJournal;
 use crate::session::{
-    AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit, ConnectionMode,
-    ConnectionRole, DecodedCommandPayload, FeatureOffer, HandshakeOutcome, IdentityBinding,
-    SessionHub,
+    AdmissionFailure, AuthoritativeResult, ClientHello, CommandOutcome, CommandSubmit,
+    ConnectionMode, ConnectionRole, DecodedCommandPayload, FeatureOffer, HandshakeOutcome,
+    IdentityBinding, SessionHub,
 };
 use crate::tick::TICK_MS;
 use crate::world::{CommandEffect, QueuedCommand, World, WorldConfig, WorldError};
@@ -154,9 +154,11 @@ pub struct TransportState {
     pub mailbox: PublicationMailbox,
     /// Authoritative world advanced by the simulation loop / tests.
     pub world: Mutex<World>,
-    /// Logical next arrival tick (simulation-facing counter; not a frame counter).
+    /// Wall-paced 20 Hz outbound pressure clock, including while durability is busy.
+    /// World owns the separate command-admission tick.
     pub next_arrival_tick: AtomicU64,
-    /// Stamps applied to admitted mutating commands (test/observe).
+    /// Diagnostic ticks of newly queued local effects (test/observe).
+    /// Captured during admission, appended only after session/world locks drop.
     pub stamped_arrivals: Mutex<Vec<(Vec<u8>, u64)>>,
     connection_seq: AtomicU64,
     server_message_seq: AtomicU64,
@@ -217,12 +219,13 @@ impl TransportState {
         self.server_message_seq.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// Current logical arrival tick without consuming it.
+    /// Current transport pressure tick without consuming it.
     pub fn peek_arrival_tick(&self) -> u64 {
         self.next_arrival_tick.load(Ordering::Relaxed)
     }
 
-    /// Advance the logical tick (sim stage / tests).
+    /// Advance the wall-paced pressure tick (sim stage / tests).
+    /// This must continue while the world waits for durable installation.
     pub fn advance_logical_tick(&self) -> u64 {
         self.next_arrival_tick.fetch_add(1, Ordering::Relaxed)
     }
@@ -1051,10 +1054,6 @@ async fn handle_command_envelope(
     metadata: Option<aigent_protocol::EnvelopeMetadata>,
     command: aigent_protocol::Command,
 ) -> bool {
-    let arrival_tick = {
-        let world = state.world.lock().await;
-        state.peek_arrival_tick().max(world.next_tick())
-    };
     let payload_bytes = command.payload.clone();
     let submit = CommandSubmit {
         connection_id: connection_id.to_vec(),
@@ -1087,34 +1086,41 @@ async fn handle_command_envelope(
             })
             .unwrap_or_default(),
     };
-    let kind = submit.kind;
-    let sequence = submit.sequence;
-    let outcome = {
+    let (outcome, admitted_tick) = {
+        // This is the only combined session/world boundary. Lock in this order
+        // and perform the local queue callback synchronously, without I/O.
         let mut hub = state.sessions.lock().await;
-        hub.submit_command(submit)
+        let mut world = state.world.lock().await;
+        let mut admitted_tick = None;
+        let outcome = hub.submit_command_with_admission(submit, |aigent_id, command, decoded| {
+            let tick = queue_world_effect(
+                &mut world,
+                aigent_id,
+                command.kind,
+                command.sequence,
+                decoded,
+            )?;
+            admitted_tick = tick;
+            Ok(())
+        });
+        (outcome, admitted_tick)
     };
-    state
-        .stamped_arrivals
-        .lock()
-        .await
-        .push((connection_id.to_vec(), arrival_tick));
-
-    if let CommandOutcome::Result {
-        result: AuthoritativeResult::Accepted { decoded, .. },
-        replayed: false,
-        ..
-    } = &outcome
-    {
-        apply_world_effect(
-            state,
-            connection_id,
-            kind,
-            sequence,
-            arrival_tick,
-            decoded.clone(),
-        )
-        .await;
+    if let Some(tick) = admitted_tick {
+        state
+            .stamped_arrivals
+            .lock()
+            .await
+            .push((connection_id.to_vec(), tick));
     }
+    let outcome = match outcome {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            // A terminal/internal admission failure has no authoritative result
+            // or cache entry. It is not a claim of global persistence failure.
+            eprintln!("world-server: local command admission closed: connection={} message={message_id}: {error}", hex::encode(connection_id));
+            return false;
+        }
+    };
 
     if let Some(frame) =
         encode_command_outcome(connection_id, state.next_server_message_id(), &outcome)
@@ -1125,85 +1131,63 @@ async fn handle_command_envelope(
     true
 }
 
-async fn apply_world_effect(
-    state: &TransportState,
-    connection_id: &[u8],
+/// Build the existing listen/demo effects in memory, then admit the complete
+/// batch under World ownership. Geometry command skeletons remain no-effect.
+fn queue_world_effect(
+    world: &mut World,
+    aigent_id: &[u8],
     kind: CommandKind,
     sequence: u64,
-    _arrival_hint: u64,
-    decoded: DecodedCommandPayload,
-) {
-    let aigent_id = {
-        let hub = state.sessions.lock().await;
-        hub.aigent_id_for(connection_id)
-    };
-    let Some(aigent_id) = aigent_id else {
-        return;
-    };
-    let mut world = state.world.lock().await;
-    let arrival_tick = state.peek_arrival_tick().max(world.next_tick());
-
-    // Narrow listen/demo path: ensure a real shaped body is created and bound
-    // in the same tick, ordered before the aigent's MOVE via a `\0`-prefixed
-    // controller identity so canonical order applies create first.
-    if !world.has_body_or_pending_spawn(&aigent_id)
-        && matches!(
-            (kind, &decoded),
-            (CommandKind::Move, DecodedCommandPayload::Move(_))
-        )
-    {
-        let mut demo_controller = vec![0u8];
-        demo_controller.extend_from_slice(&aigent_id);
-        let spawn_shape = demo_body_shape_slot();
-        let Some(spawn_position) = world.next_demo_spawn_position(&spawn_shape) else {
-            return;
-        };
-        let spawn = QueuedCommand {
-            arrival_tick,
-            aigent_id: demo_controller,
-            sequence: 1,
-            effect: CommandEffect::CreateAndBindDemoBody {
-                aigent_id: aigent_id.clone(),
-                position: spawn_position,
-                shape: spawn_shape,
-            },
-        };
-        if world.enqueue(spawn).is_err() {
-            return;
-        }
-    }
-
+    decoded: &DecodedCommandPayload,
+) -> Result<Option<u64>, AdmissionFailure<WorldError>> {
     let effect = match (kind, decoded) {
         (CommandKind::Move, DecodedCommandPayload::Move(intent)) => {
             CommandEffect::UpsertMoveLease {
                 body_id: None,
-                intent,
+                intent: *intent,
                 ttl_ms: None,
             }
         }
-        (CommandKind::CancelIntent | CommandKind::Stop, _) => {
+        (CommandKind::CancelIntent | CommandKind::Stop, DecodedCommandPayload::None) => {
             CommandEffect::CancelLease { body_id: None }
         }
-        _ => return,
+        _ => return Ok(None),
     };
-    let command = QueuedCommand {
-        arrival_tick,
-        aigent_id: aigent_id.clone(),
-        sequence,
-        effect: effect.clone(),
-    };
-    match world.enqueue(command) {
-        Ok(()) => {}
-        Err(crate::world::WorldError::StaleArrivalTick { next_tick, .. }) => {
-            let _ = world.enqueue(QueuedCommand {
-                arrival_tick: next_tick,
-                aigent_id,
-                sequence,
-                effect,
-            });
-        }
-        Err(_) => {}
+    let arrival_tick = world.next_command_tick().map_err(AdmissionFailure::Fatal)?;
+    let mut commands = Vec::new();
+    if !world.has_body_or_pending_spawn(aigent_id) && kind == CommandKind::Move {
+        let mut demo_controller = vec![0u8];
+        demo_controller.extend_from_slice(aigent_id);
+        let shape = demo_body_shape_slot();
+        let position = world
+            .next_demo_spawn_position(&shape)
+            .ok_or(AdmissionFailure::Rejected(
+                aigent_protocol::CommandRejectionCode::Conflict,
+            ))?;
+        commands.push(QueuedCommand {
+            arrival_tick,
+            aigent_id: demo_controller,
+            sequence: 1,
+            effect: CommandEffect::CreateAndBindDemoBody {
+                aigent_id: aigent_id.to_vec(),
+                position,
+                shape,
+            },
+        });
     }
+    commands.push(QueuedCommand {
+        arrival_tick,
+        aigent_id: aigent_id.to_vec(),
+        sequence,
+        effect,
+    });
+    world.enqueue_batch(commands).map_err(|error| match error {
+        WorldError::DuplicateCommandTuple => {
+            AdmissionFailure::Rejected(aigent_protocol::CommandRejectionCode::Conflict)
+        }
+        error => AdmissionFailure::Fatal(error),
+    })?;
+    Ok(Some(arrival_tick))
 }
 
 fn demo_body_shape_slot() -> ShapeSlot {
@@ -1526,6 +1510,104 @@ mod feature_wire_tests {
 mod buffered_outbound_tests {
     use super::*;
 
+    #[test]
+    fn effect_reservation_uses_current_world_ownership() {
+        let mut world = World::new(WorldConfig::default());
+        assert_eq!(world.advance_tick().unwrap().tick, 1);
+        assert_eq!(
+            queue_world_effect(
+                &mut world,
+                b"crossed-a",
+                CommandKind::Move,
+                1,
+                &DecodedCommandPayload::Move(crate::movement::MoveIntent {
+                    target_x_mm: 5_000,
+                    target_z_mm: 0,
+                    speed_mm_per_s: 1_000,
+                })
+            )
+            .unwrap(),
+            Some(2)
+        );
+        let generation = world.advance_tick().unwrap();
+        assert_eq!(generation.tick, 2);
+        assert_eq!(generation.applied_commands.len(), 2);
+        assert!(generation
+            .applied_commands
+            .iter()
+            .all(|command| command.arrival_tick == 2));
+        assert_eq!(generation.active_leases.len(), 1);
+    }
+
+    #[test]
+    fn full_demo_spawn_grid_rejects_without_a_partial_batch() {
+        let mut world = World::new(WorldConfig::default());
+        let shape = demo_body_shape_slot();
+        let occupied = (0..4_096usize)
+            .map(|slot| {
+                let aigent_id = format!("occupied-{slot}").into_bytes();
+                QueuedCommand {
+                    arrival_tick: 1,
+                    aigent_id: aigent_id.clone(),
+                    sequence: 1,
+                    effect: CommandEffect::CreateAndBindDemoBody {
+                        aigent_id,
+                        position: crate::entity::PositionRequest::new(
+                            (slot % 200) as f64 * 2.0,
+                            1.0,
+                            (slot / 200) as f64 * 2.0,
+                        ),
+                        shape: shape.clone(),
+                    },
+                }
+            })
+            .collect();
+        world.enqueue_batch(occupied).unwrap();
+        let result = queue_world_effect(
+            &mut world,
+            b"no-slot",
+            CommandKind::Move,
+            1,
+            &DecodedCommandPayload::Move(crate::movement::MoveIntent {
+                target_x_mm: 5_000,
+                target_z_mm: 0,
+                speed_mm_per_s: 1_000,
+            }),
+        );
+        assert!(matches!(
+            result,
+            Err(AdmissionFailure::Rejected(
+                aigent_protocol::CommandRejectionCode::Conflict
+            ))
+        ));
+        assert!(!world.has_body_or_pending_spawn(b"no-slot"));
+    }
+
+    #[test]
+    fn geometry_skeletons_admit_without_local_effects() {
+        let mut world = World::new(WorldConfig::default());
+        for kind in [
+            CommandKind::PlaceObject,
+            CommandKind::SetShape,
+            CommandKind::Unstick,
+        ] {
+            assert_eq!(
+                queue_world_effect(
+                    &mut world,
+                    b"skeleton-a",
+                    kind,
+                    1,
+                    &DecodedCommandPayload::None
+                )
+                .unwrap(),
+                None
+            );
+        }
+        let generation = world.advance_tick().unwrap();
+        assert!(generation.applied_commands.is_empty());
+        assert!(generation.entities.is_empty());
+    }
+
     #[tokio::test]
     async fn active_full_stays_charged_and_cannot_release_a_newer_resync() {
         let state = TransportState::new(SessionHub::new_v1());
@@ -1616,8 +1698,29 @@ mod buffered_outbound_tests {
     }
 
     #[tokio::test]
-    async fn overflow_observation_cancels_only_the_affected_active_write() {
-        let state = TransportState::new(SessionHub::new_v1());
+    async fn overflow_observation_cancels_only_the_affected_active_write_while_world_busy() {
+        let path = std::env::temp_dir().join(format!(
+            "aigent-place-busy-pressure-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        let mut world = World::with_journal(
+            WorldConfig::default(),
+            DurableJournal::async_sqlite(&path).unwrap(),
+        );
+        world
+            .journal_mut()
+            .as_async_sqlite_mut()
+            .unwrap()
+            .inject_delay_next(Duration::from_millis(20));
+        assert_eq!(
+            world.advance_tick_nonblocking().unwrap(),
+            crate::TickAdvance::Submitted { generation: 1 }
+        );
+        let state = TransportState::new_with_world(SessionHub::new_v1(), false, world);
         let slow_id = b"overflow-active-write".to_vec();
         let healthy_id = b"healthy-write".to_vec();
         let (slow_close_tx, mut slow_close_rx) = watch::channel(false);
@@ -1672,6 +1775,10 @@ mod buffered_outbound_tests {
         });
         started_rx.await.unwrap();
         for observation in 1..=crate::outbound::OVERFLOW_TICK_OBSERVATIONS {
+            assert_eq!(
+                state.world.lock().await.advance_tick_nonblocking().unwrap(),
+                crate::TickAdvance::Busy
+            );
             state.advance_logical_tick();
             let report = state.drain_fanout(None).await;
             if observation < crate::outbound::OVERFLOW_TICK_OBSERVATIONS {
@@ -1710,6 +1817,17 @@ mod buffered_outbound_tests {
         assert!(!healthy.queue.is_closed());
         assert_eq!(healthy.queue.queued_bytes(), 0);
         assert!(!healthy.hold_observe);
+        assert_eq!(
+            state.world.lock().await.next_tick(),
+            1,
+            "pressure must expire while durable clock stays sealed"
+        );
+        drop(fanout);
+        drop(sockets);
+        drop(state);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+        let _ = std::fs::remove_file(format!("{}-shm", path.display()));
     }
 
     #[tokio::test]
