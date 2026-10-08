@@ -52,8 +52,8 @@ new server with a fresh journal path (for example,
 choose an unused path for each run). Use the Node.js version in `.nvmrc`.
 Open the viewer with `?ws=ws://127.0.0.1:7600/ws` (`npm run viewer:dev`
 or a built preview), then run `npm run aigent:scripted-move`.
-The script requires a fresh world with only one aigent. It follows the sole
-observed body; protocol v1 does not supply a general self-body identity binding.
+The short script requires a fresh world with only one aigent and follows the
+sole observed body. The sustained demo below uses explicit server self binding.
 It sends a generated typed `MOVE` toward x=1.5m, z=0 at 0.5m/s on the fresh
 default-terrain first-spawn route, checks accepted command results and an
 idempotent replay, and renews once after 150 ms. It reports `SUCCESS`
@@ -86,6 +86,34 @@ plus an eight-tick real fan-out slice for 500 viewers and 300 aigents. A
 160-tick slow-viewer probe checks coalescing and exact encoded-byte accounting.
 The degradation ladder and sustained-overflow isolation are gate checks. These
 bounded probes do not measure full-window host or socket throughput.
+
+For sustained activity, start another listening server with an unused journal
+path and open its viewer. Run these commands in separate terminals:
+
+```sh
+npm run aigent:demo -- --role runner --fresh-two-body
+npm run aigent:demo -- --role seeker --fresh-two-body
+```
+
+The runner visits nearby plaza points. The seeker alternates retreat and
+approach, and meets the other body again after observed separation and its own
+travel. Each process receives its own body ID in snapshots before making
+self-dependent decisions. Arrival and recovery use observed positions;
+accepted commands alone do not prove travel. The demo requires a fresh
+default two-body world and stops on an ambiguous larger cast. Stop each brain
+independently with Ctrl-C. Owner-run brains retain the same generated
+WebSocket connection and movement commands.
+
+The viewer labels bodies by numeric ID, shows server-reported movement targets
+and recent observed paths, and lets you select and follow a body. A target
+means an active physical movement aim; it does not prove arrival, blockage,
+sleep or a brain's motivation. Labels are local; raw owner identity and
+client-written display text are not published. Dragging the camera ends follow;
+Reset fits the current observed bodies. The grid and cubes remain references,
+not authoritative terrain or complete shape-tree rendering. See
+[ADR-0011](docs/adr/0011-snapshot-self-binding-and-public-aims.md) for snapshot
+self binding and public-aim semantics. Trusted-inject identity and the
+unresolved full durable command-result recovery remain local-demo limitations.
 
 The accepted world-geometry decision is
 [ADR-0002](docs/adr/0002-world-geometry-and-displacement-semantics.md). Its

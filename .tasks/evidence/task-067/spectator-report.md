@@ -1,0 +1,11 @@
+# task-067 live spectator acceptance
+
+A new independent Claude Fable5 reviewer opened the actual viewer in its own isolated Chromium tab against two continuously running demo processes. Machine UTC/monotonic samples at19:42:59.765,19:43:09.586,19:43:19.534 and19:43:29.616 establish the first30seconds; no model setup deadline is confused with a runtime duration. Screenshots were inspected by the reviewer and root.
+
+Observed PASS: two visibly distinct moving bodies, physical aim line/ring, labels and changing target chips are understandable within30seconds. Real selection, Follow, body switching and Reset work. Inspector text states only current/last-observed physical target, distance, speed and position; it states no motivations, arrival, sleep or owner identity. A13-sample/24second poll of Body1 shows continued route motion and chip/aim consistency. This visual read is separate from the independent wire-based sustained-motion acceptance.
+
+Root repeated actual selection/Follow/Reset after the60degree camera repair (task run2.7s, exit0); selectedBody2 remains correct, Follow toggles true and Reset false.390px mobile page width remains390px. Root inspected desktop/mobile screenshots. The earlier actual CDP capture, decoded through a recorded check, contains only one outbound VIEWER hello and no commands during controls; public aims arrived in1full/64deltas and private self binding was absent throughout (browser-network-proof.json).
+
+The first spectator's low-angle occlusion finding caused the camera regression/fix. Its approximate image timestamps did not prove continuous30second overlap. The new read finds no camera or stall defect. Close world-position passes can still overlap labels and cubes; this is a low presentation limitation, plus inherited inactive-body collision behavior. The list remains usable. Label decluttering is recorded for task055; no world coordinates are changed to fake separation. Trails are faint and bounded; this read confirms presence rather than measuring the full history cap.
+
+Full timestamp/image/DOM records and both separate reviewer receipts are retained in private program evidence. This is live product validation, not the formal cold SPEC/STANDARDS code review. The startup bootstrap repair is now integrated with rootSDK47/47 passing; final post-edit sustained runtime separately passes all14 criteria.

@@ -765,6 +765,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
         }
     };
     let role = semantic.role;
+    let aigent_id = semantic.aigent_id.clone();
     // One mapping serves both lease application and AOI focus, so an aigent's
     // interest set is centred on the body its own commands move.
     let focus_body_id = semantic.aigent_id.as_deref().map(body_id_for_aigent);
@@ -800,6 +801,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
                 fanout.attach(connection_id.clone());
                 if let Some(connection) = fanout.get_mut(&connection_id) {
                     connection.role = role;
+                    connection.aigent_id = aigent_id;
                     // Viewers have no camera on the wire in protocol v1, so they
                     // keep the default origin focus.
                     connection.focus_body_id = focus_body_id;

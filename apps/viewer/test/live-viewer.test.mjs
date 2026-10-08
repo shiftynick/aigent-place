@@ -18,7 +18,11 @@ import { entity } from "./snapshot-fixtures.mjs";
 
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
-    if ((specifier === "three" || specifier === "three/addons/controls/OrbitControls.js") && context.parentURL.endsWith("/src/main.js")) {
+    if (specifier === "./style.css" && context.parentURL.endsWith("/src/main.js")) {
+      return { url: "data:text/javascript,export%20{}", shortCircuit: true };
+    }
+    if ((specifier === "three" || specifier === "three/addons/controls/OrbitControls.js") &&
+        ["/src/main.js", "/src/resident-visuals.js"].some(path => context.parentURL.endsWith(path))) {
       return { url: new URL("./fake-three.mjs", import.meta.url).href, shortCircuit: true };
     }
     return nextResolve(specifier, context);
@@ -32,7 +36,24 @@ const resetButton = {
   addEventListener(name, callback) { this.listeners[name] = callback; },
   removeEventListener(name) { delete this.listeners[name]; },
 };
-globalThis.document = { querySelector: selector => ({ "#status": status, "#scene-state": sceneState, "#reset-view": resetButton })[selector] };
+class Element {
+  constructor() {
+    this.textContent = ""; this.children = []; this.listeners = {}; this.attributes = {}; this.dataset = {}; this.hidden = false;
+    this.style = { setProperty(name, value) { this[name] = value; } };
+    this.classList = { toggle() {} };
+  }
+  setAttribute(name, value) { this.attributes[name] = value; }
+  addEventListener(name, callback) { this.listeners[name] = callback; }
+  removeEventListener(name) { delete this.listeners[name]; }
+  append(child) { child.parent = this; this.children.push(child); }
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter(value => value !== this); }
+  click() { if (!this.disabled) this.listeners.click?.(); }
+}
+const ui = Object.fromEntries(["follow-body", "resident-list", "body-labels", "selected-title", "selected-aim", "selected-position", "observation-status", "resident-count"].map(id => [`#${id}`, new Element()]));
+globalThis.document = {
+  querySelector: selector => ({ "#status": status, "#scene-state": sceneState, "#reset-view": resetButton, ...ui })[selector],
+  createElement: () => new Element(),
+};
 globalThis.HTMLCanvasElement = class {};
 const { startLiveViewer } = await import("../src/main.js");
 hooks.deregister();
@@ -45,6 +66,7 @@ const fullPayload = (records = [], overrides = {}) => toBinary(WorldSnapshotBody
   create(WorldSnapshotBodyProtoSchema, { version: 1, tick: 42n, generationDigest: digest, bodies: records, ...overrides }));
 const deltaPayload = (overrides = {}) => toBinary(WorldSnapshotDeltaProtoSchema,
   create(WorldSnapshotDeltaProtoSchema, { version: 1, generationDigest: digest, ...overrides }));
+const aim = (targetXMm = 3500n, targetZMm = -250n, speedMmPerS = 500) => ({ targetXMm, targetZMm, speedMmPerS });
 const serverEnvelope = (body, overrides = {}) => toBinary(EnvelopeSchema,
   create(EnvelopeSchema, { protocolMajor: 1, connectionId: incomingIdentity, messageId: nextIncomingMessageId++, metadata: {}, body, ...overrides }));
 const envelope = (kind, payload, baselineId = 5n, overrides = {}) =>
@@ -160,6 +182,8 @@ function harness(t) {
   return {
     sockets, timers, scene, handshake, viewer, canvas, camera: cameras[0], controls: controls[0], renderer: renderers[0], observers, cancelledFrames, clearedTimers,
     meshes: () => scene.children.filter(child => child.isMesh),
+    lines: () => scene.children.filter(child => child.isLine),
+    choose: id => ui["#resident-list"].children.find(button => button.dataset.bodyId === String(id)).click(),
     frame: () => animations.shift()(),
     requests: (socket = sockets.at(-1)) => socket.sent.slice(1).map(bytes => fromBinary(EnvelopeSchema, bytes)),
   };
@@ -169,6 +193,213 @@ function assertDisposed(mesh) {
   assert.equal(mesh.geometry.disposals, 1, "geometry disposed once");
   assert.equal(mesh.material.disposals, 1, "material disposed once");
 }
+
+test("authoritative aim-only changes update reused targets and selected inspector without inventing movement", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { aim: aim() })])));
+  const [aimLine, marker, trail] = h.lines();
+  const mesh = h.meshes()[0];
+  const resources = h.lines().map(line => [line.geometry, line.material]);
+  assert.equal(aimLine.visible, true);
+  assert.equal(marker.visible, true);
+  assert.deepEqual([...aimLine.geometry.getAttribute("position").array], [1.5, 0, -2.25, 3.5, 0, -0.25]);
+  h.choose(1n);
+  assert.equal(ui["#selected-title"].textContent, "Body 1");
+  assert.match(ui["#selected-aim"].textContent, /Current movement target: x 3.50 m.*z -0.25 m.*2.83 m away/);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(1n, { aim: aim(-4500n, 2000n) })] })));
+  assert.equal(h.meshes()[0], mesh);
+  assert.deepEqual([...aimLine.geometry.getAttribute("position").array], [1.5, 0, -2.25, -4.5, 0, 2]);
+  assert.match(ui["#selected-aim"].textContent, /x -4.50 m.*z 2.00 m/);
+  assert.equal(trail.geometry.drawRange.count, 1, "unchanged authoritative pose does not extend trail");
+  for (let index = 0; index < 10; index++) h.frame();
+  assert.equal(trail.geometry.drawRange.count, 1, "smoothed frames cannot extend authoritative history");
+  assert.deepEqual(h.lines().map(line => [line.geometry, line.material]), resources);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(1n)] })));
+  assert.equal(aimLine.visible, false);
+  assert.equal(marker.visible, false);
+  assert.equal(ui["#selected-aim"].textContent, "No active movement aim");
+  assert.doesNotMatch(ui["#selected-aim"].textContent, /arriv|block|sleep|expir|countdown/i);
+  assert.equal(h.requests().length, 0, "inspection is read-only");
+});
+
+test("trail samples only authoritative movement, ignores two-mm jitter, and retains at most64 points", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)])));
+  const trail = h.lines()[2];
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(1n, { positionMm: { xMm: 1501n, yMm: 0n, zMm: -2250n } })] })));
+  assert.equal(trail.geometry.drawRange.count, 1);
+  for (let index = 1; index <= 100; index++) {
+    socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(1n, { positionMm: { xMm: 1500n + BigInt(index * 25), yMm: 0n, zMm: -2250n } })] })));
+    h.frame();
+  }
+  assert.equal(trail.geometry.drawRange.count, 64);
+  assert.equal(trail.geometry.getAttribute("position").count, 64, "fixed GPU buffer bounds history");
+  assert.ok(Math.abs(trail.geometry.getAttribute("position").getX(0) - 2.425) < 1e-6);
+  assert.equal(trail.geometry.getAttribute("position").getX(63), 4);
+  for (let index = 0; index < 30; index++) socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(1n, { positionMm: { xMm: 4000n, yMm: 0n, zMm: -2250n } })] })));
+  assert.equal(trail.geometry.drawRange.count, 64);
+  assert.ok(Math.abs(trail.geometry.getAttribute("position").getX(0) - 2.425) < 1e-6, "duplicate upserts cannot evict useful history");
+});
+
+test("near-body target relationship is derived from installed horizontal poses and changes on peer-only updates", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([
+    entity(1n, { aim: aim(4000n, 5000n) }),
+    entity(2n, { positionMm: { xMm: 4000n, yMm: 9000n, zMm: 5000n } }),
+  ])));
+  h.choose(1n);
+  assert.match(ui["#selected-aim"].textContent, /Target 0.00 m horizontally from Body 2/);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(2n, { positionMm: { xMm: 7000n, yMm: 0n, zMm: 5000n } })] })));
+  assert.doesNotMatch(ui["#selected-aim"].textContent, /from Body/);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(2n, { positionMm: { xMm: 5000n, yMm: 0n, zMm: 5000n } })] })));
+  assert.match(ui["#selected-aim"].textContent, /Target 1.00 m horizontally from Body 2/);
+  assert.doesNotMatch(ui["#selected-aim"].textContent, /chasing|meeting|following|arriv|goal|sleep|block/i);
+});
+
+test("delta growth past100 observed bodies requests recovery before graphics or list allocations", t => {
+  const h = harness(t), socket = h.handshake();
+  const records = Array.from({ length: 100 }, (_, index) => entity(BigInt(index + 1)));
+  socket.receive(envelope("fullSnapshot", fullPayload(records)));
+  assert.equal(h.meshes().length, 100);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ entered: [entity(101n)] })));
+  assert.equal(h.meshes().length, 100);
+  assert.equal(ui["#resident-list"].children.length, 100);
+  assert.equal(h.requests().at(-1).body.case, "snapshotResyncRequest");
+});
+
+test("valid full and delta AOI replacement never transiently allocates over100 bodies", t => {
+  const h = harness(t), socket = h.handshake();
+  const records = start => Array.from({ length: 100 }, (_, index) => entity(BigInt(start + index)));
+  socket.receive(envelope("fullSnapshot", fullPayload(records(1))));
+  socket.receive(envelope("fullSnapshot", fullPayload(records(101)), 6n));
+  assert.equal(h.scene.peakMeshes, 100);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ leftIds: records(101).map(record => record.entityId), entered: records(201) }), 6n));
+  assert.equal(h.scene.peakMeshes, 100);
+  assert.equal(h.meshes().length, 100);
+  assert.equal(h.requests().length, 0);
+});
+
+test("selection and follow retain exact ID through full/resync, stop on leave or manual camera, and reset fits bodies", t => {
+  const h = harness(t), socket = h.handshake();
+  const id = 9007199254740993n;
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n), entity(id, { positionMm: { xMm: 4000n, yMm: 3000n, zMm: 1000n }, aim: aim() })])));
+  h.choose(id);
+  assert.equal(ui["#selected-title"].textContent, `Body ${id}`);
+  ui["#follow-body"].click();
+  assert.equal(ui["#follow-body"].attributes["aria-pressed"], "true");
+  assert.deepEqual(h.controls.target.toArray(), [4, 3, 1]);
+  const offset = h.camera.position.clone().sub(h.controls.target);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(id, { positionMm: { xMm: 6000n, yMm: 3000n, zMm: 2000n }, aim: aim() })] })));
+  h.frame();
+  assert.deepEqual(h.controls.target.toArray(), [4.4, 3, 1.2]);
+  assert.ok(h.camera.position.clone().sub(h.controls.target).distanceTo(offset) < 1e-10);
+  socket.receive(serverEnvelope({ case: "snapshotResyncRequired", value: {} }));
+  assert.equal(ui["#follow-body"].disabled, true);
+  assert.match(ui["#selected-aim"].textContent, /^Last observed movement target/);
+  const frozen = h.controls.target.clone();
+  h.frame();
+  assert.deepEqual(h.controls.target.toArray(), frozen.toArray(), "follow pauses while observation refreshes");
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(id, { positionMm: { xMm: 7000n, yMm: 3000n, zMm: 3000n }, aim: aim() }), entity(1n)]), 6n));
+  assert.equal(ui["#selected-title"].textContent, `Body ${id}`);
+  assert.equal(ui["#follow-body"].attributes["aria-pressed"], "true");
+  h.frame();
+  assert.ok(h.controls.target.x > frozen.x, "follow resumes on the same ID after full recovery");
+  h.controls.emit("start");
+  assert.equal(ui["#follow-body"].attributes["aria-pressed"], "false");
+  const manual = h.controls.target.clone();
+  h.frame();
+  assert.deepEqual(h.controls.target.toArray(), manual.toArray());
+  ui["#follow-body"].click();
+  resetButton.listeners.click();
+  assert.equal(ui["#follow-body"].attributes["aria-pressed"], "false");
+  assert.deepEqual(h.controls.target.toArray(), [4.25, 1.5, 0.375]);
+  ui["#follow-body"].click();
+  const selectedGraphics = [h.meshes()[1], ...h.lines().slice(3)];
+  socket.receive(envelope("snapshotDelta", deltaPayload({ leftIds: [id] }), 6n));
+  assert.equal(ui["#selected-title"].textContent, "Choose a body");
+  assert.equal(ui["#follow-body"].disabled, true);
+  assert.equal(ui["#follow-body"].attributes["aria-pressed"], "false");
+  selectedGraphics.forEach(assertDisposed);
+  assert.equal(ui["#resident-list"].children.length, 1);
+  assert.deepEqual(h.requests().map(request => request.body.case), ["snapshotResyncRequest"], "navigation adds no world commands");
+});
+
+test("invalid aim transition cannot partially change poses, targets, trails or selection, and disconnect labels stale state", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { aim: aim() }), entity(2n)])));
+  h.choose(1n);
+  const aimLine = h.lines()[0], trail = h.lines()[2];
+  const before = [...aimLine.geometry.getAttribute("position").array];
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [
+    entity(1n, { aim: aim(100000001n) }), entity(2n, { positionMm: { xMm: 7000n } }),
+  ] })));
+  assert.deepEqual([...aimLine.geometry.getAttribute("position").array], before);
+  assert.equal(trail.geometry.drawRange.count, 1);
+  assert.equal(ui["#selected-title"].textContent, "Body 1");
+  assert.match(ui["#selected-aim"].textContent, /^Last observed/);
+  assert.equal(h.requests().at(-1).body.case, "snapshotResyncRequest");
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { aim: aim() })]), 6n));
+  socket.close();
+  assert.match(ui["#selected-aim"].textContent, /^Last observed movement target/);
+  assert.equal(ui["#follow-body"].disabled, true);
+  h.timers[0].callback();
+  assert.equal(ui["#resident-list"].children.length, 0);
+  assert.equal(ui["#body-labels"].children.length, 0);
+  assert.equal(ui["#selected-title"].textContent, "Choose a body");
+  const recovered = h.handshake();
+  recovered.receive(envelope("fullSnapshot", fullPayload([entity(2n)]), 7n));
+  assert.equal(ui["#resident-list"].children[0].textContent, "Body 2");
+  h.choose(2n);
+  assert.equal(ui["#selected-aim"].textContent, "No active movement aim");
+});
+
+for (const kind of ["fullSnapshot", "snapshotDelta"]) {
+  test(`present zero self-body binding in ${kind} requests read-only resync without partial observation effects`, t => {
+    const h = harness(t), socket = h.handshake();
+    socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { aim: aim() })])));
+    h.choose(1n);
+    const mesh = h.meshes()[0], [aimLine, , trail] = h.lines();
+    const position = mesh.position.toArray();
+    const target = [...aimLine.geometry.getAttribute("position").array];
+    const changed = entity(1n, { positionMm: { xMm: 7000n, yMm: 2000n, zMm: 3000n }, aim: aim(9000n, 1000n) });
+    const invalid = kind === "fullSnapshot"
+      ? fullPayload([changed, entity(2n)], { selfBodyId: 0n })
+      : deltaPayload({ selfBodyId: 0n, modified: [changed], entered: [entity(2n)] });
+    socket.receive(envelope(kind, invalid));
+    assert.equal(h.requests().length, 1);
+    assert.equal(h.requests()[0].body.case, "snapshotResyncRequest");
+    assert.equal(h.meshes().length, 1);
+    assert.equal(h.meshes()[0], mesh);
+    assert.deepEqual(mesh.position.toArray(), position);
+    assert.deepEqual([...aimLine.geometry.getAttribute("position").array], target);
+    assert.equal(trail.geometry.drawRange.count, 1);
+    assert.equal(ui["#resident-list"].children.length, 1);
+    assert.equal(ui["#selected-title"].textContent, "Body 1");
+    assert.match(ui["#selected-aim"].textContent, /^Last observed movement target/);
+    assert.match(status.textContent, /invalid.*payload.*requesting full snapshot/);
+    socket.receive(envelope("snapshotDelta", deltaPayload({ leftIds: [1n] })));
+    assert.equal(h.meshes()[0], mesh, "subsequent deltas wait for a full recovery");
+    socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { aim: aim() })]), 6n));
+    assert.match(ui["#selected-aim"].textContent, /^Current movement target/);
+    assert.equal(ui["#selected-title"].textContent, "Body 1");
+    assert.deepEqual(h.requests().map(request => request.body.case), ["snapshotResyncRequest"]);
+  });
+}
+
+test("body graphics and local controls release once on leave, reconnect and disposal; reset reuses them", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { aim: aim() })])));
+  const graphics = [h.meshes()[0], ...h.lines()];
+  const button = ui["#resident-list"].children[0];
+  resetButton.listeners.click(); resetButton.listeners.click();
+  graphics.forEach(graphic => assert.equal(graphic.geometry.disposals, 0));
+  h.viewer.dispose(); h.viewer.dispose();
+  graphics.forEach(assertDisposed);
+  assert.equal(button.listeners.click, undefined);
+  assert.equal(ui["#resident-list"].children.length, 0);
+  assert.equal(ui["#body-labels"].children.length, 0);
+  assert.equal(ui["#follow-body"].listeners.click, undefined);
+});
 
 test("first observed bounds frame elevated and separated bodies, deltas preserve manual framing, and reset fits current targets", t => {
   const h = harness(t);
@@ -425,7 +656,7 @@ test("legal unknown metadata fields remain compatible with live snapshots", t =>
   const bytes = appendUnknownMessageField(EnvelopeSchema, envelope("fullSnapshot", fullPayload([entity(1n)])), "metadata", Uint8Array.of(0xa0, 6, 7));
   socket.receive(bytes);
   assert.equal(h.meshes().length, 1);
-  assert.match(status.textContent, /live tick=42 bodies=1/);
+  assert.match(status.textContent, /full baseline tick=42 bodies=1/);
   assert.equal(h.requests().length, 0);
 });
 

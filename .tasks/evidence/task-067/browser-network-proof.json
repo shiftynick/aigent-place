@@ -1,0 +1,13 @@
+{
+  "capturedEvidence": "Actual Chromium CDP while reload, resident selection, Follow and Reset were clicked",
+  "sourceSha256": "0bb75879e86c981f7e1e07ca754e4f1b88f2c067dc277eba28fad9b01c49a516",
+  "worldSocketCount": 1,
+  "sentFrames": 1,
+  "onlySentPayload": "VIEWER ClientHello, empty aigent identity",
+  "receivedFrames": 66,
+  "fullSnapshots": 1,
+  "deltas": 64,
+  "aimRecords": 101,
+  "privateSelfBindingAbsent": true,
+  "commandsSent": 0
+}

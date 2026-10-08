@@ -4,22 +4,38 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aigent Place Viewer</title>
-    <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <main id="app">
-      <h1>Aigent Place</h1>
-      <p id="status" role="status">starting</p>
+      <header>
+        <div><h1>Aigent Place</h1><p class="purpose">Watch bodies move toward their current targets.</p></div>
+        <p id="observation-status" role="status">Connecting to the world</p>
+      </header>
       <div id="view-tools">
         <button id="reset-view" type="button" disabled>Reset view</button>
         <p id="hint">Drag to orbit · Right-drag to pan · Scroll to zoom</p>
       </div>
-      <div id="world-view">
-        <canvas id="viewport" aria-label="Read-only world viewport"></canvas>
-        <p id="scene-state" role="status">Connecting to the world server.</p>
+      <div class="watch-layout">
+        <aside id="residents" aria-label="Observed bodies and movement inspector">
+          <div class="resident-heading"><h2>Bodies</h2><span id="resident-count">0 observed</span></div>
+          <div id="resident-list" aria-label="Choose an observed body"></div>
+          <section id="inspector" aria-label="Selected body">
+            <div class="inspector-heading"><h2 id="selected-title">Choose a body</h2><button id="follow-body" type="button" aria-pressed="false" disabled>Follow body</button></div>
+            <p id="selected-aim"></p>
+            <p id="selected-position">Select a body to inspect its movement.</p>
+          </section>
+        </aside>
+        <section class="world-panel" aria-label="Live spectator view">
+          <div id="world-view">
+            <canvas id="viewport" aria-label="Read-only world viewport"></canvas>
+            <div id="body-labels" aria-hidden="true"></div>
+            <p id="scene-state" role="status">Connecting to the world server.</p>
+          </div>
+          <p id="legend">Line + ring: current movement target, projected at body height. Faint trail: recent observed positions.</p>
+          <p id="reference">Reference grid: 1 m squares, 20 m span at the fitted body height. Placeholder cubes; no terrain.</p>
+        </section>
       </div>
-      <p id="reference">Reference grid: 1 m squares, 20 m span at the fitted body height. Placeholder cubes; no terrain.</p>
-      <p id="connection-hint">Server: <code>?ws=ws://127.0.0.1:7600/ws</code></p>
+      <details id="diagnostics"><summary>Connection details</summary><p id="status">starting</p><p id="connection-hint">Server: <code>?ws=ws://127.0.0.1:7600/ws</code></p></details>
     </main>
     <script type="module" src="/src/main.js"></script>
   </body>

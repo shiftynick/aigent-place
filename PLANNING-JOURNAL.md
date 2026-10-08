@@ -186,3 +186,57 @@ No pruning is justified without two recorded inactive windows. Watched:
 shell/commit syntax mismatch (`task-046`, `task-047`) and provider/wrapper
 timeout mismatch (`task-048`, `task-049`, already addressed by Foundry).
 `LOCAL-CHANGES.md` has no unsent or packeted upstream entries.
+
+## 2026-10-08 — five-round-live-demo
+
+**Goal:** Improve the live spectator experience and world activity equally,
+so lively, goal-driven aigents produce events worth following.
+
+**Done when:** Five sequential rounds each finish one or two selected
+improvements, fresh independent proposal challenge and code review, real
+runtime validation, and protected PR delivery before the next critique.
+
+Approved front under the operator's confirmed selection delegation:
+
+1. `task-064` — round1 complete through PR70, protected squash9274ffe,
+   exact-head and main-push gate green; typed bounded MOVE and camera controls.
+2. `task-067` — round2 responsive runner/seeker demo and truthful spectator
+   aims/trails/selection/follow, with same-generation snapshot self binding.
+
+Announcement: Two demo aigents stay active in a small plaza. One visits nearby
+points, and the other responds to its observed position. Their movement targets
+and recent paths help you follow what happens. Select a body and follow its
+motion; owner-run brains use the same generated movement protocol.
+
+The fresh live critic saw501 updates over25.019s with one unmoving body and
+recommended sustained activity plus legibility. A separate adversarial review
+returned Revise, removing a client-written name/goal channel and requiring
+correct self binding and position-based recovery. A second clean reviewer
+verified existing full/delta carriers and returned Proceed with additive private
+self binding plus public physical target/speed aims. Root adopted this revised
+pair and accepted ADR0011 using the operator's explicit architecture-selection
+delegation. Concise evidence is `.tasks/evidence/task-067/proposal-adjudication.md`.
+
+Three isolated patch workers own server/protocol, demo brains and viewer; root
+owns integration, contracts and delivery. Runtime acceptance uses a fresh exact
+two-body journal,90s, at least2 observed-position-driven goal transitions each,
+perturbation response within15s, independent stop, reconnect/resync, truthful
+aims and a30s cold spectator read. Fixed choreography, self guesses or invented
+lifecycle text fail acceptance. No future round is selected before this result.
+
+Assumptions: demo brains suffice; no model credentials are needed; movement
+aims are public physical intent, not rich motivation. Full durable results
+remain task-6036971654000001; auth, sleep/wake, shape/placement and terrain
+presentation remain separate existing tasks. All protected delivery and gate
+requirements are unchanged.
+
+Round2 implementation/runtime checkpoint: all workers integrated, lost initial
+bootstrap recovery fixed with real CLI regression, rootSDK47/47 passing. The
+final-source190s run passes14 independent physical checks: first90s travel
+32.674m/42.416m,14 qualifying meetings, same-body reconnect, separate STOPs
+and actual brain/observer exits0. Native and fresh30s spectator checks pass;
+close-pass label overlap remains a low task055 follow-up. Both fresh rung1 cold
+axes completed and are adjudicated; a new independent auditor reproduced the
+raw physical evidence and verified mutant receipts/current manifests. The97.2s
+full gate passed on final production sources. Closeout documentary review,
+post-closeout gate and protected PR delivery remain.

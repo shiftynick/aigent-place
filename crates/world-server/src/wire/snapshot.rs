@@ -21,8 +21,10 @@
 //! always converts.
 
 use crate::entity::{EntitySnapshot, Position, ShapeSlot};
+use crate::lease::LeaseSnapshot;
+use crate::movement::MoveIntent;
 use aigent_protocol::{
-    RealEntityRecord as RealEntityRecordProto, ShapeTree, Vector3Millimeters,
+    MoveAim, RealEntityRecord as RealEntityRecordProto, ShapeTree, Vector3Millimeters,
     WorldSnapshotBodyProto, WorldSnapshotDeltaProto,
 };
 use prost::Message as ProstMessage;
@@ -48,6 +50,7 @@ pub struct RealEntityRecord {
     pub revision: u64,
     pub position_mm: (i64, i64, i64),
     pub shape: Option<ShapeTree>,
+    pub aim: Option<MoveAim>,
 }
 
 /// Failure to turn authoritative entity state into a complete wire record.
@@ -68,6 +71,27 @@ impl std::error::Error for SnapshotEncodeError {}
 impl RealEntityRecord {
     /// Build a complete record, or return the corrupt authoritative entity.
     pub fn from_snapshot(snapshot: &EntitySnapshot) -> Result<Self, SnapshotEncodeError> {
+        Self::from_snapshot_with_lease(snapshot, None)
+    }
+
+    /// Project physical intent from the lease frozen with this entity's generation.
+    pub fn from_snapshot_with_lease(
+        snapshot: &EntitySnapshot,
+        lease: Option<&LeaseSnapshot>,
+    ) -> Result<Self, SnapshotEncodeError> {
+        let aim = lease.map(|lease| MoveAim {
+            target_x_mm: lease.target_x_mm,
+            target_z_mm: lease.target_z_mm,
+            speed_mm_per_s: lease.speed_mm_per_s,
+        });
+        if lease.is_some_and(|lease| lease.body_id != snapshot.entity_id)
+            || aim.as_ref().is_some_and(|aim| !valid_aim(aim))
+        {
+            return Err(SnapshotEncodeError {
+                entity_id: snapshot.entity_id,
+                cause: "invalid same-entity movement aim".into(),
+            });
+        }
         let shape = snapshot
             .shape
             .as_ref()
@@ -82,6 +106,7 @@ impl RealEntityRecord {
             revision: snapshot.revision,
             position_mm: position_to_mm(snapshot.position),
             shape,
+            aim,
         })
     }
 }
@@ -95,6 +120,7 @@ pub struct WorldSnapshotBody {
     pub tick: u64,
     pub generation_digest: [u8; 32],
     pub bodies: Vec<RealEntityRecord>,
+    pub self_body_id: Option<u64>,
 }
 
 impl WorldSnapshotBody {
@@ -105,20 +131,26 @@ impl WorldSnapshotBody {
             tick: self.tick,
             generation_digest: self.generation_digest.to_vec(),
             bodies: self.bodies.iter().map(record_to_proto).collect(),
+            self_body_id: self.self_body_id,
         }
     }
 
     #[must_use]
     pub fn decode(proto: &WorldSnapshotBodyProto) -> Option<Self> {
-        if proto.version != BODY_VERSION {
+        if proto.version != BODY_VERSION || proto.self_body_id == Some(0) {
             return None;
         }
         let generation_digest = <[u8; 32]>::try_from(proto.generation_digest.as_slice()).ok()?;
-        let bodies = proto.bodies.iter().map(record_from_proto).collect();
+        let bodies = proto
+            .bodies
+            .iter()
+            .map(record_from_proto)
+            .collect::<Option<Vec<_>>>()?;
         Some(Self {
             tick: proto.tick,
             generation_digest,
             bodies,
+            self_body_id: proto.self_body_id,
         })
     }
 }
@@ -130,6 +162,7 @@ pub struct WorldSnapshotDelta {
     pub entered: Vec<RealEntityRecord>,
     pub modified: Vec<RealEntityRecord>,
     pub left_ids: Vec<u64>,
+    pub self_body_id: Option<u64>,
 }
 
 impl WorldSnapshotDelta {
@@ -141,23 +174,33 @@ impl WorldSnapshotDelta {
             entered: self.entered.iter().map(record_to_proto).collect(),
             modified: self.modified.iter().map(record_to_proto).collect(),
             left_ids: self.left_ids.clone(),
+            self_body_id: self.self_body_id,
         }
     }
 
     #[must_use]
     pub fn decode(proto: &WorldSnapshotDeltaProto) -> Option<Self> {
-        if proto.version != DELTA_VERSION {
+        if proto.version != DELTA_VERSION || proto.self_body_id == Some(0) {
             return None;
         }
         let generation_digest = <[u8; 32]>::try_from(proto.generation_digest.as_slice()).ok()?;
-        let entered = proto.entered.iter().map(record_from_proto).collect();
-        let modified = proto.modified.iter().map(record_from_proto).collect();
+        let entered = proto
+            .entered
+            .iter()
+            .map(record_from_proto)
+            .collect::<Option<Vec<_>>>()?;
+        let modified = proto
+            .modified
+            .iter()
+            .map(record_from_proto)
+            .collect::<Option<Vec<_>>>()?;
         let left_ids = proto.left_ids.clone();
         Some(Self {
             generation_digest,
             entered,
             modified,
             left_ids,
+            self_body_id: proto.self_body_id,
         })
     }
 }
@@ -193,20 +236,29 @@ fn record_to_proto(record: &RealEntityRecord) -> RealEntityRecordProto {
         revision: record.revision,
         position_mm: Some(Vector3Millimeters { x_mm, y_mm, z_mm }),
         shape: record.shape.clone(),
+        aim: record.aim,
     }
 }
 
-fn record_from_proto(proto: &RealEntityRecordProto) -> RealEntityRecord {
+fn record_from_proto(proto: &RealEntityRecordProto) -> Option<RealEntityRecord> {
+    if proto.aim.as_ref().is_some_and(|aim| !valid_aim(aim)) {
+        return None;
+    }
     let position_mm = proto
         .position_mm
         .as_ref()
         .map_or((0, 0, 0), |v| (v.x_mm, v.y_mm, v.z_mm));
-    RealEntityRecord {
+    Some(RealEntityRecord {
         entity_id: proto.entity_id,
         revision: proto.revision,
         position_mm,
         shape: proto.shape.clone(),
-    }
+        aim: proto.aim,
+    })
+}
+
+fn valid_aim(aim: &MoveAim) -> bool {
+    MoveIntent::new(aim.target_x_mm, aim.target_z_mm, aim.speed_mm_per_s).is_ok()
 }
 
 fn decode_shape_slot(slot: &ShapeSlot) -> Result<ShapeTree, String> {
@@ -372,6 +424,7 @@ mod tests {
     #[test]
     fn body_round_trip_is_bit_identical() {
         let body = WorldSnapshotBody {
+            self_body_id: None,
             tick: 42,
             generation_digest: [0xAB; 32],
             bodies: vec![
@@ -389,6 +442,7 @@ mod tests {
     fn delta_round_trip_is_bit_identical() {
         let delta =
             WorldSnapshotDelta {
+                self_body_id: None,
                 generation_digest: [0xCD; 32],
                 entered: vec![RealEntityRecord::from_snapshot(&sample_record(10))
                     .expect("valid entity record")],
@@ -405,6 +459,7 @@ mod tests {
     #[test]
     fn unknown_body_version_rejects_at_decode() {
         let mut proto = WorldSnapshotBodyProto {
+            self_body_id: None,
             version: BODY_VERSION,
             tick: 1,
             generation_digest: vec![0; 32],
@@ -417,6 +472,7 @@ mod tests {
     #[test]
     fn unknown_delta_version_rejects_at_decode() {
         let mut proto = WorldSnapshotDeltaProto {
+            self_body_id: None,
             version: DELTA_VERSION,
             generation_digest: vec![0; 32],
             entered: Vec::new(),
@@ -434,6 +490,7 @@ mod tests {
     #[test]
     fn conformance_fixtures_match_committed_bytes() {
         let body = WorldSnapshotBody {
+            self_body_id: None,
             tick: 42,
             generation_digest: [0xAB; 32],
             bodies: vec![
@@ -443,6 +500,7 @@ mod tests {
         };
         let body_bytes = encode_world_snapshot_body(&body);
         let delta = WorldSnapshotDelta {
+            self_body_id: None,
             generation_digest: [0xCD; 32],
             entered: vec![
                 RealEntityRecord::from_snapshot(&sample_record(10)).expect("valid entity record")
@@ -480,6 +538,7 @@ mod tests {
             return;
         }
         let body = WorldSnapshotBody {
+            self_body_id: None,
             tick: 42,
             generation_digest: [0xAB; 32],
             bodies: vec![
@@ -489,6 +548,7 @@ mod tests {
         };
         let body_bytes = encode_world_snapshot_body(&body);
         let delta = WorldSnapshotDelta {
+            self_body_id: None,
             generation_digest: [0xCD; 32],
             entered: vec![
                 RealEntityRecord::from_snapshot(&sample_record(10)).expect("valid entity record")
@@ -511,5 +571,130 @@ mod tests {
             .expect("write body fixture");
         std::fs::write(out_dir.join("world-snapshot-delta.hex"), hex(&delta_bytes))
             .expect("write delta fixture");
+    }
+    #[test]
+    fn binding_aim_conformance_variants() {
+        let mut record = RealEntityRecord::from_snapshot(&sample_record(1)).unwrap();
+        record.aim = Some(MoveAim {
+            target_x_mm: 1500,
+            target_z_mm: -500,
+            speed_mm_per_s: 500,
+        });
+        let body = WorldSnapshotBody {
+            tick: 42,
+            generation_digest: [0xAB; 32],
+            self_body_id: Some(1),
+            bodies: vec![
+                record.clone(),
+                RealEntityRecord::from_snapshot(&sample_record(2)).unwrap(),
+            ],
+        };
+        record.aim.as_mut().unwrap().target_x_mm = 2500;
+        let delta = WorldSnapshotDelta {
+            generation_digest: [0xCD; 32],
+            self_body_id: Some(1),
+            entered: vec![],
+            modified: vec![record],
+            left_ids: vec![2],
+        };
+        let body_bytes = encode_world_snapshot_body(&body);
+        let delta_bytes = encode_world_snapshot_delta(&delta);
+        let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../protocol/v1/conformance/binary");
+        for (name, bytes) in [
+            ("world-snapshot-body-aim.hex", &body_bytes),
+            ("world-snapshot-delta-aim.hex", &delta_bytes),
+        ] {
+            let path = directory.join(name);
+            if std::env::var_os("WRITE_BINDING_AIM_FIXTURES").is_some() {
+                use std::fmt::Write;
+                let mut hex = String::with_capacity(bytes.len() * 2);
+                for byte in bytes {
+                    write!(hex, "{byte:02x}").unwrap();
+                }
+                std::fs::write(&path, hex).unwrap();
+            }
+            assert_eq!(*bytes, hex_decode(&std::fs::read(path).unwrap()));
+        }
+        assert_eq!(
+            WorldSnapshotBody::decode(
+                &WorldSnapshotBodyProto::decode(body_bytes.as_slice()).unwrap()
+            ),
+            Some(body)
+        );
+        assert_eq!(
+            WorldSnapshotDelta::decode(
+                &WorldSnapshotDeltaProto::decode(delta_bytes.as_slice()).unwrap()
+            ),
+            Some(delta)
+        );
+    }
+
+    #[test]
+    fn optional_binding_and_aim_reject_invalid_values() {
+        let mut proto = WorldSnapshotBodyProto {
+            version: 1,
+            tick: 1,
+            generation_digest: vec![0; 32],
+            bodies: vec![],
+            self_body_id: Some(0),
+        };
+        assert!(WorldSnapshotBody::decode(&proto).is_none());
+        let mut delta = WorldSnapshotDeltaProto {
+            version: 1,
+            generation_digest: vec![0; 32],
+            self_body_id: Some(0),
+            ..Default::default()
+        };
+        assert!(WorldSnapshotDelta::decode(&delta).is_none());
+        proto.self_body_id = Some(1);
+        delta.self_body_id = Some(1);
+        for aim in [
+            MoveAim {
+                target_x_mm: 0,
+                target_z_mm: 0,
+                speed_mm_per_s: 0,
+            },
+            MoveAim {
+                target_x_mm: 100_000_001,
+                target_z_mm: 0,
+                speed_mm_per_s: 1,
+            },
+            MoveAim {
+                target_x_mm: 0,
+                target_z_mm: -100_000_001,
+                speed_mm_per_s: 1,
+            },
+        ] {
+            let mut record =
+                record_to_proto(&RealEntityRecord::from_snapshot(&sample_record(1)).unwrap());
+            record.aim = Some(aim);
+            proto.bodies = vec![record.clone()];
+            delta.modified = vec![record];
+            assert!(WorldSnapshotBody::decode(&proto).is_none());
+            assert!(WorldSnapshotDelta::decode(&delta).is_none());
+        }
+        let mut lease = LeaseSnapshot {
+            body_id: 2,
+            aigent_id: b"a".to_vec(),
+            sequence: 1,
+            granted_tick: 1,
+            expire_tick: 201,
+            target_x_mm: 0,
+            target_z_mm: 0,
+            speed_mm_per_s: 500,
+            consecutive_no_progress_ticks: 0,
+        };
+        assert!(
+            RealEntityRecord::from_snapshot_with_lease(&sample_record(1), Some(&lease)).is_err()
+        );
+        lease.body_id = 1;
+        assert!(
+            RealEntityRecord::from_snapshot_with_lease(&sample_record(1), Some(&lease)).is_ok()
+        );
+        lease.target_z_mm = 100_000_001;
+        assert!(
+            RealEntityRecord::from_snapshot_with_lease(&sample_record(1), Some(&lease)).is_err()
+        );
     }
 }

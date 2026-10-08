@@ -418,11 +418,19 @@ message SnapshotDelta {
 // Versioned at the message level: a decoder that sees an unknown `version` must
 // treat the frame as resync-required rather than guess. Real bodies replace the
 // legacy `AIGB` placeholder; see task-054 and ARCHITECTURE §4.
+// Public physical movement aim from the same published generation as the pose.
+message MoveAim {
+  sint64 target_x_mm = 1;
+  sint64 target_z_mm = 2;
+  uint32 speed_mm_per_s = 3;
+}
+
 message RealEntityRecord {
   uint64 entity_id = 1;
   uint64 revision = 2;
   Vector3Millimeters position_mm = 3;
   ShapeTree shape = 4;
+  optional MoveAim aim = 5;
 }
 
 // Full-snapshot body: every authoritative entity that survived AOI truncation,
@@ -433,6 +441,8 @@ message WorldSnapshotBodyProto {
   uint64 tick = 2;
   bytes generation_digest = 3;
   repeated RealEntityRecord bodies = 4;
+  // Restated private binding; absence means unbound. Viewers receive no binding.
+  optional uint64 self_body_id = 5;
 }
 
 // Delta body: explicit enter / modified / left sets. Absence from the wire is
@@ -445,6 +455,7 @@ message WorldSnapshotDeltaProto {
   repeated RealEntityRecord entered = 3;
   repeated RealEntityRecord modified = 4;
   repeated uint64 left_ids = 5;
+  optional uint64 self_body_id = 6;
 }
 
 message SnapshotResyncRequest {

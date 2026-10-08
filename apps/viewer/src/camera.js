@@ -19,7 +19,9 @@ export function fitObservedBounds(camera, controls, bounds) {
   const horizontalHalf = Math.atan(Math.tan(verticalHalf) * camera.aspect);
   const distance = 1.15 * radius / Math.sin(Math.min(verticalHalf, horizontalHalf));
   controls.target.copy(center);
-  camera.position.copy(center).addScaledVector(new THREE.Vector3(1, 0.7, 1).normalize(), distance);
+  // A 60-degree elevation exposes horizontal separation between close bodies
+  // that the shallow diagonal view can hide. Manual navigation remains free.
+  camera.position.copy(center).addScaledVector(new THREE.Vector3(1, Math.sqrt(6), 1).normalize(), distance);
   camera.near = Math.max(0.01, distance / 10_000);
   camera.far = Math.max(1000, distance + radius * 4);
   camera.updateProjectionMatrix();

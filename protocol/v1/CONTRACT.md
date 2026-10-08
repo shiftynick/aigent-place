@@ -232,6 +232,41 @@ millimetre position within the inclusive ±100 km bound, and complete optional
 `ShapeTree`. An absent shape is legitimate. A corrupt stored shape must fail
 snapshot construction; it must not become a successful record with no shape.
 
+[ADR-0011](../../docs/adr/0011-snapshot-self-binding-and-public-aims.md) adds
+optional physical movement aims and private self binding without changing
+inner version 1. Each record's optional `MoveAim` is projected from that same
+immutable generation's active movement lease. It carries a horizontal target
+within the inclusive ±100 km bound and positive speed in millimetres per
+second. Aims are public to every observer in the entity's AOI. No owner identity
+or client-written name/goal text is published. A target-only change or lease
+removal is a record modification even when position and revision are unchanged.
+Absent aim means only that this generation has no active movement lease; it
+does not assert arrival, blockage, sleep, disconnect or brain motivation.
+
+Every full and delta restates optional `self_body_id` for its receiving aigent
+connection, looked up from the same generation's aigent/body bindings. The ID
+is nonzero when present; absence means unbound as of this generation, including
+before first MOVE creates the demo body. Viewer frames omit it. The field is
+retained in canonical full/delta state, including resync and coalesced full
+replacement. It is not inferred from AOI focus, body order, a sole body or an
+identity hash. An entity's absence from a delta still does not mean leave;
+binding restatement is an independent field rule.
+
+A client clears its binding on a new handshake or entry into snapshot recovery,
+and adopts binding only after applying a complete valid full/delta transition.
+It holds self-dependent decisions until the binding and that body's position
+are observed. An initial MOVE to a known bounded plaza target may bootstrap
+server-owned creation without a body guess. A displaced old connection can
+briefly receive state for the same identity until its socket closes; command
+authority remains governed by the session epoch. Trusted-inject identity is
+still the local demo authentication limitation tracked by task-040. These
+state fields do not repair or weaken the durable command-result contract.
+
+Unknown fields remain compatible. A decoder that understands aims rejects
+out-of-bound targets, non-positive speeds or a present zero self ID through
+snapshot recovery, with no partial state installation. No expiry countdown is
+defined: deltas still carry no current authoritative tick.
+
 A delta has explicit `entered`, `modified`, and `left_ids` sets. IDs are unique
 within a message and disjoint across those sets. Absence from a delta never
 means leave. Apply the complete transition against the current entity set:

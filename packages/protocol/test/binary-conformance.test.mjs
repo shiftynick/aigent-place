@@ -6,11 +6,14 @@ import { fileURLToPath } from "node:url";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import {
   CommandOutcomeSchema,
+  MoveAimSchema,
   ConnectionMode,
   EnvelopeSchema,
   HandshakeFrameSchema,
   ProtocolErrorCode,
   Vector3MillimetersSchema,
+  WorldSnapshotBodyProtoSchema,
+  WorldSnapshotDeltaProtoSchema,
 } from "@aigent-place/protocol";
 
 const root = path.resolve(
@@ -106,4 +109,40 @@ test("owner SDK re-exports generated Envelope schema", async () => {
   const sdk = await import("@aigent-place/aigent-sdk");
   assert.equal(typeof sdk.EnvelopeSchema, "object");
   assert.equal(sdk.EnvelopeSchema.typeName, "aigent.protocol.v1.Envelope");
+});
+
+test("shared aim and self-binding fixtures preserve generated values and optional presence", () => {
+  for (const [schema, name, target] of [
+    [WorldSnapshotBodyProtoSchema, "world-snapshot-body-aim.hex", 1500n],
+    [WorldSnapshotDeltaProtoSchema, "world-snapshot-delta-aim.hex", 2500n],
+  ]) {
+    const bytes = fixtureBytes(name);
+    const decoded = fromBinary(schema, bytes);
+    assert.equal(decoded.version, 1);
+    assert.equal(decoded.selfBodyId, 1n);
+    const record = (decoded.bodies ?? decoded.modified)[0];
+    assert.deepEqual(record.aim, create(MoveAimSchema, {
+      targetXMm: target, targetZMm: -500n, speedMmPerS: 500,
+    }));
+    assert.deepEqual(Buffer.from(toBinary(schema, decoded)), bytes);
+  }
+  assert.equal(fromBinary(WorldSnapshotBodyProtoSchema, fixtureBytes("world-snapshot-body.hex")).selfBodyId, undefined);
+  assert.equal(fromBinary(WorldSnapshotDeltaProtoSchema, fixtureBytes("world-snapshot-delta.hex")).selfBodyId, undefined);
+});
+
+test("pre-ADR-0011 generated decoder reads poses from new fields as unknown v1 extensions", async () => {
+  const old = await import("./fixtures/snapshot-v1-before-aim.js");
+  for (const [schema, name] of [
+    [old.WorldSnapshotBodyProtoSchema, "world-snapshot-body-aim.hex"],
+    [old.WorldSnapshotDeltaProtoSchema, "world-snapshot-delta-aim.hex"],
+  ]) {
+    const decoded = fromBinary(schema, fixtureBytes(name));
+    assert.equal(decoded.version, 1);
+    assert.equal(decoded.selfBodyId, undefined);
+    const record = (decoded.bodies ?? decoded.modified)[0];
+    assert.equal(record.entityId, 1n);
+    assert.equal(record.positionMm.xMm, 1500n);
+    assert.equal(record.positionMm.zMm, -2250n);
+    assert.equal(record.aim, undefined);
+  }
 });
