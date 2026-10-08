@@ -1,120 +1,171 @@
-// Real-body snapshot/delta decoder tests (task-054).
-//
-// These are the shared Rust+TypeScript conformance checks. The Rust side
-// (in `crates/world-server/src/wire/snapshot.rs::tests`) produces a
-// `WorldSnapshotBody` with two entities, encodes it, and the bytes are
-// recorded as a hex fixture in `protocol/v1/conformance/binary/`.
-// The TypeScript side reads the same bytes and asserts the decoded
-// records match the Rust expectations.
-
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { create, toBinary } from "@bufbuild/protobuf";
+import {
+  RealEntityRecordSchema,
+  WorldSnapshotBodyProtoSchema,
+  WorldSnapshotDeltaProtoSchema,
+} from "@aigent-place/protocol";
 import {
   decodeWorldSnapshotBody,
   decodeWorldSnapshotDelta,
 } from "../src/wire/real-snapshot.js";
+import { entity, shape } from "./snapshot-fixtures.mjs";
 
-const root = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../..",
-);
+const digest = new Uint8Array(32).fill(0xab);
+const bodyBytes = (overrides = {}) => toBinary(WorldSnapshotBodyProtoSchema,
+  create(WorldSnapshotBodyProtoSchema, { version: 1, tick: 42n, generationDigest: digest, bodies: [], ...overrides }));
+const deltaBytes = (overrides = {}) => toBinary(WorldSnapshotDeltaProtoSchema,
+  create(WorldSnapshotDeltaProtoSchema, { version: 1, generationDigest: digest, ...overrides }));
 
 function fixtureBytes(name) {
-  const text = fs.readFileSync(
-    path.join(root, "protocol/v1/conformance/binary", name),
-    "utf8",
-  );
-  const hex = text.replace(/\s+/g, "");
-  return new Uint8Array(Buffer.from(hex, "hex"));
+  const hex = fs.readFileSync(new URL(`../../../protocol/v1/conformance/binary/${name}`, import.meta.url), "utf8");
+  return new Uint8Array(Buffer.from(hex.replace(/\s+/g, ""), "hex"));
 }
 
-test("real-body snapshot fixture decodes into two entity records with shape", () => {
-  const bytes = fixtureBytes("world-snapshot-body.hex");
-  const decoded = decodeWorldSnapshotBody(bytes);
-  assert.ok(decoded, "decoder accepted the fixture");
-  assert.equal(decoded.version, 1);
+test("Rust full fixture preserves bigint IDs, revisions, positions and complete generated shape", () => {
+  const decoded = decodeWorldSnapshotBody(fixtureBytes("world-snapshot-body.hex"));
+  assert.ok(decoded);
   assert.equal(decoded.tick, 42n);
-  assert.equal(decoded.generationDigest.length, 32);
-  // The fixture is a generation_digest of [0xAB; 32].
-  for (const b of decoded.generationDigest) assert.equal(b, 0xab);
-  assert.equal(decoded.bodies.length, 2);
-  // Bodies are emitted in AOI rank order. With both fixture entities at
-  // the same placeholder position, ties are broken by ascending entity_id,
-  // so body 1 appears first.
-  assert.equal(decoded.bodies[0].entityId, 1n);
-  assert.equal(decoded.bodies[1].entityId, 2n);
-  // Both fixture entities are at the same placeholder pose (1.5, 0, -2.25)
-  // metres, which projects to (1500, 0, -2250) millimetres. The y axis is
-  // omitted on the wire (proto3 default-value elision) and the decoder
-  // restores it as 0.
-  for (const body of decoded.bodies) {
-    assert.deepEqual(body.positionMm, { x: 1500n, y: 0n, z: -2250n });
-  }
-  // Both entities carry the same one-node box shape; the decoder reads
-  // the primitive presence flag for the smoke render.
-  for (const body of decoded.bodies) {
-    assert.ok(body.shape);
-    assert.equal(body.shape.nodes.length, 1);
-    assert.equal(body.shape.nodes[0].hasPrimitive, true);
-    assert.equal(body.shape.nodes[0].nodeId, 1n);
+  assert.deepEqual(decoded.generationDigest, digest);
+  assert.deepEqual(decoded.bodies.map(record => record.entityId), [1n, 2n]);
+  for (const record of decoded.bodies) {
+    assert.equal(record.revision, 1n);
+    assert.equal(record.positionMm.xMm, 1500n);
+    assert.equal(record.positionMm.yMm, 0n);
+    assert.equal(record.positionMm.zMm, -2250n);
+    assert.equal(record.shape.nodes[0].nodeId, 1);
+    assert.equal(record.shape.nodes[0].primitive.case, "box");
+    assert.equal(record.shape.nodes[0].primitive.value.sizeXMm, 1000n);
   }
 });
 
-test("real-body delta fixture decodes into one entered and one left id", () => {
-  const bytes = fixtureBytes("world-snapshot-delta.hex");
-  const decoded = decodeWorldSnapshotDelta(bytes);
-  assert.ok(decoded, "decoder accepted the fixture");
-  assert.equal(decoded.version, 1);
-  assert.equal(decoded.entered.length, 1);
-  assert.equal(decoded.modified.length, 0);
-  assert.deepEqual(decoded.leftIds, [13n]);
+test("Rust delta fixture preserves explicit enter and leave records", () => {
+  const decoded = decodeWorldSnapshotDelta(fixtureBytes("world-snapshot-delta.hex"));
+  assert.ok(decoded);
+  assert.deepEqual(decoded.generationDigest, new Uint8Array(32).fill(0xcd));
   assert.equal(decoded.entered[0].entityId, 10n);
   assert.equal(decoded.entered[0].revision, 1n);
+  assert.deepEqual(decoded.modified, []);
+  assert.deepEqual(decoded.leftIds, [13n]);
 });
 
-test("unknown version is rejected", () => {
-  // The version field is the first varint in either wire form; the decoder
-  // should refuse to interpret a payload with a version it does not know.
-  const bytes = new Uint8Array([0x7f]); // field 15, wire 7 — invalid wire type
-  assert.throws(() => decodeWorldSnapshotBody(bytes));
+test("full and delta retain every entity field and every ShapeTree primitive", () => {
+  const source = entity(9007199254740993n, { revision: 9007199254740995n, shape: shape() });
+  const expected = create(RealEntityRecordSchema, source);
+  assert.deepEqual(decodeWorldSnapshotBody(bodyBytes({ bodies: [source] })).bodies[0], expected);
+  const delta = decodeWorldSnapshotDelta(deltaBytes({ entered: [source], modified: [entity(2n)] }));
+  assert.deepEqual(delta.entered[0], expected);
+  assert.deepEqual(delta.modified[0], create(RealEntityRecordSchema, entity(2n)));
 });
 
-test("version 2 is rejected as unknown", () => {
-  // Hand-craft a minimal body with version = 2. The decoder must
-  // observe the version mismatch and return null, not a structurally
-  // valid object whose fields all default.
-  const body = new Uint8Array([0x08, 0x02]); // field 1, varint, value 2
-  assert.equal(decodeWorldSnapshotBody(body), null);
+test("unknown and omitted body/delta versions are rejected", () => {
+  for (const version of [0, 2]) {
+    assert.equal(decodeWorldSnapshotBody(bodyBytes({ version })), null);
+    assert.equal(decodeWorldSnapshotDelta(deltaBytes({ version })), null);
+  }
 });
 
-test("version 2 delta is rejected as unknown", () => {
-  const delta = new Uint8Array([0x08, 0x02]); // field 1, varint, value 2
-  assert.equal(decodeWorldSnapshotDelta(delta), null);
+test("full and delta require an exact 32-byte generation digest", () => {
+  for (const length of [0, 31, 33]) {
+    const generationDigest = new Uint8Array(length);
+    assert.equal(decodeWorldSnapshotBody(bodyBytes({ generationDigest })), null);
+    assert.equal(decodeWorldSnapshotDelta(deltaBytes({ generationDigest })), null);
+  }
 });
 
-test("body with only version is accepted as empty state", () => {
-  // A version-1 body containing only the version field is a real
-  // (empty) snapshot: zero entities in the interest set. The viewer
-  // must not interpret this as a failure.
-  const body = new Uint8Array([0x08, 0x01]); // field 1, varint, value 1
-  const decoded = decodeWorldSnapshotBody(body);
-  assert.ok(decoded, "a body with only version is not a failure");
-  assert.equal(decoded.version, 1);
-  assert.equal(decoded.bodies.length, 0);
-  assert.equal(decoded.tick, 0n);
-  assert.equal(decoded.generationDigest.length, 0);
+test("valid empty full and delta remain accepted", () => {
+  assert.deepEqual(decodeWorldSnapshotBody(bodyBytes()).bodies, []);
+  const delta = decodeWorldSnapshotDelta(deltaBytes());
+  assert.deepEqual([delta.entered, delta.modified, delta.leftIds], [[], [], []]);
 });
 
-test("delta with only version is accepted as empty transition", () => {
-  const delta = new Uint8Array([0x08, 0x01]);
-  const decoded = decodeWorldSnapshotDelta(delta);
+test("entity ID, revision and position are required in full, entered and modified", () => {
+  for (const invalid of [entity(0n), entity(1n, { revision: 0n }), entity(1n, { positionMm: undefined })]) {
+    assert.equal(decodeWorldSnapshotBody(bodyBytes({ bodies: [invalid] })), null);
+    assert.equal(decodeWorldSnapshotDelta(deltaBytes({ entered: [invalid] })), null);
+    assert.equal(decodeWorldSnapshotDelta(deltaBytes({ modified: [invalid] })), null);
+  }
+  assert.equal(decodeWorldSnapshotDelta(deltaBytes({ leftIds: [0n] })), null);
+});
+
+test("all position axes enforce the inclusive 100 km world bound", () => {
+  for (const axis of ["xMm", "yMm", "zMm"]) {
+    for (const value of [-100000001n, 100000001n]) {
+      const record = entity(1n, { positionMm: { [axis]: value } });
+      assert.equal(decodeWorldSnapshotBody(bodyBytes({ bodies: [record] })), null);
+      assert.equal(decodeWorldSnapshotDelta(deltaBytes({ modified: [record] })), null);
+    }
+    for (const value of [-100000000n, 100000000n]) {
+      assert.ok(decodeWorldSnapshotBody(bodyBytes({ bodies: [entity(1n, { positionMm: { [axis]: value } })] })));
+    }
+  }
+});
+
+test("a missing optional shape remains a renderable generic body", () => {
+  const record = entity(1n, { shape: undefined });
+  assert.equal(decodeWorldSnapshotBody(bodyBytes({ bodies: [record] })).bodies[0].shape, undefined);
+});
+
+test("full IDs and the delta enter/modify/leave sets are unique and disjoint", () => {
+  assert.equal(decodeWorldSnapshotBody(bodyBytes({ bodies: [entity(1n), entity(1n)] })), null);
+  for (const overrides of [
+    { entered: [entity(1n), entity(1n)] },
+    { modified: [entity(1n), entity(1n)] },
+    { leftIds: [1n, 1n] },
+    { entered: [entity(1n)], modified: [entity(1n)] },
+    { entered: [entity(1n)], leftIds: [1n] },
+    { modified: [entity(1n)], leftIds: [1n] },
+  ]) assert.equal(decodeWorldSnapshotDelta(deltaBytes(overrides)), null);
+});
+
+test("malformed tags, lengths, wire types and varints are rejected", () => {
+  const malformed = [
+    Uint8Array.of(0),
+    Uint8Array.of(0x7f),
+    Uint8Array.of(8, 0x80),
+    Uint8Array.of(8, 1, 26, 32, 0xab),
+    Uint8Array.of(13, 1, 26, 32, ...digest),
+    Uint8Array.of(...bodyBytes(), 34, 1, 8, 1),
+    Uint8Array.of(...bodyBytes(), 0xa1, 6, 1),
+    Uint8Array.of(8, 1, 26, 0xa0, 0x80, 0x80, 0x80, 0x10, ...digest),
+    Uint8Array.of(8, 0x81, 0x80, 0x80, 0x80, 0x10, 26, 32, ...digest),
+    Uint8Array.of(...bodyBytes(), 0xa0, 6, ...new Array(9).fill(0x80), 2),
+  ];
+  for (const bytes of malformed) assert.throws(() => decodeWorldSnapshotBody(bytes), `body: ${Buffer.from(bytes).toString("hex")}`);
+  assert.throws(() => decodeWorldSnapshotDelta(Uint8Array.of(...deltaBytes(), 42, 1, 0x80, 1)));
+});
+
+test("unknown protobuf fields remain compatible", () => {
+  const decoded = decodeWorldSnapshotBody(Uint8Array.of(...bodyBytes(), 0xa0, 6, 7));
   assert.ok(decoded);
-  assert.equal(decoded.entered.length, 0);
-  assert.equal(decoded.modified.length, 0);
-  assert.equal(decoded.leftIds.length, 0);
+  assert.deepEqual(decoded.bodies, []);
 });
 
+test("legal unknown protobuf groups and nested groups remain preserved", () => {
+  const bytes = Uint8Array.of(...bodyBytes(), 0xa3, 6, 8, 7, 0x13, 0x18, 1, 0x14, 0xa4, 6);
+  const decoded = decodeWorldSnapshotBody(bytes);
+  assert.ok(decoded);
+  assert.deepEqual(toBinary(WorldSnapshotBodyProtoSchema, decoded), bytes);
+});
 
+test("malformed unknown groups reject oversized varints and invalid boundaries", () => {
+  const malformed = [
+    [0xa3, 6, 8, ...new Array(10).fill(0x80), 0, 0xa4, 6],
+    [0xa3, 6, 8, ...new Array(9).fill(0x80), 2, 0xa4, 6],
+    [0xa3, 6, 26, 0x81, 0x80, 0x80, 0x80, 0x10, 0, 0xa4, 6],
+    [0xa3, 6, 8, 1, 0xac, 6],
+    [0xa3, 6, 8, 1],
+    [0xa4, 6],
+  ];
+  for (const suffix of malformed) {
+    assert.throws(() => decodeWorldSnapshotBody(Uint8Array.of(...bodyBytes(), ...suffix)), Buffer.from(suffix).toString("hex"));
+    assert.throws(() => decodeWorldSnapshotDelta(Uint8Array.of(...deltaBytes(), ...suffix)), Buffer.from(suffix).toString("hex"));
+  }
+});
+
+test("unknown protobuf groups retain a bounded nesting depth", () => {
+  const groups = [...new Array(101).fill([0xa3, 6]).flat(), ...new Array(101).fill([0xa4, 6]).flat()];
+  assert.throws(() => decodeWorldSnapshotBody(Uint8Array.of(...bodyBytes(), ...groups)), /nesting|recursion/);
+});

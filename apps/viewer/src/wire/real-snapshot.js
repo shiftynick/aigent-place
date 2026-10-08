@@ -1,303 +1,142 @@
-// Real-body snapshot/delta decoder (task-054).
-//
-// The server emits `FullSnapshot.payload` and `SnapshotDelta.payload` as
-// `WorldSnapshotBodyProto` / `WorldSnapshotDeltaProto` (defined in
-// `protocol/v1/aigent.proto`, generated bindings in `@aigent-place/protocol`).
-// This file is the hand-rolled decoder used by the viewer until the auto-
-// generated bindings land in the viewer build.
-//
-// The wire format is `prost` (the Rust encoder), so we read the protobuf wire
-// types directly: varints, length-delimited submessages, and zig-zag sint64.
+import { fromBinary, ScalarType } from "@bufbuild/protobuf";
+import { BinaryReader, WireType } from "@bufbuild/protobuf/wire";
+import {
+  WorldSnapshotBodyProtoSchema,
+  WorldSnapshotDeltaProtoSchema,
+} from "@aigent-place/protocol";
 
-const BODY_VERSION = 1;
-const DELTA_VERSION = 1;
+const WORLD_BOUND_MM = 100_000_000n;
 
-const WIRE_VARINT = 0;
-const WIRE_FIXED64 = 1;
-const WIRE_BYTES = 2;
-const WIRE_FIXED32 = 5;
-
-class Reader {
-  constructor(bytes) {
-    this.bytes = bytes;
-    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    this.cursor = 0;
-  }
-  remaining() {
-    return this.bytes.length - this.cursor;
-  }
-  readVarint() {
-    let result = 0n;
-    let shift = 0n;
-    while (this.cursor < this.bytes.length) {
-      const b = this.bytes[this.cursor++];
-      result |= BigInt(b & 0x7f) << shift;
-      if ((b & 0x80) === 0) return result;
-      shift += 7n;
-      if (shift > 64n) throw new Error("varint overflow");
-    }
-    throw new Error("truncated varint");
-  }
-  readTag() {
-    const v = this.readVarint();
-    return { field: Number(v >> 3n), wire: Number(v & 7n) };
-  }
-  readFixed32() {
-    const v = this.view.getUint32(this.cursor, true);
-    this.cursor += 4;
-    return v;
-  }
-  readFixed64() {
-    const v = this.view.getBigUint64(this.cursor, true);
-    this.cursor += 8;
-    return v;
-  }
-  readSint64() {
-    const v = this.readVarint();
-    // zig-zag decode
-    return (v >> 1n) ^ -(v & 1n);
-  }
-  readBytes() {
-    const len = Number(this.readVarint());
-    const start = this.cursor;
-    this.cursor += len;
-    return this.bytes.subarray(start, start + len);
-  }
-  skip(wire) {
-    switch (wire) {
-      case WIRE_VARINT:
-        this.readVarint();
-        return;
-      case WIRE_FIXED64:
-        this.cursor += 8;
-        return;
-      case WIRE_BYTES:
-        this.readBytes();
-        return;
-      case WIRE_FIXED32:
-        this.cursor += 4;
-        return;
-      default:
-        throw new Error(`unknown wire type ${wire}`);
-    }
-  }
-  // Read a single field value by wire type. The caller knows which it is.
-  skipField(wire) {
-    this.skip(wire);
+function scalarWireType(scalar) {
+  switch (scalar) {
+    case ScalarType.DOUBLE:
+    case ScalarType.FIXED64:
+    case ScalarType.SFIXED64:
+      return WireType.Bit64;
+    case ScalarType.FLOAT:
+    case ScalarType.FIXED32:
+    case ScalarType.SFIXED32:
+      return WireType.Bit32;
+    case ScalarType.STRING:
+    case ScalarType.BYTES:
+      return WireType.LengthDelimited;
+    default:
+      return WireType.Varint;
   }
 }
 
-function readVector3Millimeters(reader) {
-  // Vector3Millimeters { x_mm, y_mm, z_mm } — three sint64 fields, each
-  // tagged. The encoder omits default values (proto3), so 0-valued axes
-  // are not present on the wire and stay at 0 in the output.
-  let x = 0n;
-  let y = 0n;
-  let z = 0n;
-  while (reader.remaining() > 0) {
-    const tag = reader.readTag();
-    if (tag.wire !== WIRE_VARINT) {
-      reader.skipField(tag.wire);
+function readScalarFraming(reader, wireType, scalar) {
+  if (wireType === WireType.Varint) {
+    const start = reader.pos;
+    const value = reader.uint64();
+    if (reader.pos - start === 10 && reader.buf[reader.pos - 1] > 1) {
+      throw new Error("protobuf varint exceeds uint64");
+    }
+    if (scalar === ScalarType.UINT32 && value > 0xffffffffn) {
+      throw new Error("protobuf varint exceeds uint32");
+    }
+  } else if (wireType === WireType.LengthDelimited) {
+    readDelimited(reader);
+  } else {
+    reader.skip(wireType);
+  }
+}
+
+function readDelimited(reader) {
+  const start = reader.pos;
+  const bytes = reader.bytes();
+  const prefixLength = reader.pos - start - bytes.length;
+  if (prefixLength > 5 || (prefixLength === 5 && reader.buf[start + 4] > 15)) {
+    throw new Error("protobuf length exceeds uint32");
+  }
+  return bytes;
+}
+
+function skipUnknownFraming(reader, fieldNumber, wireType, depth) {
+  if (wireType === WireType.EndGroup) throw new Error("unexpected protobuf end group");
+  if (wireType !== WireType.StartGroup) {
+    readScalarFraming(reader, wireType);
+    return;
+  }
+  if (depth >= 100) throw new Error("protobuf nesting limit exceeded");
+  while (reader.pos < reader.len) {
+    const [nestedNumber, nestedWireType] = reader.tag();
+    if (nestedWireType === WireType.EndGroup) {
+      if (nestedNumber !== fieldNumber) throw new Error("mismatched protobuf end group");
+      return;
+    }
+    skipUnknownFraming(reader, nestedNumber, nestedWireType, depth + 1);
+  }
+  throw new Error("unterminated protobuf group");
+}
+
+// The pinned protobuf runtime does not check known-field wire types or exact
+// nested/packed message boundaries. Validate those boundaries from generated
+// descriptors, then let fromBinary own all message values and unknown fields.
+function validateFraming(schema, bytes, depth = 0) {
+  if (depth > 100) throw new Error("protobuf nesting limit exceeded");
+  const reader = new BinaryReader(bytes);
+  while (reader.pos < reader.len) {
+    const [fieldNumber, wireType] = reader.tag();
+    const field = schema.fields.find(candidate => candidate.number === fieldNumber);
+    if (!field) {
+      skipUnknownFraming(reader, fieldNumber, wireType, depth);
       continue;
     }
-    const value = reader.readSint64();
-    switch (tag.field) {
-      case 1:
-        x = value;
-        break;
-      case 2:
-        y = value;
-        break;
-      case 3:
-        z = value;
-        break;
-      default:
-        break;
-    }
-  }
-  return { x, y, z };
-}
-
-function readShapeTree(reader) {
-  // ShapeTree { nodes: [ShapeNode] } — only the entity_id and presence of
-  // a primitive matter for the viewer smoke; a full decoder is task-055.
-  const nodes = [];
-  while (reader.remaining() > 0) {
-    const tag = reader.readTag();
-    if (tag.wire !== WIRE_BYTES || tag.field !== 1) {
-      reader.skipField(tag.wire);
+    if (field.fieldKind === "message" || field.listKind === "message") {
+      if (wireType !== WireType.LengthDelimited) throw new Error("invalid protobuf message wire type");
+      validateFraming(field.message, readDelimited(reader), depth + 1);
       continue;
     }
-    const nodeBytes = reader.readBytes();
-    const nodeReader = new Reader(nodeBytes);
-    let nodeId = 0n;
-    let hasPrimitive = false;
-    while (nodeReader.remaining() > 0) {
-      const t = nodeReader.readTag();
-      switch (t.field) {
-        case 1:
-          nodeId = t.wire === WIRE_VARINT ? nodeReader.readVarint() : 0n;
-          break;
-        case 3:
-          // LocalTransform — read past it, no value needed.
-          nodeReader.readBytes();
-          break;
-        case 4:
-          // joint_name.
-          nodeReader.readBytes();
-          break;
-        case 5:
-          // color.
-          nodeReader.readBytes();
-          break;
-        case 6:
-          // material_tags (repeated string).
-          nodeReader.readBytes();
-          break;
-        case 10:
-        case 11:
-        case 12:
-        case 13:
-        case 14:
-        case 15:
-          // primitive (oneof): Box, Sphere, Capsule, Cylinder, Cone, Panel.
-          nodeReader.readBytes();
-          hasPrimitive = true;
-          break;
-        default:
-          nodeReader.skipField(t.wire);
-          break;
-      }
+    const expected = scalarWireType(field.scalar);
+    if (field.fieldKind === "list" && expected !== WireType.LengthDelimited && wireType === WireType.LengthDelimited) {
+      const packed = new BinaryReader(readDelimited(reader));
+      while (packed.pos < packed.len) readScalarFraming(packed, expected, field.scalar);
+      continue;
     }
-    nodes.push({ nodeId, hasPrimitive });
+    if (wireType !== expected) throw new Error("invalid protobuf scalar wire type");
+    readScalarFraming(reader, wireType, field.scalar);
   }
-  return { nodes };
 }
 
-function readRealEntityRecord(reader) {
-  let entityId = 0n;
-  let revision = 0n;
-  let positionMm = { x: 0n, y: 0n, z: 0n };
-  let shape = null;
-  while (reader.remaining() > 0) {
-    const tag = reader.readTag();
-    switch (tag.field) {
-      case 1:
-        entityId = tag.wire === WIRE_VARINT ? reader.readVarint() : 0n;
-        break;
-      case 2:
-        revision = tag.wire === WIRE_VARINT ? reader.readVarint() : 0n;
-        break;
-      case 3:
-        positionMm = readVector3Millimeters(new Reader(reader.readBytes()));
-        break;
-      case 4:
-        shape = readShapeTree(new Reader(reader.readBytes()));
-        break;
-      default:
-        reader.skipField(tag.wire);
-        break;
-    }
-  }
-  return { entityId, revision, positionMm, shape };
+// Shared incoming boundary for the viewer's handshake, envelope, and payloads.
+export function decodeSnapshotBinary(schema, bytes) {
+  validateFraming(schema, bytes);
+  return fromBinary(schema, bytes);
+}
+
+function validEntity(record) {
+  const position = record.positionMm;
+  return record.entityId !== 0n && record.revision !== 0n && position !== undefined &&
+    [position.xMm, position.yMm, position.zMm].every(axis => axis >= -WORLD_BOUND_MM && axis <= WORLD_BOUND_MM);
+}
+
+function uniqueIds(ids) {
+  return ids.every(id => id !== 0n) && new Set(ids).size === ids.length;
 }
 
 /**
- * @param {Uint8Array} bytes the FullSnapshot.payload bytes
- * @returns {{
- *   version: number,
- *   tick: bigint,
- *   generationDigest: Uint8Array,
- *   bodies: Array<{
- *     entityId: bigint,
- *     revision: bigint,
- *     positionMm: { x: bigint, y: bigint, z: bigint },
- *     shape: { nodes: Array<{ nodeId: bigint, hasPrimitive: boolean }> } | null,
- *   }>,
- * } | null}
+ * Decode a generated WorldSnapshotBodyProto without projecting away fields.
+ * Unknown versions or invalid required data return null; malformed bytes throw.
+ * ShapeTree validation belongs to the server; shapeless entities are valid.
+ * @param {Uint8Array} bytes
+ * @returns {import("@aigent-place/protocol").WorldSnapshotBodyProto | null}
  */
 export function decodeWorldSnapshotBody(bytes) {
-  const reader = new Reader(bytes);
-  let version = 0;
-  let tick = 0n;
-  let generationDigest = new Uint8Array(0);
-  const bodies = [];
-  while (reader.remaining() > 0) {
-    const tag = reader.readTag();
-    switch (tag.field) {
-      case 1:
-        version = tag.wire === WIRE_VARINT ? Number(reader.readVarint()) : 0;
-        break;
-      case 2:
-        tick = tag.wire === WIRE_VARINT ? reader.readVarint() : 0n;
-        break;
-      case 3:
-        generationDigest = reader.readBytes();
-        break;
-      case 4:
-        bodies.push(readRealEntityRecord(new Reader(reader.readBytes())));
-        break;
-      default:
-        reader.skipField(tag.wire);
-        break;
-    }
-  }
-  if (version !== BODY_VERSION) return null;
-  return { version, tick, generationDigest, bodies };
+  const body = decodeSnapshotBinary(WorldSnapshotBodyProtoSchema, bytes);
+  if (body.version !== 1 || body.generationDigest.length !== 32 ||
+      !body.bodies.every(validEntity) || !uniqueIds(body.bodies.map(record => record.entityId))) return null;
+  return body;
 }
 
 /**
- * @param {Uint8Array} bytes the SnapshotDelta.payload bytes
- * @returns {{
- *   version: number,
- *   generationDigest: Uint8Array,
- *   entered: Array<...>,
- *   modified: Array<...>,
- *   leftIds: bigint[],
- * } | null}
+ * @param {Uint8Array} bytes
+ * @returns {import("@aigent-place/protocol").WorldSnapshotDeltaProto | null}
  */
 export function decodeWorldSnapshotDelta(bytes) {
-  const reader = new Reader(bytes);
-  let version = 0;
-  let generationDigest = new Uint8Array(0);
-  const entered = [];
-  const modified = [];
-  const leftIds = [];
-  while (reader.remaining() > 0) {
-    const tag = reader.readTag();
-    switch (tag.field) {
-      case 1:
-        version = tag.wire === WIRE_VARINT ? Number(reader.readVarint()) : 0;
-        break;
-      case 2:
-        generationDigest = reader.readBytes();
-        break;
-      case 3:
-        entered.push(readRealEntityRecord(new Reader(reader.readBytes())));
-        break;
-      case 4:
-        modified.push(readRealEntityRecord(new Reader(reader.readBytes())));
-        break;
-      case 5:
-        // Proto3 packs `repeated uint64` into one length-delimited field
-        // whose body is a sequence of varints. The decoder accepts both
-        // the packed form and a series of single varints.
-        if (tag.wire === WIRE_BYTES) {
-          const packed = new Reader(reader.readBytes());
-          while (packed.remaining() > 0) {
-            leftIds.push(packed.readVarint());
-          }
-        } else if (tag.wire === WIRE_VARINT) {
-          leftIds.push(reader.readVarint());
-        } else {
-          reader.skipField(tag.wire);
-        }
-        break;
-      default:
-        reader.skipField(tag.wire);
-        break;
-    }
-  }
-  if (version !== DELTA_VERSION) return null;
-  return { version, generationDigest, entered, modified, leftIds };
+  const delta = decodeSnapshotBinary(WorldSnapshotDeltaProtoSchema, bytes);
+  const records = [...delta.entered, ...delta.modified];
+  if (delta.version !== 1 || delta.generationDigest.length !== 32 ||
+      !records.every(validEntity) || !uniqueIds([...records.map(record => record.entityId), ...delta.leftIds])) return null;
+  return delta;
 }

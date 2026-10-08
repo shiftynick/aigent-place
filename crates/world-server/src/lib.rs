@@ -99,8 +99,8 @@ pub use transport::{
 };
 pub use wire::{
     decode_world_snapshot_body_ids, decode_world_snapshot_delta_left_ids,
-    encode_world_snapshot_body, encode_world_snapshot_delta, RealEntityRecord, WorldSnapshotBody,
-    WorldSnapshotDelta, BODY_VERSION, DELTA_VERSION,
+    encode_world_snapshot_body, encode_world_snapshot_delta, RealEntityRecord, SnapshotEncodeError,
+    WorldSnapshotBody, WorldSnapshotDelta, BODY_VERSION, DELTA_VERSION,
 };
 pub use world::{
     replay_log, CommandEffect, QueuedCommand, TickAdvance, World, WorldConfig, WorldError,

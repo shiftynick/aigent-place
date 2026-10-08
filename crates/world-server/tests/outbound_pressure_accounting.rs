@@ -10,12 +10,8 @@
 //! the length of the frame this connection actually received on the wire, or a
 //! count derived from that measured length and the documented 256 KiB limit.
 //!
-//! Scope: these tests judge what a publish charges against what that publish
-//! writes. They deliberately do not claim that a connection's queued bytes are
-//! everything its socket still owes — the socket task holds its own bounded
-//! buffer of already-queued frames, and coalescing replaces the fan-out's
-//! replaceable state without withdrawing frames already handed to that buffer.
-//! That divergence is filed separately, not asserted here.
+//! The live FIFO retains the same encoded frames it charges. Coalescing
+//! withdraws pending state, and active writes remain charged until completion.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -419,16 +415,7 @@ async fn coalescing_charges_the_promoted_full_snapshot_it_writes() {
 
     resume_writer(&state, &mut viewer, &hello.connection_id).await;
     let frames = drain_socket_frames(&mut viewer).await;
-    assert!(frames.len() >= 2, "the socket owed at least two frames");
-
-    let baseline_frame = frames.first().expect("checked length");
-    let (is_full, _) = state_frame_bodies(baseline_frame);
-    assert!(is_full, "the oldest queued frame is the baseline snapshot");
-    assert_eq!(
-        first_charge,
-        baseline_frame.len(),
-        "the baseline frame must be charged the bytes it puts on the wire"
-    );
+    assert_eq!(frames.len(), 1, "only the promoted full snapshot remains");
 
     let promoted_frame = frames.last().expect("checked length");
     let envelope = Envelope::decode(promoted_frame.as_slice()).expect("envelope");
@@ -565,9 +552,9 @@ async fn an_unusable_baseline_answers_with_a_notice_under_load() {
         );
     };
     assert_eq!(
-        queued - loaded,
+        queued,
         last.len(),
-        "a loaded queue must be charged exactly the notice it wrote"
+        "recovery withdraws pending state and charges exactly its notice"
     );
 }
 
@@ -639,5 +626,278 @@ async fn production_sizing_drain_does_not_delay_logical_ticks() {
     assert!(
         state.peek_arrival_tick() >= start + 40,
         "logical ticks must keep advancing while the drain encodes for stuck writers"
+    );
+}
+
+#[tokio::test]
+async fn coalescing_withdraws_superseded_socket_frames() {
+    let (state, url) = start_server().await;
+    let (mut viewer, hello) = connect(&url, ConnectionRole::Viewer, b"").await;
+    pause_writer(&state, &mut viewer, &hello.connection_id).await;
+    state.publish_generation(crowd_generation(1));
+    state.advance_logical_tick();
+    state.drain_fanout(None).await;
+    let mut owed = queued_bytes(&state, &hello.connection_id).await;
+    let mut coalesced = false;
+    for tick in 2..=150 {
+        state.publish_generation(crowd_generation_with_offset(tick, tick));
+        state.advance_logical_tick();
+        state.drain_fanout(None).await;
+        let next = queued_bytes(&state, &hello.connection_id).await;
+        if next < owed {
+            coalesced = true;
+            break;
+        }
+        owed = next;
+    }
+    assert!(coalesced);
+    let retained = queued_bytes(&state, &hello.connection_id).await;
+    resume_writer(&state, &mut viewer, &hello.connection_id).await;
+    let frames = drain_socket_frames(&mut viewer).await;
+    assert_eq!(
+        frames.len(),
+        1,
+        "superseded state must leave the physical queue"
+    );
+    assert_eq!(retained, frames.iter().map(Vec::len).sum::<usize>());
+}
+
+#[tokio::test]
+async fn buffered_enter_is_not_lost_after_the_old_frame_count_limit() {
+    let (state, url) = start_server().await;
+    let (mut viewer, hello) = connect(&url, ConnectionRole::Viewer, b"").await;
+    let mut empty = crowd_generation(1);
+    empty.entities.clear();
+    state.publish_generation(empty.clone());
+    state.drain_fanout(None).await;
+    next_binary_frame(&mut viewer).await;
+    wait_for_empty_queue(&state, &hello.connection_id).await;
+    pause_writer(&state, &mut viewer, &hello.connection_id).await;
+    for tick in 2..=40 {
+        let mut g = empty.clone();
+        g.tick = tick;
+        g.generation = tick;
+        if tick >= 10 {
+            g.entities
+                .insert(1, crowd_generation(tick).entities.remove(&1).unwrap());
+        }
+        state.publish_generation(g);
+        state.advance_logical_tick();
+        state.drain_fanout(None).await;
+    }
+    resume_writer(&state, &mut viewer, &hello.connection_id).await;
+    let frames = drain_socket_frames(&mut viewer).await;
+    let mut bodies = std::collections::BTreeSet::new();
+    for frame in frames {
+        let envelope = Envelope::decode(frame.as_slice()).unwrap();
+        match envelope.body.unwrap() {
+            envelope::Body::FullSnapshot(full) => {
+                bodies = decode_world_snapshot_body_ids(&full.payload)
+                    .unwrap()
+                    .into_iter()
+                    .collect();
+            }
+            envelope::Body::SnapshotDelta(delta) => {
+                let delta =
+                    aigent_protocol::WorldSnapshotDeltaProto::decode(delta.payload.as_slice())
+                        .unwrap();
+                bodies.extend(delta.entered.iter().map(|record| record.entity_id));
+                for id in delta.left_ids {
+                    bodies.remove(&id);
+                }
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(bodies, std::collections::BTreeSet::from([1]));
+}
+
+#[test]
+fn invalid_shape_does_not_install_a_partial_snapshot() {
+    let mut fanout = world_server::SnapshotFanout::new();
+    fanout.attach(b"bad-shape".to_vec());
+    let mut generation = crowd_generation(1);
+    generation.entities.get_mut(&1).unwrap().position = world_server::Position::origin();
+    generation.entities.get_mut(&1).unwrap().shape =
+        Some(world_server::ShapeSlot::from_encoded(vec![0xff]));
+    let result = fanout.publish_real_interest_to(b"bad-shape", &generation, &|_| 100);
+    assert!(!matches!(
+        result,
+        Some(world_server::RealPublishOutcome::FullSnapshot { .. })
+    ));
+    let connection = fanout.get(b"bad-shape").unwrap();
+    assert!(connection.snapshot.baseline_id().is_none());
+    assert!(connection.interest_real.is_empty());
+}
+
+#[test]
+fn delta_only_coalescing_emits_a_complete_full_snapshot() {
+    let mut fanout = world_server::SnapshotFanout::new();
+    fanout.attach(b"delta-only".to_vec());
+    fanout.publish_real_interest_to(b"delta-only", &crowd_generation(1), &|_| 100);
+    fanout.get_mut(b"delta-only").unwrap().queue.drain_all();
+    let charge = QUEUE_LIMIT_BYTES / 2 + 1;
+    assert!(matches!(
+        fanout.publish_real_interest_to(
+            b"delta-only",
+            &crowd_generation_with_offset(2, 1),
+            &|_| charge
+        ),
+        Some(world_server::RealPublishOutcome::Delta { .. })
+    ));
+    assert!(matches!(
+        fanout.publish_real_interest_to(
+            b"delta-only",
+            &crowd_generation_with_offset(3, 2),
+            &|_| charge
+        ),
+        Some(world_server::RealPublishOutcome::FullSnapshot { .. })
+    ));
+}
+
+#[tokio::test]
+async fn resync_waits_for_full_write_and_charges_exact_envelope() {
+    let (state, url) = start_server().await;
+    let (mut viewer, hello) = connect(&url, ConnectionRole::Viewer, b"").await;
+    state.publish_generation(crowd_generation(1));
+    state.drain_fanout(None).await;
+    next_binary_frame(&mut viewer).await;
+    wait_for_empty_queue(&state, &hello.connection_id).await;
+    pause_writer(&state, &mut viewer, &hello.connection_id).await;
+    assert!(state.deliver_client_resync(&hello.connection_id).await);
+    assert!(
+        state
+            .fanout
+            .lock()
+            .await
+            .get(&hello.connection_id)
+            .unwrap()
+            .hold_observe,
+        "resync remains held while full is only buffered"
+    );
+    state.publish_generation(crowd_generation(2));
+    assert_eq!(state.drain_fanout(None).await.delivered, 0);
+    let retained = queued_bytes(&state, &hello.connection_id).await;
+    resume_writer(&state, &mut viewer, &hello.connection_id).await;
+    let frame = next_binary_frame(&mut viewer).await;
+    assert_eq!(retained, frame.len());
+    assert!(matches!(
+        Envelope::decode(frame.as_slice()).unwrap().body,
+        Some(envelope::Body::FullSnapshot(_))
+    ));
+    wait_for_empty_queue(&state, &hello.connection_id).await;
+    assert!(
+        !state
+            .fanout
+            .lock()
+            .await
+            .get(&hello.connection_id)
+            .unwrap()
+            .hold_observe
+    );
+}
+
+#[tokio::test]
+async fn ordered_results_are_not_evicted_by_frame_count_pressure() {
+    let (state, url) = start_server().await;
+    let (mut aigent, hello) = connect(&url, ConnectionRole::Aigent, b"ordered-results").await;
+    pause_writer(&state, &mut aigent, &hello.connection_id).await;
+    for sequence in 1..=24u64 {
+        let frame = Envelope {
+            protocol_major: 1,
+            connection_id: hello.connection_id.clone(),
+            message_id: sequence,
+            metadata: Some(aigent_protocol::EnvelopeMetadata {
+                required_features: vec![],
+            }),
+            body: Some(envelope::Body::Command(aigent_protocol::Command {
+                metadata: Some(aigent_protocol::CommandMetadata {
+                    session_epoch: hello.session_epoch.clone(),
+                    sequence,
+                    idempotency_key: sequence.to_be_bytes().to_vec(),
+                }),
+                kind: aigent_protocol::CommandKind::CancelIntent as i32,
+                payload: vec![],
+            })),
+        }
+        .encode_to_vec();
+        aigent.send(WsMessage::Binary(frame.into())).await.unwrap();
+    }
+    // Ping follows the commands on this socket, so its pong is a server-side
+    // admission barrier without assumptions about scheduler timing.
+    round_trip(&mut aigent).await;
+    let retained = queued_bytes(&state, &hello.connection_id).await;
+    resume_writer(&state, &mut aigent, &hello.connection_id).await;
+    let frames = drain_socket_frames(&mut aigent).await;
+    assert_eq!(retained, frames.iter().map(Vec::len).sum::<usize>());
+    let sequences: Vec<_> = frames
+        .into_iter()
+        .filter_map(
+            |frame| match Envelope::decode(frame.as_slice()).unwrap().body {
+                Some(envelope::Body::CommandResult(result)) => Some(result.sequence),
+                _ => None,
+            },
+        )
+        .collect();
+    assert_eq!(sequences, (1..=24).collect::<Vec<_>>());
+}
+
+#[test]
+fn failed_resync_preserves_baseline_interest_and_event_cursor() {
+    let mut fanout = world_server::SnapshotFanout::new();
+    fanout.attach(b"resync-error".to_vec());
+    let generation = crowd_generation(1);
+    fanout.publish_real_interest_to(b"resync-error", &generation, &|_| 100);
+    let connection = fanout.get(b"resync-error").unwrap();
+    let baseline = connection.snapshot.baseline_id();
+    let interest = connection.interest_real.clone();
+    let events = connection.events.clone();
+    let mut corrupt = generation.clone();
+    let entity_id = *interest.keys().next().unwrap();
+    corrupt.entities.get_mut(&entity_id).unwrap().shape =
+        Some(world_server::ShapeSlot::from_encoded(vec![0xff]));
+    let error = fanout
+        .client_resync_real(b"resync-error", &corrupt, &|_| 100)
+        .unwrap_err();
+    assert_eq!(error.entity_id, entity_id);
+    let connection = fanout.get(b"resync-error").unwrap();
+    assert_eq!(connection.snapshot.baseline_id(), baseline);
+    assert_eq!(connection.interest_real, interest);
+    assert_eq!(connection.events, events);
+    assert_eq!(
+        connection.snapshot.status(),
+        world_server::SnapshotStatus::ResyncRequired
+    );
+    let recovery = fanout
+        .client_resync_real(b"resync-error", &generation, &|_| 100)
+        .unwrap()
+        .unwrap();
+    assert_ne!(Some(recovery.0), baseline);
+}
+
+#[test]
+fn publishing_deltas_keeps_the_complete_retained_baseline() {
+    let mut fanout = world_server::SnapshotFanout::new();
+    fanout.attach(b"retained-baseline".to_vec());
+    fanout.publish_real_interest_to(b"retained-baseline", &crowd_generation(1), &|_| 100);
+    let retained = fanout
+        .get(b"retained-baseline")
+        .unwrap()
+        .snapshot
+        .retained_real_body()
+        .unwrap()
+        .clone();
+    fanout.publish_real_interest_to(
+        b"retained-baseline",
+        &crowd_generation_with_offset(2, 1),
+        &|_| 100,
+    );
+    assert_eq!(
+        fanout
+            .get(b"retained-baseline")
+            .unwrap()
+            .snapshot
+            .retained_real_body(),
+        Some(&retained)
     );
 }

@@ -188,7 +188,24 @@ fn generation_of(
                 revision: 1,
                 position,
                 shape: Some(ShapeSlot::from_encoded(
-                    aigent_protocol::ShapeTree { nodes: Vec::new() }.encode_to_vec(),
+                    aigent_protocol::ShapeTree {
+                        nodes: vec![aigent_protocol::ShapeNode {
+                            node_id: 1,
+                            parent_node_id: 0,
+                            transform: None,
+                            primitive: Some(aigent_protocol::shape_node::Primitive::Box(
+                                aigent_protocol::BoxPrimitive {
+                                    size_x_mm: 1_000,
+                                    size_y_mm: 1_000,
+                                    size_z_mm: 1_000,
+                                },
+                            )),
+                            joint_name: None,
+                            color: None,
+                            material_tags: Vec::new(),
+                        }],
+                    }
+                    .encode_to_vec(),
                 )),
             },
         );
@@ -455,6 +472,7 @@ async fn client_resync_baseline_is_truncated() {
     let measure = |_shape: &RealFrameShape<'_>| 0usize;
     let (_baseline, body, _events, _enqueue) = fanout
         .client_resync_real(b"c1", &generation, &measure)
+        .expect("valid snapshot")
         .expect("resync delivered");
     let delivered: Vec<u64> = body.bodies.iter().map(|r| r.entity_id).collect();
     assert_eq!(

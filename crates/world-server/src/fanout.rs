@@ -15,8 +15,8 @@ use crate::snapshot::{
     StubSnapshotPayload,
 };
 use crate::wire::{
-    encode_world_snapshot_body, encode_world_snapshot_delta, RealEntityRecord, WorldSnapshotBody,
-    WorldSnapshotDelta,
+    encode_world_snapshot_body, encode_world_snapshot_delta, RealEntityRecord, SnapshotEncodeError,
+    WorldSnapshotBody, WorldSnapshotDelta,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -27,55 +27,26 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 /// the stub delta carries the whole payload on the wire.
 const LOGICAL_DELTA_BYTES: usize = 32;
 
-/// One frame a publish is about to charge, described in the terms the caller
-/// needs in order to encode it. Every variant names exactly what the socket
-/// will receive, including the notice that carries no payload at all.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum StateFrameShape<'a> {
-    /// A self-contained snapshot carrying `payload` under `baseline_id`.
-    Full {
-        baseline_id: u64,
-        payload: &'a StubSnapshotPayload,
-    },
-    /// A delta carrying `payload` against `baseline_id`.
-    Delta {
-        baseline_id: u64,
-        payload: &'a StubSnapshotPayload,
-    },
-    /// A resync-required notice. No snapshot payload reaches the socket.
-    ResyncRequired { notice: &'a SnapshotResyncRequired },
-}
-
-/// How one publish sizes the bytes it charges to a connection's outbound queue.
-///
-/// ARCHITECTURE section 1 caps a connection's outbound queue at 256 KiB of the
-/// bytes that reach its socket, so every path that owns a real socket must use
-/// [`StateSizing::Frame`] and measure the encoding it will actually write. The
-/// logical modes exist for the workload harness, the conformance oracles, and
-/// pressure fixtures, none of which put a frame on a wire.
+/// Logical sizing for the retained placeholder conformance and pressure fixtures.
+/// Live sockets use the real-body encoder and exact retained frame lengths.
 #[derive(Clone, Copy)]
-pub(crate) enum StateSizing<'a> {
+pub(crate) enum StateSizing {
     /// Charge the payload's own logical encoded size.
     Payload,
     /// Charge one fixed size for every state item (pressure fixtures).
     Fixed(usize),
-    /// Charge the real encoded frame length, measured by the caller that writes
-    /// it. `Sync` keeps the sizing usable from the async serialization stage,
-    /// where the drain future must stay `Send`.
-    Frame(&'a (dyn Fn(StateFrameShape<'_>) -> usize + Sync)),
 }
 
-impl std::fmt::Debug for StateSizing<'_> {
+impl std::fmt::Debug for StateSizing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Payload => f.write_str("StateSizing::Payload"),
             Self::Fixed(bytes) => write!(f, "StateSizing::Fixed({bytes})"),
-            Self::Frame(_) => f.write_str("StateSizing::Frame(..)"),
         }
     }
 }
 
-impl StateSizing<'_> {
+impl StateSizing {
     /// The logical sizing an `Option<usize>` caller asks for: `None` measures
     /// the payload, `Some(n)` charges `n` for every state item.
     #[must_use]
@@ -86,41 +57,31 @@ impl StateSizing<'_> {
         }
     }
 
-    fn full_bytes(&self, payload: &StubSnapshotPayload, baseline_id: u64) -> usize {
+    fn full_bytes(&self, payload: &StubSnapshotPayload, _baseline_id: u64) -> usize {
         match self {
             Self::Payload => payload.encoded_bytes(),
             Self::Fixed(bytes) => *bytes,
-            Self::Frame(measure) => measure(StateFrameShape::Full {
-                baseline_id,
-                payload,
-            }),
         }
     }
 
     fn delta_bytes(
         &self,
-        payload: &StubSnapshotPayload,
-        baseline_id: u64,
+        _payload: &StubSnapshotPayload,
+        _baseline_id: u64,
         full_bytes: usize,
     ) -> usize {
         match self {
             Self::Payload => LOGICAL_DELTA_BYTES.min(full_bytes),
             Self::Fixed(bytes) => (*bytes).min(full_bytes),
-            Self::Frame(measure) => measure(StateFrameShape::Delta {
-                baseline_id,
-                payload,
-            }),
         }
     }
 
     /// Bytes for a publish that will emit a resync notice instead of state.
     ///
-    /// The logical modes keep charging what they charged for the delta this
-    /// notice replaces, so harness and oracle behaviour is unchanged; only a
-    /// frame-sizing caller measures the small notice it actually writes.
+    /// Placeholder fixtures retain their logical delta charge for this notice.
     fn resync_bytes(
         &self,
-        notice: &SnapshotResyncRequired,
+        _notice: &SnapshotResyncRequired,
         payload: &StubSnapshotPayload,
         baseline_id: u64,
     ) -> usize {
@@ -129,7 +90,6 @@ impl StateSizing<'_> {
                 let full_bytes = self.full_bytes(payload, baseline_id);
                 self.delta_bytes(payload, baseline_id, full_bytes)
             }
-            Self::Frame(measure) => measure(StateFrameShape::ResyncRequired { notice }),
         }
     }
 }
@@ -264,7 +224,7 @@ pub struct ConnectionOutbound {
     pub viewer_aoi_cap: u32,
     /// Last delivered ordered interest set.
     pub interest: Vec<u64>,
-    /// When true, skip observe publish until a client-resync full snapshot is queued.
+    /// When true, skip observe publish until the matching resync full is written.
     pub hold_observe: bool,
     /// Client→server message IDs already accepted on this connection.
     pub seen_client_message_ids: HashSet<u64>,
@@ -277,6 +237,7 @@ pub struct ConnectionOutbound {
     /// agree on a value type.
     pub interest_real: BTreeMap<u64, RealEntityRecord>,
     next_baseline: u64,
+    latest_real_body: Option<WorldSnapshotBody>,
 }
 
 impl Default for ConnectionOutbound {
@@ -294,6 +255,7 @@ impl Default for ConnectionOutbound {
             hold_observe: false,
             seen_client_message_ids: HashSet::new(),
             next_baseline: 1,
+            latest_real_body: None,
         }
     }
 }
@@ -407,7 +369,7 @@ impl SnapshotFanout {
     /// Logical sizing only. A frame measurer is bound to one connection's
     /// envelope and message id, so it cannot size a fan-out across many
     /// connections; a caller that owns sockets drives
-    /// [`Self::publish_interest_to`] per connection with [`StateSizing::Frame`].
+    /// [`Self::publish_real_interest_to`] per connection with a frame measurer.
     pub fn drain_mailbox(
         &mut self,
         mailbox: &PublicationMailbox,
@@ -456,14 +418,13 @@ impl SnapshotFanout {
     /// as its own task; the cap is enforced here in the meantime because an
     /// unbounded fan-out breaks a hard workload limit.
     ///
-    /// `sizing` decides what the queue is charged. A caller that owns a socket
-    /// passes [`StateSizing::Frame`] so the pressure guard sizes the frame it
-    /// is about to write rather than a stand-in.
+    /// `sizing` retains logical payload or fixed fixture accounting. The live
+    /// transport uses [`Self::publish_real_interest_to`] and measures each envelope.
     pub(crate) fn publish_interest_to(
         &mut self,
         connection_id: &[u8],
         generation: &ImmutableGeneration,
-        sizing: StateSizing<'_>,
+        sizing: StateSizing,
     ) -> Option<PublishOutcome> {
         let connection = self.by_conn.get_mut(connection_id)?;
         if connection.queue.is_closed() {
@@ -493,7 +454,7 @@ impl SnapshotFanout {
         &mut self,
         connection_id: &[u8],
         payload: StubSnapshotPayload,
-        sizing: StateSizing<'_>,
+        sizing: StateSizing,
     ) -> Option<PublishOutcome> {
         let connection = self.by_conn.get_mut(connection_id)?;
         if connection.queue.is_closed() {
@@ -695,68 +656,87 @@ pub struct RealInterestDiff {
     pub left_ids: Vec<u64>,
 }
 
+#[derive(Debug)]
+enum RealInterestError {
+    Aoi(AoiError),
+    Encoding(SnapshotEncodeError),
+}
+
 impl ConnectionOutbound {
-    /// Refresh interest from the entity catalog and diff against the prior set.
-    ///
-    /// Returns the new interest set in AOI rank order (nearest-first,
-    /// ties by ascending entity_id), plus a structured
-    /// diff suitable for direct emission as a `WorldSnapshotDelta`.
-    pub(crate) fn refresh_real_interest(
-        &mut self,
+    /// Construct the next interest and diff without changing delivered state.
+    fn prepare_real_interest(
+        &self,
         generation: &ImmutableGeneration,
-    ) -> Result<(Vec<u64>, RealInterestDiff), AoiError> {
+    ) -> Result<
+        (
+            WorldSnapshotBody,
+            BTreeMap<u64, RealEntityRecord>,
+            RealInterestDiff,
+        ),
+        RealInterestError,
+    > {
         let cap = aoi_cap_for_role(self.role, self.viewer_aoi_cap);
-        let candidates = aoi_candidates_from_entities(generation);
-        let next = truncate_nearest(&candidates, self.focus, cap)?;
+        let next = truncate_nearest(&aoi_candidates_from_entities(generation), self.focus, cap)
+            .map_err(RealInterestError::Aoi)?;
+        let mut records = BTreeMap::new();
+        let mut bodies = Vec::with_capacity(next.len());
         let mut diff = RealInterestDiff {
             entered: Vec::new(),
             modified: Vec::new(),
             left_ids: Vec::new(),
         };
-        let mut next_set: HashSet<u64> = HashSet::with_capacity(next.len());
-        for entity_id in &next {
-            next_set.insert(*entity_id);
-            match self.interest_real.get(entity_id) {
-                None => diff.entered.push(RealEntityRecord::from_snapshot(
-                    generation
-                        .entities
-                        .get(entity_id)
-                        .expect("candidate ranked from generation entities"),
-                )),
-                Some(prior) => {
-                    let snapshot = generation
-                        .entities
-                        .get(entity_id)
-                        .expect("candidate ranked from generation entities");
-                    if prior.revision != snapshot.revision
-                        || prior.position_mm
-                            != (
-                                crate::wire::metres_to_mm_i64(snapshot.position.x()),
-                                crate::wire::metres_to_mm_i64(snapshot.position.y()),
-                                crate::wire::metres_to_mm_i64(snapshot.position.z()),
-                            )
-                    {
-                        diff.modified
-                            .push(RealEntityRecord::from_snapshot(snapshot));
-                    }
-                }
+        for entity_id in next {
+            let record = RealEntityRecord::from_snapshot(
+                generation
+                    .entities
+                    .get(&entity_id)
+                    .expect("ranked entity exists"),
+            )
+            .map_err(RealInterestError::Encoding)?;
+            match self.interest_real.get(&entity_id) {
+                None => diff.entered.push(record.clone()),
+                Some(prior) if prior != &record => diff.modified.push(record.clone()),
+                Some(_) => {}
             }
+            bodies.push(record.clone());
+            records.insert(entity_id, record);
         }
-        for prior_id in self.interest_real.keys() {
-            if !next_set.contains(prior_id) {
-                diff.left_ids.push(*prior_id);
-            }
-        }
-        self.interest_real.clear();
-        for entity_id in &next {
-            let snapshot = generation
-                .entities
-                .get(entity_id)
-                .expect("candidate ranked from generation entities");
+        diff.left_ids.extend(
             self.interest_real
-                .insert(*entity_id, RealEntityRecord::from_snapshot(snapshot));
-        }
-        Ok((next, diff))
+                .keys()
+                .filter(|id| !records.contains_key(id))
+                .copied(),
+        );
+        Ok((
+            WorldSnapshotBody {
+                tick: generation.tick,
+                generation_digest: generation.digest(),
+                bodies,
+            },
+            records,
+            diff,
+        ))
+    }
+
+    fn queue_real_full(
+        &mut self,
+        body: WorldSnapshotBody,
+        byte_measure: &(dyn Fn(&RealFrameShape<'_>) -> usize + Sync),
+    ) -> Option<RealPublishOutcome> {
+        let baseline_id = self.next_baseline;
+        let full_size = byte_measure(&RealFrameShape::Full {
+            baseline_id,
+            body: &body,
+        });
+        self.queue
+            .enqueue_state(full_size, StateKind::Full, full_size)?;
+        self.next_baseline = self.next_baseline.saturating_add(1);
+        self.snapshot.install_real_full(baseline_id, body.clone());
+        Some(RealPublishOutcome::FullSnapshot {
+            baseline_id,
+            wire_bytes: encode_world_snapshot_body(&body),
+            body,
+        })
     }
 }
 
@@ -780,6 +760,10 @@ pub enum RealPublishOutcome {
         required: SnapshotResyncRequired,
     },
     ConnectionClosed,
+    /// Authoritative state could not produce a complete snapshot.
+    EncodingFailed {
+        error: SnapshotEncodeError,
+    },
     /// AOI truncation could not run for this connection.
     InterestUnavailable {
         error: AoiError,
@@ -787,11 +771,8 @@ pub enum RealPublishOutcome {
 }
 
 impl SnapshotFanout {
-    /// Real-body publish: entity-store AOI ranking, explicit enter/leave diff,
-    /// and `WorldSnapshotBody`/`WorldSnapshotDelta` payloads on the wire.
-    ///
-    /// `byte_measure` sizes the frame the caller is about to write, so the
-    /// outbound queue is charged the bytes the socket will actually receive.
+    /// Publish complete real-body state or an explicit failure. Incremental
+    /// records remain ordered; replacing queued transitions requires a full body.
     pub fn publish_real_interest_to(
         &mut self,
         connection_id: &[u8],
@@ -806,180 +787,144 @@ impl SnapshotFanout {
             return None;
         }
         connection.track_focus_real(generation);
-        let (interest, diff) = match connection.refresh_real_interest(generation) {
-            Ok(pair) => pair,
-            Err(error) => return Some(RealPublishOutcome::InterestUnavailable { error }),
+        let (body, records, diff) = match connection.prepare_real_interest(generation) {
+            Ok(prepared) => prepared,
+            Err(RealInterestError::Aoi(error)) => {
+                return Some(RealPublishOutcome::InterestUnavailable { error })
+            }
+            Err(RealInterestError::Encoding(error)) => {
+                connection.snapshot.require_resync();
+                return Some(RealPublishOutcome::EncodingFailed { error });
+            }
         };
-        let needs_full = connection.snapshot.baseline_id().is_none()
-            || connection.snapshot.status() == SnapshotStatus::ResyncRequired;
-
-        if needs_full {
-            let baseline = connection.next_baseline;
-            let body = WorldSnapshotBody {
-                tick: generation.tick,
-                generation_digest: generation.digest(),
-                bodies: interest
-                    .iter()
-                    .map(|id| {
-                        RealEntityRecord::from_snapshot(
-                            generation.entities.get(id).expect("in interest set"),
-                        )
-                    })
-                    .collect(),
-            };
-            let wire_bytes = encode_world_snapshot_body(&body);
-            let full_size = byte_measure(&RealFrameShape::Full {
-                baseline_id: baseline,
-                body: &body,
-            });
-            let _enqueue = connection
-                .queue
-                .enqueue_state(full_size, StateKind::Full, full_size)?;
-            connection.next_baseline = connection.next_baseline.saturating_add(1);
-            connection
-                .snapshot
-                .install_real_full(baseline, body.clone());
-            return Some(RealPublishOutcome::FullSnapshot {
-                baseline_id: baseline,
-                body,
-                wire_bytes,
-            });
+        if connection.snapshot.baseline_id().is_none()
+            || connection.snapshot.status() == SnapshotStatus::ResyncRequired
+        {
+            let outcome = connection.queue_real_full(body.clone(), byte_measure)?;
+            connection.interest_real = records;
+            connection.latest_real_body = Some(body);
+            return Some(outcome);
         }
-
-        let baseline = connection.snapshot.baseline_id().expect("live baseline");
-        if let Some(required) = connection.snapshot.delta_rejection(Some(baseline)) {
-            let notice_size = byte_measure(&RealFrameShape::ResyncRequired { notice: &required });
-            let _enqueue =
-                connection
-                    .queue
-                    .enqueue_state(notice_size, StateKind::Delta, notice_size)?;
+        let baseline_id = connection.snapshot.baseline_id().expect("live baseline");
+        if let Some(required) = connection.snapshot.delta_rejection(Some(baseline_id)) {
+            let size = byte_measure(&RealFrameShape::ResyncRequired { notice: &required });
+            connection
+                .queue
+                .enqueue_state(size, StateKind::Delta, size)?;
             connection.snapshot.require_resync();
             return Some(RealPublishOutcome::ResyncRequired { required });
         }
-
         let delta = WorldSnapshotDelta {
             generation_digest: generation.digest(),
             entered: diff.entered,
             modified: diff.modified,
             left_ids: diff.left_ids,
         };
-        let wire_bytes = encode_world_snapshot_delta(&delta);
         let delta_size = byte_measure(&RealFrameShape::Delta {
-            baseline_id: baseline,
+            baseline_id,
             delta: &delta,
         });
-        let full_promoted_size = {
-            // If coalescing promotes this delta to a full snapshot, the
-            // full size is what the queue actually charges after promotion.
-            let promoted = connection.next_baseline;
-            let full_body = WorldSnapshotBody {
-                tick: generation.tick,
-                generation_digest: generation.digest(),
-                bodies: interest
-                    .iter()
-                    .map(|id| {
-                        RealEntityRecord::from_snapshot(
-                            generation.entities.get(id).expect("in interest set"),
-                        )
-                    })
-                    .collect(),
-            };
-            byte_measure(&RealFrameShape::Full {
-                baseline_id: promoted,
-                body: &full_body,
-            })
-        };
-        let enqueue =
-            connection
-                .queue
-                .enqueue_state(delta_size, StateKind::Delta, full_promoted_size)?;
-        if enqueue.kind == StateKind::Full && enqueue.coalesced {
-            let promoted = connection.next_baseline;
-            connection.next_baseline = connection.next_baseline.saturating_add(1);
-            // Install the promoted full snapshot body on the channel so
-            // future deltas can apply.
-            let full_body = WorldSnapshotBody {
-                tick: generation.tick,
-                generation_digest: generation.digest(),
-                bodies: interest
-                    .iter()
-                    .map(|id| {
-                        RealEntityRecord::from_snapshot(
-                            generation.entities.get(id).expect("in interest set"),
-                        )
-                    })
-                    .collect(),
-            };
-            // The wire bytes the socket receives are the promoted full body,
-            // not the delta that was overwritten.
-            let promoted_wire = encode_world_snapshot_body(&full_body);
-            connection
-                .snapshot
-                .install_real_full(promoted, full_body.clone());
-            return Some(RealPublishOutcome::FullSnapshot {
-                baseline_id: promoted,
-                body: full_body,
-                wire_bytes: promoted_wire,
-            });
-        }
-        if let Err(required) = connection
-            .snapshot
-            .deliver_real_delta(Some(baseline), delta.clone())
-        {
-            return Some(RealPublishOutcome::ResyncRequired { required });
-        }
-        Some(RealPublishOutcome::Delta {
-            baseline_id: baseline,
-            delta,
-            wire_bytes,
-        })
-    }
-
-    /// Real-body client/server resync: AOI-truncated full snapshot, identical
-    /// shape to `client_resync` but with `WorldSnapshotBody` instead of the
-    /// legacy stub.
-    pub fn client_resync_real(
-        &mut self,
-        connection_id: &[u8],
-        generation: &ImmutableGeneration,
-        byte_measure: &(dyn Fn(&RealFrameShape<'_>) -> usize + Sync),
-    ) -> Option<(
-        u64,
-        WorldSnapshotBody,
-        EventStreamCursor,
-        EnqueueStateOutcome,
-    )> {
-        let connection = self.by_conn.get_mut(connection_id)?;
-        if connection.queue.is_closed() {
-            return None;
-        }
-        connection.track_focus_real(generation);
-        let (interest, _diff) = connection.refresh_real_interest(generation).ok()?;
-        let events_before = connection.events.clone();
-        let body = WorldSnapshotBody {
-            tick: generation.tick,
-            generation_digest: generation.digest(),
-            bodies: interest
-                .iter()
-                .map(|id| {
-                    RealEntityRecord::from_snapshot(
-                        generation.entities.get(id).expect("in interest set"),
-                    )
-                })
-                .collect(),
-        };
         let full_size = byte_measure(&RealFrameShape::Full {
             baseline_id: connection.next_baseline,
             body: &body,
         });
         let enqueue = connection
             .queue
-            .enqueue_state(full_size, StateKind::Full, full_size)?;
+            .enqueue_state(delta_size, StateKind::Delta, full_size)?;
+        let outcome = if enqueue.coalesced {
+            // Logical replacement and physical replacement use this same full
+            // artifact, even if every prior queued state frame was a delta.
+            let baseline_id = connection.next_baseline;
+            connection.next_baseline = connection.next_baseline.saturating_add(1);
+            connection
+                .snapshot
+                .install_real_full(baseline_id, body.clone());
+            RealPublishOutcome::FullSnapshot {
+                baseline_id,
+                wire_bytes: encode_world_snapshot_body(&body),
+                body: body.clone(),
+            }
+        } else {
+            if let Err(required) = connection
+                .snapshot
+                .deliver_real_delta(Some(baseline_id), delta.clone())
+            {
+                return Some(RealPublishOutcome::ResyncRequired { required });
+            }
+            RealPublishOutcome::Delta {
+                baseline_id,
+                wire_bytes: encode_world_snapshot_delta(&delta),
+                delta,
+            }
+        };
+        connection.interest_real = records;
+        connection.latest_real_body = Some(body);
+        Some(outcome)
+    }
+
+    /// Promote pending state when ordered traffic causes byte pressure.
+    pub(crate) fn coalesce_real_pending(
+        &mut self,
+        connection_id: &[u8],
+        byte_measure: &(dyn Fn(&RealFrameShape<'_>) -> usize + Sync),
+    ) -> Option<RealPublishOutcome> {
+        let connection = self.by_conn.get_mut(connection_id)?;
+        if connection.snapshot.status() != SnapshotStatus::Live {
+            return None;
+        }
+        let body = connection.latest_real_body.clone()?;
+        connection.queue_real_full(body, byte_measure)
+    }
+
+    /// Construct a fresh complete baseline. Failed encoding preserves the old
+    /// baseline and interest, and exposes a typed recovery failure.
+    pub fn client_resync_real(
+        &mut self,
+        connection_id: &[u8],
+        generation: &ImmutableGeneration,
+        byte_measure: &(dyn Fn(&RealFrameShape<'_>) -> usize + Sync),
+    ) -> Result<
+        Option<(
+            u64,
+            WorldSnapshotBody,
+            EventStreamCursor,
+            EnqueueStateOutcome,
+        )>,
+        SnapshotEncodeError,
+    > {
+        let Some(connection) = self.by_conn.get_mut(connection_id) else {
+            return Ok(None);
+        };
+        if connection.queue.is_closed() {
+            return Ok(None);
+        }
+        connection.track_focus_real(generation);
+        let (body, records, _) = match connection.prepare_real_interest(generation) {
+            Ok(prepared) => prepared,
+            Err(RealInterestError::Aoi(_)) => return Ok(None),
+            Err(RealInterestError::Encoding(error)) => {
+                connection.snapshot.require_resync();
+                return Err(error);
+            }
+        };
         let baseline = connection.next_baseline;
+        let full_size = byte_measure(&RealFrameShape::Full {
+            baseline_id: baseline,
+            body: &body,
+        });
+        let Some(enqueue) = connection
+            .queue
+            .enqueue_state(full_size, StateKind::Full, full_size)
+        else {
+            return Ok(None);
+        };
         connection.next_baseline = connection.next_baseline.saturating_add(1);
-        let body = connection.snapshot.install_real_full(baseline, body);
-        assert_eq!(connection.events, events_before);
-        Some((baseline, body, connection.events.clone(), enqueue))
+        connection
+            .snapshot
+            .install_real_full(baseline, body.clone());
+        connection.interest_real = records;
+        connection.latest_real_body = Some(body.clone());
+        Ok(Some((baseline, body, connection.events.clone(), enqueue)))
     }
 }
 

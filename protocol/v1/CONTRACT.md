@@ -218,6 +218,35 @@ mismatched baseline changes only snapshot delivery to
 may initiate it. Recovery installs a fresh full snapshot with a new baseline
 ID. It does not alter event epoch, event sequence, or acknowledgement state.
 
+`FullSnapshot.payload` encodes `WorldSnapshotBodyProto`; `SnapshotDelta.payload`
+encodes `WorldSnapshotDeltaProto`. Both inner messages use version 1 and carry
+an exact 32-byte `generation_digest` for the authoritative immutable generation.
+The numbered `baseline_id` identifies a retained full body; it is not the digest.
+Publishing a delta does not replace that retained baseline body.
+
+A full body carries the generation tick and every entity in the connection's
+AOI, in nearest-first Euclidean distance order with ascending entity ID as the
+tie-break. The hard cap is 100 entities; degradation can lower the viewer cap.
+Each record preserves its non-zero entity ID and revision, required signed
+millimetre position within the inclusive ±100 km bound, and complete optional
+`ShapeTree`. An absent shape is legitimate. A corrupt stored shape must fail
+snapshot construction; it must not become a successful record with no shape.
+
+A delta has explicit `entered`, `modified`, and `left_ids` sets. IDs are unique
+within a message and disjoint across those sets. Absence from a delta never
+means leave. Apply the complete transition against the current entity set:
+enter adds an absent entity, modify updates a present entity, and leave removes
+a present entity. Invalid transitions have no partial effect. Unknown protobuf
+fields remain compatible, but malformed payloads or an unsupported inner
+version require snapshot recovery without installing that payload.
+
+Dropping a queued incremental transition during coalescing requires a complete
+full replacement with a fresh baseline ID. Pending replaceable state can be
+withdrawn; ordered results, events, and control frames retain FIFO order.
+A write already in progress remains charged until completion. Resync observation
+remains held until the matching full snapshot write completes; an older full
+write cannot release the hold for a newer baseline.
+
 ## Semantic examples
 
 [`conformance/envelope-v1.json`](conformance/envelope-v1.json) contains

@@ -16,6 +16,6 @@ pub mod snapshot;
 
 pub use snapshot::{
     decode_world_snapshot_body_ids, decode_world_snapshot_delta_left_ids,
-    encode_world_snapshot_body, encode_world_snapshot_delta, metres_to_mm_i64, RealEntityRecord,
+    encode_world_snapshot_body, encode_world_snapshot_delta, RealEntityRecord, SnapshotEncodeError,
     WorldSnapshotBody, WorldSnapshotDelta, BODY_VERSION, DELTA_VERSION,
 };

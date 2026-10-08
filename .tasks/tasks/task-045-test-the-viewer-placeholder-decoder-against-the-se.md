@@ -1,12 +1,12 @@
 ---
 id: task-045
 title: Test the viewer placeholder decoder against the server encoder
-status: backlog
+status: done
 priority: p2
-tags: [area:viewer, phase:debt]
+tags: [area:viewer, phase:debt, deleted:true]
 blockedBy: []
 createdAt: "2026-08-06T13:18:08Z"
-updatedAt: "2026-08-06T13:18:08Z"
+updatedAt: "2026-10-08T02:41:58Z"
 ---
 
 <!-- task-tracker:description -->
@@ -18,3 +18,5 @@ Debt left by the live-connection-slice milestone. The browser viewer reimplement
 ## Log
 
 - 2026-08-06T13:18:08Z — created (status: backlog)
+- 2026-10-08T02:41:58Z — note: Superseded by completed task-054 in PR #69. The obsolete AIGB browser decoder was replaced by generated real-body schemas. Shared Rust fixtures plus malformed/version/field-preservation tests now execute in the viewer gate. Retire this duplicate card by soft deletion; no separate implementation remains.
+- 2026-10-08T02:41:58Z — removed (soft delete)

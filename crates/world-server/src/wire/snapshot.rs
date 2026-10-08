@@ -20,8 +20,6 @@
 //! (`±100 km`) keep every value well inside `i64`, so a valid [`Position`]
 //! always converts.
 
-#![allow(dead_code)] // Wired in by task-054; not all call-sites land in this commit.
-
 use crate::entity::{EntitySnapshot, Position, ShapeSlot};
 use aigent_protocol::{
     RealEntityRecord as RealEntityRecordProto, ShapeTree, Vector3Millimeters,
@@ -39,8 +37,7 @@ pub const DELTA_VERSION: u32 = 1;
 ///
 /// Equal to the entity-store snapshot, with the opaque `ShapeSlot` decoded into
 /// a [`ShapeTree`] and the canonical `Position` projected into
-/// `sint64` millimetres. Decoding failures on the shape slot are folded into
-/// `shape: None` so a corrupt slot never panics the wire encoder.
+/// `sint64` millimetres. A corrupt shape returns a typed encoding failure.
 ///
 /// `Eq` is not derived because the embedded `ShapeTree` carries `f64` rotations
 /// and the `prost` generated type is only `PartialEq`. The structural equality
@@ -53,39 +50,39 @@ pub struct RealEntityRecord {
     pub shape: Option<ShapeTree>,
 }
 
+/// Failure to turn authoritative entity state into a complete wire record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotEncodeError {
+    pub entity_id: u64,
+    pub cause: String,
+}
+
+impl std::fmt::Display for SnapshotEncodeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "entity {} shape: {}", self.entity_id, self.cause)
+    }
+}
+
+impl std::error::Error for SnapshotEncodeError {}
+
 impl RealEntityRecord {
-    /// Build a record from the entity-store view of one entity.
-    #[must_use]
-    pub fn from_snapshot(snapshot: &EntitySnapshot) -> Self {
-        let position_mm = position_to_mm(snapshot.position);
-        let shape = match snapshot.shape.as_ref() {
-            None => None,
-            Some(slot) => match decode_shape_slot(slot) {
-                Ok(tree) => Some(tree),
-                Err(error) => {
-                    // The entity store carries `ShapeSlot` as opaque bytes
-                    // (task-046), so a decode failure here is a stored-
-                    // state defect, not an input error. The wire still
-                    // carries the body (entity_id, revision, position);
-                    // losing the shape tree means the viewer renders a
-                    // generic body for this entity until the slot is
-                    // repaired. Log so the failure is visible.
-                    eprintln!(
-                        "world-server: shape slot did not decode for entity {} ({} bytes): {}; emitting body without shape tree",
-                        snapshot.entity_id,
-                        slot.len(),
-                        error,
-                    );
-                    None
-                }
-            },
-        };
-        Self {
+    /// Build a complete record, or return the corrupt authoritative entity.
+    pub fn from_snapshot(snapshot: &EntitySnapshot) -> Result<Self, SnapshotEncodeError> {
+        let shape = snapshot
+            .shape
+            .as_ref()
+            .map(decode_shape_slot)
+            .transpose()
+            .map_err(|cause| SnapshotEncodeError {
+                entity_id: snapshot.entity_id,
+                cause,
+            })?;
+        Ok(Self {
             entity_id: snapshot.entity_id,
             revision: snapshot.revision,
-            position_mm,
+            position_mm: position_to_mm(snapshot.position),
             shape,
-        }
+        })
     }
 }
 
@@ -272,6 +269,7 @@ pub fn decode_world_snapshot_delta_left_ids(bytes: &[u8]) -> Option<Vec<u64>> {
     Some(proto.left_ids)
 }
 
+#[cfg(test)]
 fn hex_decode(hex: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(hex.len() / 2);
     let mut iter = hex.iter().copied();
@@ -282,6 +280,7 @@ fn hex_decode(hex: &[u8]) -> Vec<u8> {
     out
 }
 
+#[cfg(test)]
 fn hex_nibble(b: u8) -> u8 {
     match b {
         b'0'..=b'9' => b - b'0',
@@ -349,7 +348,8 @@ mod tests {
 
     #[test]
     fn real_entity_record_from_snapshot_decodes_shape() {
-        let record = RealEntityRecord::from_snapshot(&sample_record(1));
+        let record =
+            RealEntityRecord::from_snapshot(&sample_record(1)).expect("valid entity record");
         assert_eq!(record.entity_id, 1);
         assert_eq!(record.position_mm, (1500, 0, -2250));
         assert!(record.shape.is_some());
@@ -363,7 +363,7 @@ mod tests {
             position: Position::origin(),
             shape: None,
         };
-        let record = RealEntityRecord::from_snapshot(&snapshot);
+        let record = RealEntityRecord::from_snapshot(&snapshot).expect("valid entity record");
         assert_eq!(record.entity_id, 2);
         assert_eq!(record.position_mm, (0, 0, 0));
         assert!(record.shape.is_none());
@@ -375,8 +375,8 @@ mod tests {
             tick: 42,
             generation_digest: [0xAB; 32],
             bodies: vec![
-                RealEntityRecord::from_snapshot(&sample_record(1)),
-                RealEntityRecord::from_snapshot(&sample_record(2)),
+                RealEntityRecord::from_snapshot(&sample_record(1)).expect("valid entity record"),
+                RealEntityRecord::from_snapshot(&sample_record(2)).expect("valid entity record"),
             ],
         };
         let bytes = encode_world_snapshot_body(&body);
@@ -387,12 +387,15 @@ mod tests {
 
     #[test]
     fn delta_round_trip_is_bit_identical() {
-        let delta = WorldSnapshotDelta {
-            generation_digest: [0xCD; 32],
-            entered: vec![RealEntityRecord::from_snapshot(&sample_record(10))],
-            modified: vec![RealEntityRecord::from_snapshot(&sample_record(11))],
-            left_ids: vec![12, 13],
-        };
+        let delta =
+            WorldSnapshotDelta {
+                generation_digest: [0xCD; 32],
+                entered: vec![RealEntityRecord::from_snapshot(&sample_record(10))
+                    .expect("valid entity record")],
+                modified: vec![RealEntityRecord::from_snapshot(&sample_record(11))
+                    .expect("valid entity record")],
+                left_ids: vec![12, 13],
+            };
         let bytes = encode_world_snapshot_delta(&delta);
         let proto = WorldSnapshotDeltaProto::decode(bytes.as_slice()).expect("decode");
         let decoded = WorldSnapshotDelta::decode(&proto).expect("server-side decode");
@@ -434,14 +437,16 @@ mod tests {
             tick: 42,
             generation_digest: [0xAB; 32],
             bodies: vec![
-                RealEntityRecord::from_snapshot(&sample_record(1)),
-                RealEntityRecord::from_snapshot(&sample_record(2)),
+                RealEntityRecord::from_snapshot(&sample_record(1)).expect("valid entity record"),
+                RealEntityRecord::from_snapshot(&sample_record(2)).expect("valid entity record"),
             ],
         };
         let body_bytes = encode_world_snapshot_body(&body);
         let delta = WorldSnapshotDelta {
             generation_digest: [0xCD; 32],
-            entered: vec![RealEntityRecord::from_snapshot(&sample_record(10))],
+            entered: vec![
+                RealEntityRecord::from_snapshot(&sample_record(10)).expect("valid entity record")
+            ],
             modified: Vec::new(),
             left_ids: vec![13],
         };
@@ -478,14 +483,16 @@ mod tests {
             tick: 42,
             generation_digest: [0xAB; 32],
             bodies: vec![
-                RealEntityRecord::from_snapshot(&sample_record(1)),
-                RealEntityRecord::from_snapshot(&sample_record(2)),
+                RealEntityRecord::from_snapshot(&sample_record(1)).expect("valid entity record"),
+                RealEntityRecord::from_snapshot(&sample_record(2)).expect("valid entity record"),
             ],
         };
         let body_bytes = encode_world_snapshot_body(&body);
         let delta = WorldSnapshotDelta {
             generation_digest: [0xCD; 32],
-            entered: vec![RealEntityRecord::from_snapshot(&sample_record(10))],
+            entered: vec![
+                RealEntityRecord::from_snapshot(&sample_record(10)).expect("valid entity record")
+            ],
             modified: Vec::new(),
             left_ids: vec![13],
         };

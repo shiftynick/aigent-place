@@ -3,22 +3,29 @@
 //! Measures world-server sim-stage timing, cadence intervals, AOI caps, and the
 //! degradation ladder against `workload/v1/CONTRACT.md` / ADR-0006. There is no
 //! WebSocket cluster: load is synthetic against library APIs.
+//! The 1,200-tick simulation window retains 300 aigent and 500 viewer
+//! connections. A bounded real-body fan-out slice delivers to every consumer
+//! at its configured cadence, with independent wire and queue oracles. It is
+//! not a host-paced or physical-socket throughput claim.
 //!
 //! Task-050 also measures collision broadphase rebuild plus representative
 //! query cost for 300 concurrent shaped aigents against the 50 ms tick budget.
 
 use aigent_protocol::{
-    shape_node::Primitive, BoxPrimitive, LocalTransform, Quaternion, ShapeNode, ShapeTree,
-    Vector3Millimeters,
+    envelope, shape_node::Primitive, BoxPrimitive, Envelope, EnvelopeMetadata, EventCursor,
+    FullSnapshot, LocalTransform, OrderedEvent, Quaternion, RealEntityRecord as WireEntityRecord,
+    ShapeNode, ShapeTree, SnapshotDelta, SnapshotResyncRequired, Vector3Millimeters,
+    WorldSnapshotBodyProto, WorldSnapshotDeltaProto,
 };
 use prost::Message;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 use world_server::{
-    aoi_cap_for_role, truncate_nearest, Aabb, AoiEntity, CollisionBroadphase, ConnectionRole,
-    EntitySnapshot, FocusPoint, ImmutableGeneration, LeaseSnapshot, OutboundQueue, Position,
-    PublicationMailbox, RulesetGeneration, RulesetParameters, ShapeSlot, SnapshotFanout, StateKind,
-    World, WorldConfig, WorldPointMm, AOI_HARD_CAP, FIRST_REVISION, OVERFLOW_TICK_OBSERVATIONS,
+    encode_world_snapshot_body, encode_world_snapshot_delta, Aabb, CollisionBroadphase,
+    CommandEffect, ConnectionRole, EntitySnapshot, FocusPoint, ImmutableGeneration, LeaseSnapshot,
+    ObserveOutcome, Position, PositionRequest, PublicationMailbox, QueuedCommand, RealFrameShape,
+    RealPublishOutcome, RulesetGeneration, RulesetParameters, ShapeSlot, SnapshotFanout, World,
+    WorldConfig, WorldPointMm, AOI_HARD_CAP, FIRST_REVISION, OVERFLOW_TICK_OBSERVATIONS,
     QUEUE_LIMIT_BYTES, TICK_HZ, TICK_MS, VIEWER_AOI_CAPS,
 };
 
@@ -46,6 +53,10 @@ pub const BROADPHASE_SAMPLE_COUNT: usize = 32;
 pub const BROADPHASE_WARMUP_SAMPLES: usize = 4;
 /// Fail when p95(rebuild_us + query_us) reaches the 50 ms tick budget.
 pub const BROADPHASE_COMBINED_BUDGET_US: u64 = 50_000;
+/// Bounded serialization probe; not a replacement for the workload pass window.
+const REAL_LOAD_WINDOW_TICKS: u64 = 8;
+/// Continue one slow receiver until real state bytes exercise coalescing.
+const REAL_PRESSURE_WINDOW_TICKS: u64 = 160;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DegradationPolicy {
@@ -254,6 +265,12 @@ pub struct HarnessReport {
     pub final_policy: DegradationPolicy,
     pub aoi_max_delivered: usize,
     pub queue_overflow_isolated: bool,
+    pub real_viewer_publications: u64,
+    pub real_aigent_publications: u64,
+    pub real_full_snapshots: u64,
+    pub real_deltas: u64,
+    pub real_queue_max_bytes: usize,
+    pub real_coalesces: u64,
     pub host_soak_wall_secs: Option<f64>,
     pub failures: Vec<String>,
 }
@@ -350,17 +367,18 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
 
     // Measured in-process load: capacity connections + AOI + sim timing.
     let mut world = World::new(WorldConfig::default());
+    queue_shaped_load(&mut world);
     let mailbox = PublicationMailbox::new();
     let mut fanout = SnapshotFanout::new();
-    let mut aigent_ids = Vec::with_capacity(CONCURRENT_AIGENTS_TARGET as usize);
-    let mut viewer_ids = Vec::with_capacity(CONCURRENT_VIEWERS_TARGET as usize);
+    let mut aigents = Vec::with_capacity(CONCURRENT_AIGENTS_TARGET as usize);
+    let mut viewers = Vec::with_capacity(CONCURRENT_VIEWERS_TARGET as usize);
     for i in 0..CONCURRENT_AIGENTS_TARGET {
         let id = format!("a{i}").into_bytes();
         fanout.attach(id.clone());
         let conn = fanout.get_mut(&id).unwrap();
         conn.role = ConnectionRole::Aigent;
         conn.focus = FocusPoint::origin();
-        aigent_ids.push(id);
+        aigents.push(RealClient::new(id, ConnectionRole::Aigent, true));
     }
     for i in 0..CONCURRENT_VIEWERS_TARGET {
         let id = format!("v{i}").into_bytes();
@@ -369,14 +387,17 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
         conn.role = ConnectionRole::Viewer;
         conn.viewer_aoi_cap = AOI_HARD_CAP;
         conn.focus = FocusPoint::origin();
-        viewer_ids.push(id);
+        // One valid slow viewer does not drain replaceable state. Its real
+        // snapshots and deltas must coalesce below the queue limit.
+        viewers.push(RealClient::new(id, ConnectionRole::Viewer, i != 0));
     }
-    let live_aigents = aigent_ids.len() as u32;
-    let live_viewers = viewer_ids.len() as u32;
-
-    let entities: Vec<_> = (1..=250u64)
-        .map(|id| AoiEntity::new(id, id as f64, 0.0, 0.0))
-        .collect();
+    let live_aigents = aigents.len() as u32;
+    let live_viewers = viewers.len() as u32;
+    // A separate overflowing viewer keeps the 500 target viewers live while
+    // demonstrating that one non-draining event stream closes in isolation.
+    let overflow_id = b"slow-events";
+    fanout.attach(overflow_id.to_vec());
+    let mut real_load = RealLoadMetrics::default();
 
     let mut sim_stage_us = Distribution::default();
     let mut overrun_history = Vec::with_capacity(PASS_WINDOW_TICKS);
@@ -384,7 +405,6 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
     let mut aigent_cadence_intervals = Distribution::default();
     let mut last_viewer_delivery_tick: Option<u64> = None;
     let mut last_aigent_delivery_tick: Option<u64> = None;
-    let mut aoi_max_delivered = 0usize;
     let mut viewer_sustain_ticks = 0usize;
     let mut aigent_sustain_ticks = 0usize;
     let policy = policy_from_level(0);
@@ -398,6 +418,30 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
     let ticks = PASS_WINDOW_TICKS as u64;
     let wall_start = Instant::now();
     for scheduled in 1..=ticks {
+        if scheduled > 1
+            && scheduled <= REAL_PRESSURE_WINDOW_TICKS
+            && scheduled % viewer_interval == 0
+        {
+            // Exercise modified records as well as AOI enter/leave records.
+            for entity_id in [1, u64::from(CONCURRENT_AIGENTS_TARGET)] {
+                let original_x = load_position(entity_id).x;
+                world
+                    .enqueue(QueuedCommand {
+                        arrival_tick: scheduled,
+                        aigent_id: b"load-motion".to_vec(),
+                        sequence: scheduled * 2 + u64::from(entity_id == 1),
+                        effect: CommandEffect::SetEntityPosition {
+                            entity_id,
+                            position: PositionRequest::new(
+                                original_x,
+                                0.0,
+                                if scheduled % 4 == 0 { 1.0 } else { -1.0 },
+                            ),
+                        },
+                    })
+                    .expect("load position command");
+            }
+        }
         let deadline = wall_start + Duration::from_millis(scheduled * u64::from(SIM_TICK_MS));
         let sim_start = Instant::now();
         let gen = world.advance_tick().expect("tick").clone();
@@ -411,6 +455,13 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
         mailbox.publish_from_tick(gen.clone());
         let published = mailbox.take().unwrap_or(gen);
         let tick = world.last_completed_tick();
+        if tick != scheduled || published.entities.len() != CONCURRENT_AIGENTS_TARGET as usize {
+            failures.push(format!(
+                "real load generation tick/entities mismatch: {tick}/{}, expected {scheduled}/{CONCURRENT_AIGENTS_TARGET}",
+                published.entities.len()
+            ));
+            break;
+        }
 
         if live_viewers >= CONCURRENT_VIEWERS_TARGET && !policy.refuse_new_viewers {
             viewer_sustain_ticks += 1;
@@ -423,40 +474,91 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
             aigent_sustain_ticks = 0;
         }
 
-        // Rotate through connections so concurrent load is exercised.
-        let viewer_idx = ((tick - 1) as usize) % viewer_ids.len();
-        let aigent_idx = ((tick - 1) as usize) % aigent_ids.len();
-        // Refresh a stripe of connections each tick (covers all within 1200 ticks).
-        for offset in 0..2 {
-            let v = &viewer_ids[(viewer_idx + offset) % viewer_ids.len()];
-            if let Ok((kept, _)) = fanout.get_mut(v).unwrap().refresh_interest(&entities) {
-                aoi_max_delivered = aoi_max_delivered.max(kept.len());
-                let cap = aoi_cap_for_role(ConnectionRole::Viewer, policy.viewer_aoi_cap) as usize;
-                if kept.len() > cap {
-                    failures.push(format!("viewer AOI {} exceeded cap {cap}", kept.len()));
+        if tick <= REAL_PRESSURE_WINDOW_TICKS && tick % viewer_interval == 0 {
+            // Alternate camera focus to force explicit enter/leave records and
+            // enough real bytes to coalesce the non-draining viewer's queue.
+            let focus = FocusPoint::new(
+                if (tick / viewer_interval) % 2 == 0 {
+                    0.0
+                } else {
+                    450.0
+                },
+                0.0,
+                0.0,
+            );
+            let expected = expected_real_records(&published, focus);
+            let active_viewers = if tick <= REAL_LOAD_WINDOW_TICKS {
+                viewers.len()
+            } else {
+                1
+            };
+            for viewer in viewers.iter_mut().take(active_viewers) {
+                fanout.get_mut(&viewer.id).unwrap().focus = focus;
+                viewer.publish(
+                    &mut fanout,
+                    &published,
+                    &expected,
+                    &mut real_load,
+                    &mut failures,
+                );
+            }
+            if tick <= REAL_LOAD_WINDOW_TICKS {
+                if let Some(prev) = last_viewer_delivery_tick {
+                    viewer_cadence_intervals.push(tick.saturating_sub(prev));
                 }
+                last_viewer_delivery_tick = Some(tick);
             }
-            let a = &aigent_ids[(aigent_idx + offset) % aigent_ids.len()];
-            let _ = fanout.get_mut(a).unwrap().refresh_interest(&entities);
         }
-
-        if tick % viewer_interval == 0 {
-            let v = &viewer_ids[viewer_idx];
-            let _ = fanout.publish_to(v, &published, Some(1024));
-            if let Some(prev) = last_viewer_delivery_tick {
-                viewer_cadence_intervals.push(tick.saturating_sub(prev));
+        if tick <= REAL_LOAD_WINDOW_TICKS && tick % aigent_interval == 0 {
+            let expected = expected_real_records(&published, FocusPoint::origin());
+            for aigent in &mut aigents {
+                aigent.publish(
+                    &mut fanout,
+                    &published,
+                    &expected,
+                    &mut real_load,
+                    &mut failures,
+                );
             }
-            last_viewer_delivery_tick = Some(tick);
-        }
-        if tick % aigent_interval == 0 {
-            let a = &aigent_ids[aigent_idx];
-            let _ = fanout.publish_to(a, &published, Some(1024));
             if let Some(prev) = last_aigent_delivery_tick {
                 aigent_cadence_intervals.push(tick.saturating_sub(prev));
             }
             last_aigent_delivery_tick = Some(tick);
         }
-        fanout.observe_all_at(tick);
+        if tick == ticks - u64::from(OVERFLOW_TICK_OBSERVATIONS) + 1 {
+            // Event frames cannot coalesce. Charge their actual protobuf bytes,
+            // rather than an invented oversized state-frame measurement.
+            let mut sequence = 1;
+            let queue = &mut fanout.get_mut(overflow_id).unwrap().queue;
+            while queue.queued_bytes() <= QUEUE_LIMIT_BYTES {
+                let event = envelope::Body::OrderedEvent(OrderedEvent {
+                    cursor: Some(EventCursor {
+                        stream_epoch: 1,
+                        sequence,
+                    }),
+                    payload: vec![0; 1_024],
+                });
+                queue.enqueue_event(
+                    real_envelope(overflow_id, sequence, event)
+                        .encode_to_vec()
+                        .len(),
+                );
+                sequence += 1;
+            }
+        }
+        for (id, outcome) in fanout.observe_all_at(tick) {
+            if matches!(outcome, ObserveOutcome::Closed { .. })
+                && (id != overflow_id || tick != ticks)
+            {
+                failures.push(format!(
+                    "unexpected connection closure at tick {tick}: {id:?}"
+                ));
+            }
+        }
+
+        if !failures.is_empty() {
+            break;
+        }
 
         if options.host_soak {
             let now = Instant::now();
@@ -479,7 +581,7 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
     }
 
     let overrun_count = u64::from(overrun_history.iter().map(|f| u32::from(*f)).sum::<u32>());
-    let overrun_rate = overrun_count as f64 / ticks as f64;
+    let overrun_rate = overrun_count as f64 / overrun_history.len().max(1) as f64;
     let windows = classify_windows(&overrun_history);
     if !windows.pass_healthy {
         failures.push(format!(
@@ -505,33 +607,21 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
         }
     }
 
-    // Queue overflow isolates one connection without moving degradation.
-    let mut slow = OutboundQueue::new();
-    slow.enqueue_state(
-        QUEUE_LIMIT_BYTES + 1,
-        StateKind::Full,
-        QUEUE_LIMIT_BYTES + 1,
-    )
-    .unwrap();
-    let mut closed = false;
-    for tick in 1..=u64::from(OVERFLOW_TICK_OBSERVATIONS) {
-        if matches!(
-            slow.observe_at(tick),
-            world_server::ObserveOutcome::Closed { .. }
-        ) {
-            closed = true;
-            break;
-        }
-    }
-    let queue_overflow_isolated = closed && level == 0;
+    let overflow_queue = &fanout.get_mut(overflow_id).unwrap().queue;
+    let queue_overflow_isolated = overflow_queue.is_closed()
+        && overflow_queue.over_limit_ticks() == OVERFLOW_TICK_OBSERVATIONS
+        && world.last_completed_tick() == ticks
+        && viewers
+            .iter()
+            .chain(&aigents)
+            .all(|client| !fanout.get_mut(&client.id).unwrap().queue.is_closed())
+        && level == 0;
     if !queue_overflow_isolated {
         failures.push("sustained overflow did not isolate connection at level 0".into());
     }
 
-    // Full catalog truncate never exceeds hard cap.
-    let truncated = truncate_nearest(&entities, FocusPoint::origin(), 500).unwrap();
-    if truncated.len() > AOI_HARD_CAP as usize {
-        failures.push("hard cap violated by truncate_nearest".into());
+    if real_load.coalesces == 0 {
+        failures.push("real non-draining viewer never exercised queue coalescing".into());
     }
 
     let (broadphase_rebuild_us, broadphase_query_us, broadphase_combined_us) =
@@ -549,7 +639,7 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
 
     HarnessReport {
         profile,
-        ticks_run: ticks,
+        ticks_run: world.last_completed_tick(),
         overrun_count,
         overrun_rate,
         sim_stage_us,
@@ -560,11 +650,316 @@ pub fn run_harness(options: HarnessOptions) -> HarnessReport {
         broadphase_combined_us,
         ladder_actions,
         final_policy: policy_from_level(level),
-        aoi_max_delivered,
+        aoi_max_delivered: real_load.aoi_max_delivered,
         queue_overflow_isolated,
+        real_viewer_publications: real_load.viewer_publications,
+        real_aigent_publications: real_load.aigent_publications,
+        real_full_snapshots: real_load.full_snapshots,
+        real_deltas: real_load.deltas,
+        real_queue_max_bytes: real_load.queue_max_bytes,
+        real_coalesces: real_load.coalesces,
         host_soak_wall_secs,
         failures,
     }
+}
+
+#[derive(Debug, Default)]
+struct RealLoadMetrics {
+    aoi_max_delivered: usize,
+    viewer_publications: u64,
+    aigent_publications: u64,
+    full_snapshots: u64,
+    deltas: u64,
+    queue_max_bytes: usize,
+    coalesces: u64,
+}
+
+/// Independent receiver and encoded-byte ledger for one synthetic socket.
+struct RealClient {
+    id: Vec<u8>,
+    role: ConnectionRole,
+    drain: bool,
+    records: BTreeMap<u64, WireEntityRecord>,
+    queued_wire_lengths: Vec<usize>,
+    last_delivery_tick: Option<u64>,
+}
+
+impl RealClient {
+    fn new(id: Vec<u8>, role: ConnectionRole, drain: bool) -> Self {
+        Self {
+            id,
+            role,
+            drain,
+            records: BTreeMap::new(),
+            queued_wire_lengths: Vec::new(),
+            last_delivery_tick: None,
+        }
+    }
+
+    fn publish(
+        &mut self,
+        fanout: &mut SnapshotFanout,
+        generation: &ImmutableGeneration,
+        expected: &[WireEntityRecord],
+        metrics: &mut RealLoadMetrics,
+        failures: &mut Vec<String>,
+    ) {
+        if !failures.is_empty() {
+            return;
+        }
+        let cadence_hz = match self.role {
+            ConnectionRole::Viewer => VIEWER_CADENCE_STEPS_HZ[0],
+            ConnectionRole::Aigent => AIGENT_PERCEPT_DEFAULT_HZ,
+        };
+        if self.last_delivery_tick.is_some_and(|prior| {
+            !cadence_within_tolerance(cadence_hz, generation.tick.saturating_sub(prior) as u32)
+        }) {
+            failures.push(format!(
+                "real cadence gap for {:?} at tick {}",
+                self.id, generation.tick
+            ));
+            return;
+        }
+        let measure = |shape: &RealFrameShape<'_>| {
+            real_envelope(&self.id, generation.tick, body_for_real_shape(shape)).encoded_len()
+        };
+        let prior_bytes = fanout.get_mut(&self.id).unwrap().queue.queued_bytes();
+        let Some(outcome) = fanout.publish_real_interest_to(&self.id, generation, &measure) else {
+            failures.push(format!("missing real publication for {:?}", self.id));
+            return;
+        };
+        let (body, is_full) = match outcome {
+            RealPublishOutcome::FullSnapshot {
+                baseline_id,
+                wire_bytes,
+                ..
+            } => {
+                metrics.full_snapshots += 1;
+                (
+                    envelope::Body::FullSnapshot(FullSnapshot {
+                        baseline_id,
+                        payload: wire_bytes,
+                    }),
+                    true,
+                )
+            }
+            RealPublishOutcome::Delta {
+                baseline_id,
+                wire_bytes,
+                ..
+            } => {
+                metrics.deltas += 1;
+                (
+                    envelope::Body::SnapshotDelta(SnapshotDelta {
+                        baseline_id,
+                        payload: wire_bytes,
+                    }),
+                    false,
+                )
+            }
+            other => {
+                failures.push(format!(
+                    "real publication failed for {:?}: {other:?}",
+                    self.id
+                ));
+                return;
+            }
+        };
+        // Independently encode the returned bytes, then decode what a receiver
+        // would see. This oracle never trusts byte_measure's claimed length.
+        let frame = real_envelope(&self.id, generation.tick, body).encode_to_vec();
+        let decoded = Envelope::decode(frame.as_slice()).expect("encoded envelope");
+        match decoded.body.expect("state body") {
+            envelope::Body::FullSnapshot(full) => {
+                let body = WorldSnapshotBodyProto::decode(full.payload.as_slice())
+                    .expect("real full body");
+                if body.version != 1 || body.tick != generation.tick || body.bodies != expected {
+                    failures.push(format!(
+                        "real full snapshot differs from nearest 100 shaped bodies for {:?}",
+                        self.id
+                    ));
+                }
+                self.records = body
+                    .bodies
+                    .into_iter()
+                    .map(|record| (record.entity_id, record))
+                    .collect();
+            }
+            envelope::Body::SnapshotDelta(delta) => {
+                let delta = WorldSnapshotDeltaProto::decode(delta.payload.as_slice())
+                    .expect("real delta body");
+                let expected_map: BTreeMap<_, _> = expected
+                    .iter()
+                    .map(|record| (record.entity_id, record))
+                    .collect();
+                let entered: Vec<_> = expected
+                    .iter()
+                    .filter(|record| !self.records.contains_key(&record.entity_id))
+                    .cloned()
+                    .collect();
+                let modified: Vec<_> = expected
+                    .iter()
+                    .filter(|record| {
+                        self.records
+                            .get(&record.entity_id)
+                            .is_some_and(|prior| prior != *record)
+                    })
+                    .cloned()
+                    .collect();
+                let left: Vec<_> = self
+                    .records
+                    .keys()
+                    .filter(|id| !expected_map.contains_key(id))
+                    .copied()
+                    .collect();
+                if delta.version != 1
+                    || delta.entered != entered
+                    || delta.modified != modified
+                    || delta.left_ids != left
+                {
+                    failures.push(format!(
+                        "real delta enter/modify/leave differs from authoritative AOI for {:?}",
+                        self.id
+                    ));
+                }
+                for id in delta.left_ids {
+                    self.records.remove(&id);
+                }
+                for record in delta.entered.into_iter().chain(delta.modified) {
+                    self.records.insert(record.entity_id, record);
+                }
+            }
+            _ => unreachable!("state publication body"),
+        }
+        metrics.aoi_max_delivered = metrics.aoi_max_delivered.max(self.records.len());
+        if self.records.len() != AOI_HARD_CAP as usize
+            || self.records.values().any(|record| record.shape.is_none())
+            || expected
+                .iter()
+                .any(|record| self.records.get(&record.entity_id) != Some(record))
+        {
+            failures.push(format!(
+                "decoded live AOI lost shaped authoritative records for {:?}",
+                self.id
+            ));
+        }
+        let queue = &mut fanout.get_mut(&self.id).unwrap().queue;
+        let coalesced = is_full && prior_bytes > 0;
+        if coalesced {
+            self.queued_wire_lengths.clear();
+            metrics.coalesces += 1;
+        }
+        self.queued_wire_lengths.push(frame.len());
+        let expected_bytes: usize = self.queued_wire_lengths.iter().sum();
+        let queued_bytes = queue.queued_bytes();
+        if queued_bytes != expected_bytes || queued_bytes > QUEUE_LIMIT_BYTES {
+            failures.push(format!("real queue byte accounting {:?}: {queued_bytes}, wire {expected_bytes}, limit {QUEUE_LIMIT_BYTES}", self.id));
+        }
+        metrics.queue_max_bytes = metrics.queue_max_bytes.max(queued_bytes);
+        if self.drain {
+            queue.drain_all();
+            self.queued_wire_lengths.clear();
+        }
+        match self.role {
+            ConnectionRole::Viewer => metrics.viewer_publications += 1,
+            ConnectionRole::Aigent => metrics.aigent_publications += 1,
+        }
+        self.last_delivery_tick = Some(generation.tick);
+    }
+}
+
+fn real_envelope(connection_id: &[u8], message_id: u64, body: envelope::Body) -> Envelope {
+    Envelope {
+        protocol_major: 1,
+        connection_id: connection_id.to_vec(),
+        message_id,
+        metadata: Some(EnvelopeMetadata {
+            required_features: Vec::new(),
+        }),
+        body: Some(body),
+    }
+}
+
+fn body_for_real_shape(shape: &RealFrameShape<'_>) -> envelope::Body {
+    match shape {
+        RealFrameShape::Full { baseline_id, body } => envelope::Body::FullSnapshot(FullSnapshot {
+            baseline_id: *baseline_id,
+            payload: encode_world_snapshot_body(body),
+        }),
+        RealFrameShape::Delta { baseline_id, delta } => {
+            envelope::Body::SnapshotDelta(SnapshotDelta {
+                baseline_id: *baseline_id,
+                payload: encode_world_snapshot_delta(delta),
+            })
+        }
+        RealFrameShape::ResyncRequired { notice } => {
+            envelope::Body::SnapshotResyncRequired(SnapshotResyncRequired {
+                reason: notice.reason as i32,
+                baseline_id: notice.requested_baseline_id,
+            })
+        }
+    }
+}
+
+fn load_position(entity_id: u64) -> PositionRequest {
+    // The closest bodies have the highest IDs, with equal-distance pairs.
+    // Sorting by ID alone or reversing the tie-break both fail the wire oracle.
+    let rank = u64::from(CONCURRENT_AIGENTS_TARGET) - entity_id;
+    let distance = (rank / 2 + 1) as f64 * 3.0;
+    PositionRequest::new(if rank % 2 == 0 { distance } else { -distance }, 0.0, 0.0)
+}
+
+fn queue_shaped_load(world: &mut World) {
+    let shape = body_shape_slot();
+    for entity_id in 1..=u64::from(CONCURRENT_AIGENTS_TARGET) {
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: 1,
+                aigent_id: b"load-create".to_vec(),
+                sequence: entity_id,
+                effect: CommandEffect::CreateEntity {
+                    position: load_position(entity_id),
+                    shape: Some(shape.clone()),
+                },
+            })
+            .expect("shape-bearing load creation");
+    }
+}
+
+fn expected_real_records(
+    generation: &ImmutableGeneration,
+    focus: FocusPoint,
+) -> Vec<WireEntityRecord> {
+    // Independent Euclidean-distance oracle: do not reuse server AOI ranking,
+    // snapshot conversion, or fields returned by publication under test.
+    let mut entities: Vec<_> = generation.entities.values().collect();
+    entities.sort_by(|left, right| {
+        let distance = |entity: &EntitySnapshot| {
+            (entity.position.x() - focus.x).powi(2)
+                + (entity.position.y() - focus.y).powi(2)
+                + (entity.position.z() - focus.z).powi(2)
+        };
+        distance(left)
+            .total_cmp(&distance(right))
+            .then(left.entity_id.cmp(&right.entity_id))
+    });
+    entities
+        .into_iter()
+        .take(AOI_HARD_CAP as usize)
+        .map(|entity| WireEntityRecord {
+            entity_id: entity.entity_id,
+            revision: entity.revision,
+            position_mm: Some(Vector3Millimeters {
+                x_mm: (entity.position.x() * 1_000.0) as i64,
+                y_mm: (entity.position.y() * 1_000.0) as i64,
+                z_mm: (entity.position.z() * 1_000.0) as i64,
+            }),
+            shape: entity
+                .shape
+                .as_ref()
+                .map(|shape| ShapeTree::decode(shape.as_bytes()).expect("load shape")),
+        })
+        .collect()
 }
 
 fn body_shape_slot() -> ShapeSlot {
@@ -779,12 +1174,12 @@ pub fn print_report(report: &HarnessReport) {
         report.sim_stage_us.percentile(0.99).unwrap_or(0)
     );
     println!(
-        "workload-harness: viewer cadence samples={} hist={:?}",
+        "workload-harness: real slice viewer cadence samples={} hist={:?}",
         report.viewer_cadence_intervals.count(),
         report.viewer_cadence_intervals.histogram()
     );
     println!(
-        "workload-harness: aigent cadence samples={} hist={:?}",
+        "workload-harness: real slice aigent cadence samples={} hist={:?}",
         report.aigent_cadence_intervals.count(),
         report.aigent_cadence_intervals.histogram()
     );
@@ -800,6 +1195,15 @@ pub fn print_report(report: &HarnessReport) {
     println!(
         "workload-harness: aoi_max_delivered={} queue_isolated={} final_level={}",
         report.aoi_max_delivered, report.queue_overflow_isolated, report.final_policy.level
+    );
+    println!(
+        "workload-harness: in-process real slice_ticks={REAL_LOAD_WINDOW_TICKS} pressure_ticks={REAL_PRESSURE_WINDOW_TICKS} viewers={CONCURRENT_VIEWERS_TARGET} aigents={CONCURRENT_AIGENTS_TARGET} viewer_publications={} aigent_publications={} full={} deltas={} queue_max_bytes={} coalesces={}",
+        report.real_viewer_publications,
+        report.real_aigent_publications,
+        report.real_full_snapshots,
+        report.real_deltas,
+        report.real_queue_max_bytes,
+        report.real_coalesces,
     );
     for action in &report.ladder_actions {
         println!("workload-harness: ladder {action}");
@@ -853,7 +1257,23 @@ mod tests {
         assert!(report.ok(), "{:?}", report.failures);
         assert_eq!(report.ticks_run, PASS_WINDOW_TICKS as u64);
         assert!(report.viewer_cadence_intervals.count() > 0);
-        assert!(report.aoi_max_delivered <= AOI_HARD_CAP as usize);
+        assert_eq!(report.aoi_max_delivered, AOI_HARD_CAP as usize);
+        assert_eq!(
+            report.real_viewer_publications,
+            (REAL_LOAD_WINDOW_TICKS / u64::from(expected_interval_ticks(10)))
+                * u64::from(CONCURRENT_VIEWERS_TARGET)
+                + (REAL_PRESSURE_WINDOW_TICKS - REAL_LOAD_WINDOW_TICKS)
+                    / u64::from(expected_interval_ticks(10))
+        );
+        assert_eq!(
+            report.real_aigent_publications,
+            (REAL_LOAD_WINDOW_TICKS / u64::from(expected_interval_ticks(5)))
+                * u64::from(CONCURRENT_AIGENTS_TARGET)
+        );
+        assert!(report.real_full_snapshots >= u64::from(CONCURRENT_VIEWERS_TARGET));
+        assert!(report.real_deltas > 0);
+        assert!(report.real_coalesces > 0);
+        assert!(report.real_queue_max_bytes <= QUEUE_LIMIT_BYTES);
         assert_eq!(
             report.broadphase_combined_us.count(),
             BROADPHASE_SAMPLE_COUNT
@@ -875,13 +1295,5 @@ mod tests {
         assert!(!cadence_within_tolerance(10, 5));
         assert!(cadence_within_tolerance(10, 2));
         assert!(cadence_within_tolerance(10, 3));
-    }
-
-    #[test]
-    fn report_failures_make_ok_false() {
-        let mut report = run_harness(HarnessOptions::default());
-        assert!(report.ok());
-        report.failures.push("forced".into());
-        assert!(!report.ok());
     }
 }

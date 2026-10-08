@@ -81,9 +81,8 @@ impl OutboundQueue {
         self.state_items.iter().map(|item| item.bytes).sum()
     }
 
-    /// Enqueue replaceable state. When coalescing would drop a prior full snapshot
-    /// and leave only a delta, the newest item is promoted to a full snapshot using
-    /// `full_encoded_bytes` so the queue remains self-contained.
+    /// Enqueue replaceable state. Any coalesced delta is promoted to a full
+    /// snapshot: an incremental delta cannot replace the discarded transitions.
     pub fn enqueue_state(
         &mut self,
         encoded_bytes: usize,
@@ -106,11 +105,7 @@ impl OutboundQueue {
             kind,
         };
         if coalesced {
-            let dropped_full = self
-                .state_items
-                .iter()
-                .any(|item| item.kind == StateKind::Full);
-            if dropped_full && newest.kind == StateKind::Delta {
+            if newest.kind == StateKind::Delta {
                 newest = StateItem {
                     bytes: full_encoded_bytes,
                     kind: StateKind::Full,
@@ -131,6 +126,16 @@ impl OutboundQueue {
                 .map(|item| item.kind)
                 .unwrap_or(kind),
         })
+    }
+
+    /// Synchronize live accounting with the frames actually retained by transport,
+    /// including its active socket write. This does not reset overflow observations.
+    pub(crate) fn retain_frames(&mut self, states: &[(usize, StateKind)], ordered_bytes: usize) {
+        self.state_items = states
+            .iter()
+            .map(|&(bytes, kind)| StateItem { bytes, kind })
+            .collect();
+        self.event_bytes = ordered_bytes;
     }
 
     /// Enqueue a non-coalesced event/result frame into byte accounting.

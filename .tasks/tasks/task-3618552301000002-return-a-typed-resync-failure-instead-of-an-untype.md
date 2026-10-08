@@ -6,7 +6,7 @@ priority: p2
 tags: [area:network, phase:debt]
 blockedBy: []
 createdAt: "2026-08-06T14:38:15Z"
-updatedAt: "2026-08-06T14:45:54Z"
+updatedAt: "2026-10-08T02:41:59Z"
 ---
 
 <!-- task-tracker:description -->
@@ -19,3 +19,4 @@ SnapshotFanout::client_resync (crates/world-server/src/fanout.rs) returns Option
 
 - 2026-08-06T14:38:15Z — created (status: backlog)
 - 2026-08-06T14:45:54Z — edited (description updated)
+- 2026-10-08T02:41:59Z — note: Scope reconciliation after task-054: Task-054 adds typed corrupt-shape SnapshotEncodeError without partial state installation. Remaining AOI/missing/closed resync conditions still collapse to Ok(None)/false, and the socket handler discards that result; this card remains needed.
