@@ -240,3 +240,69 @@ axes completed and are adjudicated; a new independent auditor reproduced the
 raw physical evidence and verified mutant receipts/current manifests. The97.2s
 full gate passed on final production sources. Closeout documentary review,
 post-closeout gate and protected PR delivery remain.
+
+## 2026-10-08 — five-round-live-demo
+
+**Goal:** Improve the live spectator experience and world activity equally,
+so lively, goal-driven aigents produce events worth following.
+
+**Done when:** Five sequential rounds each finish one or two selected
+improvements, fresh independent proposal challenge and code review, real
+runtime validation, and protected PR delivery before the next critique.
+
+Approved front under the operator's confirmed selection delegation:
+
+1. `task-064` — round1 delivered through PR70, protected squash9274ffe;
+   exact-head and main-push checks green.
+2. `task-067` — round2 delivered through PR71, protected squash67e1846,
+   merged2026-10-08T21:00:10Z with exact-head and main-push checks green.
+   Final full gate101.8s, complete rung1 cold axes, scoped documentation check,
+   independent raw-evidence audit and190s physical validation completed.
+   Source and worker branches/worktrees were preserved and removed.
+3. `task-068` — round3 authoritative six-primitive shape presentation and
+   distinct validated server-owned demo bodies, a bounded partial of task055.
+
+Announcement: See each inhabitant's actual shape and colour. The two demo
+aigents have distinct composed bodies, so their movement is easier to follow.
+Select either body and inspect or follow its current movement. Owner-run brains
+use the same movement path; the reference grid remains a descriptive aid.
+
+Round3's new fresh live critic observed two overlapping placeholder cubes,
+working selection/follow/reset and changing physical aims. Root inspected
+actual screenshots and samples; the timed30s window started60s after first
+paint because the critic's readiness heuristic failed, so sampled evidence
+does not prove every goal completed or uninterrupted motion. A separate new
+adversarial challenge returned Revise: shapes are already carried, while
+terrain has no carrier, larger routes are unproven and proposed ticker words
+could invent lifecycle or motivation. Root selected ONE coherent improvement,
+shapes plus distinct physical bodies, and accepted ADR0012 under the original
+explicit delegation before implementation. No route widening, terrain or
+ticker is selected. Task055 stays open for its remaining scope.
+
+Two isolated patch workers handle graphics and server creation; root owns
+viewer integration, documentation, frozen packets, independent cold review,
+real validation and protected delivery. Geometry acceptance uses real Three
+against independent primitive/transform oracles; server acceptance validates
+current and activation-tick body budgets without changing lifecycle ordering.
+At least90s of fresh-world decoded physical motion and a new fresh spectator
+must prove the new bodies work and are distinguishable. Compiling mutation
+reds and the full gate remain required. Rounds4/5 are unselected.
+
+Assumptions: demo brains suffice; visual distinction is a public physical
+shape fact, not a role label. No new wire or persisted format is needed.
+Opaque material tags receive no invented shader/physics meaning. Auth,
+sleep/wake and durable command-result gaps remain separate existing tasks.
+Hooks, governance exclusions and protected delivery remain unchanged.
+
+Round3 review-fix checkpoint: root viewer121/121 and worker world-server307
+tests pass. A first-spectator palette failure was fixed without geometry changes;
+new visual review and the pre-cold190s physical/wire checks passed with occlusion
+and label limits. Cold code R1 then confirmed a collision gap in both opaque
+and ordinary command orderings. The bounded repair rechecks current geometry
+before creation and reserves newborn collision space for this draft tick.
+Nine compiling mutants reject removed behaviours; root focused checks pass.
+The rebuilt190s run passes14 physical and11 wire/shape checks. NEW spectator R3
+passes appearance/controls with honest timing and occlusion/label limits; root
+current narrow-view/actual-disconnect checks pass. Fresh full code axes R2
+completed and were adjudicated with no new production defect. Final gate and
+protected delivery remain required before round4 selection.

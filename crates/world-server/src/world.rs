@@ -12,6 +12,7 @@ use crate::order::{canonical_command_order, CommandKey};
 use crate::persist::{CommittedGeneration, DurableJournal, InMemoryJournal, JournalError};
 use crate::rng::{deterministic_draw_u128, DrawInput, DrawScope, RngError};
 use crate::ruleset::{RulesetParameters, RulesetStore, RulesetValidationError};
+use crate::shape::{validate_shape_tree, ShapeClass};
 use crate::tick::{TickClock, DEFAULT_LEASE_TTL_MS};
 use aigent_protocol::ShapeTree;
 use prost::Message;
@@ -274,6 +275,24 @@ impl World {
             || self
                 .demo_spawn_commands()
                 .any(|command_aigent| command_aigent == aigent_id)
+    }
+
+    /// Choose by reserved spawn ordinal, never by identity content. A tentative
+    /// binding and the command retained for writer recovery name the same slot.
+    #[must_use]
+    pub(crate) fn next_demo_body_variant(&self) -> usize {
+        let assigned: BTreeSet<&[u8]> = self
+            .aigent_bodies
+            .keys()
+            .map(Vec::as_slice)
+            .chain(
+                self.tentative
+                    .iter()
+                    .flat_map(|tick| tick.aigent_bodies.keys().map(Vec::as_slice)),
+            )
+            .chain(self.demo_spawn_commands())
+            .collect();
+        assigned.len() % 2
     }
 
     /// Reserve the first deterministic non-overlapping listen/demo grid slot.
@@ -602,6 +621,11 @@ impl World {
         let mut aigent_bodies = self.aigent_bodies.clone();
         let mut world_value = self.world_value;
         let mut rulesets = self.rulesets.clone();
+        // Creation must satisfy the ruleset this generation will publish, even
+        // when a candidate activates at its end boundary. Preview on a clone
+        // so command/movement and actual ruleset activation retain their order.
+        let mut demo_application_rulesets = rulesets.clone();
+        demo_application_rulesets.try_activate_at_boundary(tick, self.soak_ok);
         let keys: Vec<CommandKey> = due.iter().map(QueuedCommand::key).collect();
         let order = canonical_command_order(&keys);
 
@@ -609,13 +633,27 @@ impl World {
         let mut rng_draws = Vec::new();
         let mut lease_terminations: Vec<LeaseTermination> = Vec::new();
         let mut executed_move_bodies = BTreeSet::new();
+        // Newly admitted bodies reserve collision space until their first
+        // matched MOVE executes. This set belongs only to this draft tick;
+        // established unleased bodies retain their sleeping semantics.
+        let mut pending_demo_reservations = BTreeSet::new();
         let mut movement_state = None;
         for (canonical_index, &index) in order.iter().enumerate() {
             let command = &due[index];
+            let new_demo_owner = match &command.effect {
+                CommandEffect::CreateAndBindDemoBody { aigent_id, .. }
+                    if !aigent_bodies.contains_key(aigent_id) =>
+                {
+                    Some(aigent_id)
+                }
+                _ => None,
+            };
             let summary = match apply_effect(
                 ApplyContext {
                     seed: &self.seed,
                     heightfield: &self.heightfield,
+                    collision_parameters: &rulesets.live().parameters,
+                    demo_shape_parameters: &demo_application_rulesets.live().parameters,
                     tick,
                     canonical_index: canonical_index as u32,
                 },
@@ -632,6 +670,9 @@ impl World {
                     return Err(error);
                 }
             };
+            if let Some(body_id) = new_demo_owner.and_then(|owner| aigent_bodies.get(owner)) {
+                pending_demo_reservations.insert(*body_id);
+            }
             if let Some(draw) = summary.1 {
                 rng_draws.push((canonical_index as u32, draw));
             }
@@ -648,11 +689,13 @@ impl World {
                                 && lease.aigent_id == command.aigent_id
                         })
                     {
+                        pending_demo_reservations.remove(&resolved);
                         let selected = BTreeSet::from([resolved]);
                         let movement = match execute_active_leases(
                             LeaseExecutionContext {
                                 heightfield: &self.heightfield,
                                 aigent_bodies: &aigent_bodies,
+                                reserved_body_ids: &pending_demo_reservations,
                                 parameters: rulesets.live().parameters.clone(),
                                 selected_body_ids: &selected,
                             },
@@ -694,6 +737,7 @@ impl World {
             LeaseExecutionContext {
                 heightfield: &self.heightfield,
                 aigent_bodies: &aigent_bodies,
+                reserved_body_ids: &pending_demo_reservations,
                 parameters: rulesets.live().parameters.clone(),
                 selected_body_ids: &continuing,
             },
@@ -890,10 +934,12 @@ impl MovementExecutionState {
         entities: &EntityStore,
         leases: &LeaseTable,
         aigent_bodies: &BTreeMap<Vec<u8>, u64>,
+        reserved_body_ids: &BTreeSet<u64>,
         parameters: &RulesetParameters,
     ) -> Result<Self, MovementError> {
         let entity_snapshots = entities.snapshots();
-        let active_body_ids = active_shaped_body_ids(leases, &entity_snapshots);
+        let mut active_body_ids = active_shaped_body_ids(leases, &entity_snapshots);
+        active_body_ids.extend(reserved_body_ids.iter().copied());
         let bound_body_ids = aigent_bodies.values().copied().collect();
         let draft = DraftCollisionView::rebuild(
             &entity_snapshots,
@@ -914,10 +960,12 @@ impl MovementExecutionState {
         entities: &EntityStore,
         leases: &LeaseTable,
         aigent_bodies: &BTreeMap<Vec<u8>, u64>,
+        reserved_body_ids: &BTreeSet<u64>,
         parameters: &RulesetParameters,
     ) -> Result<(), MovementError> {
         let current = entities.snapshots();
-        let active_body_ids = active_shaped_body_ids(leases, &current);
+        let mut active_body_ids = active_shaped_body_ids(leases, &current);
+        active_body_ids.extend(reserved_body_ids.iter().copied());
         let bound_body_ids: BTreeSet<u64> = aigent_bodies.values().copied().collect();
 
         for removed in self
@@ -962,6 +1010,7 @@ fn active_shaped_body_ids(
 struct LeaseExecutionContext<'a> {
     heightfield: &'a Heightfield,
     aigent_bodies: &'a BTreeMap<Vec<u8>, u64>,
+    reserved_body_ids: &'a BTreeSet<u64>,
     parameters: RulesetParameters,
     selected_body_ids: &'a BTreeSet<u64>,
 }
@@ -985,11 +1034,18 @@ fn execute_active_leases(
             entities,
             leases,
             context.aigent_bodies,
+            context.reserved_body_ids,
             &context.parameters,
         )?);
     }
     let state = movement_state.as_mut().expect("initialized");
-    state.sync(entities, leases, context.aigent_bodies, &context.parameters)?;
+    state.sync(
+        entities,
+        leases,
+        context.aigent_bodies,
+        context.reserved_body_ids,
+        &context.parameters,
+    )?;
     if state.active_body_ids.is_empty() {
         return Ok(BTreeMap::new());
     }
@@ -1125,6 +1181,8 @@ fn stable_blocker(blocker: BlockerKey) -> String {
 struct ApplyContext<'a> {
     seed: &'a [u8; 32],
     heightfield: &'a Heightfield,
+    collision_parameters: &'a RulesetParameters,
+    demo_shape_parameters: &'a RulesetParameters,
     tick: u64,
     canonical_index: u32,
 }
@@ -1246,6 +1304,14 @@ fn apply_effect(
                     ));
                 }
             };
+            if let Err(error) =
+                validate_shape_tree(&tree, ShapeClass::Body, context.demo_shape_parameters)
+            {
+                return Ok((
+                    format!("create_and_bind_demo_body:rejected=invalid_shape:{error:?}"),
+                    None,
+                ));
+            }
             let grounded = match crate::movement::ground_horizontal(
                 context.heightfield,
                 &tree,
@@ -1258,6 +1324,38 @@ fn apply_effect(
                     return Ok(("create_and_bind_demo_body:rejected=grounding".into(), None));
                 }
             };
+            let collision_projection = (|| {
+                let translation = crate::collider::WorldPointMm::new(
+                    grounded.x * 1_000.0,
+                    grounded.y * 1_000.0,
+                    grounded.z * 1_000.0,
+                )?;
+                let candidate = crate::collider::derive_collider(&tree, translation)?;
+                let bound_body_ids = aigent_bodies.values().copied().collect();
+                // Match queue-time reservation conservatism, using the current
+                // collision stage's parameters rather than the budget preview.
+                let occupied = DraftCollisionView::rebuild(
+                    &entities.snapshots(),
+                    context.collision_parameters,
+                    &bound_body_ids,
+                    &BTreeSet::new(),
+                )?;
+                Ok::<_, MovementError>((candidate, occupied))
+            })();
+            match collision_projection {
+                Ok((candidate, occupied)) if occupied.overlaps(&candidate) => {
+                    return Ok(("create_and_bind_demo_body:rejected=overlap".into(), None));
+                }
+                Err(error) => {
+                    return Ok((
+                        format!(
+                            "create_and_bind_demo_body:rejected=collision_projection:{error:?}"
+                        ),
+                        None,
+                    ));
+                }
+                _ => {}
+            }
             match entities.create(grounded, Some(shape.clone())) {
                 Ok(created) => {
                     aigent_bodies.insert(aigent_id.clone(), created.entity_id);
@@ -1808,6 +1906,435 @@ mod tests {
         world.wait_durable().unwrap();
         drop(world);
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn demo_variant_counts_committed_tentative_and_pending_assignments_once() {
+        let path = std::env::temp_dir().join(format!(
+            "aigent-place-task-068-ordinal-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let mut world = World::with_journal(
+            WorldConfig::default(),
+            DurableJournal::async_sqlite(&path).unwrap(),
+        );
+        let spawn = |id: &[u8], tick, sequence, x| QueuedCommand {
+            arrival_tick: tick,
+            aigent_id: id.to_vec(),
+            sequence,
+            effect: CommandEffect::CreateAndBindDemoBody {
+                aigent_id: id.to_vec(),
+                position: PositionRequest::new(x, 1.0, 0.0),
+                shape: test_box_shape(),
+            },
+        };
+        assert_eq!(world.next_demo_body_variant(), 0);
+        world.enqueue(spawn(b"committed", 1, 1, 0.0)).unwrap();
+        world.advance_tick().unwrap();
+        assert_eq!(world.next_demo_body_variant(), 1);
+        world.enqueue(spawn(b"tentative", 2, 1, 2.0)).unwrap();
+        world.enqueue(spawn(b"future", 4, 1, 4.0)).unwrap();
+        assert_eq!(world.next_demo_body_variant(), 1);
+        assert!(matches!(
+            world.advance_tick_nonblocking().unwrap(),
+            TickAdvance::Submitted { .. }
+        ));
+        // committed is present in both maps, tentative in the draft binding and
+        // restored commands, future in remaining_pending: three assigned slots.
+        assert_eq!(world.next_demo_body_variant(), 1);
+        world.enqueue(spawn(b"future", 4, 2, 4.0)).unwrap();
+        assert_eq!(world.next_demo_body_variant(), 1);
+        world.enqueue(spawn(b"fourth", 4, 1, 6.0)).unwrap();
+        assert_eq!(world.next_demo_body_variant(), 0);
+        world.wait_durable().unwrap();
+        assert_eq!(world.next_demo_body_variant(), 0);
+        world.advance_ticks(2).unwrap();
+        assert_eq!(world.aigent_bodies.len(), 4);
+        assert_eq!(world.entities.next_entity_id(), 5);
+        assert_eq!(world.next_demo_body_variant(), 0);
+        drop(world);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn demo_variant_includes_tentative_bindings_without_spawn_commands() {
+        let path = std::env::temp_dir().join(format!(
+            "aigent-place-task-068-binding-ordinal-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let mut world = World::with_journal(
+            WorldConfig::default(),
+            DurableJournal::async_sqlite(&path).unwrap(),
+        );
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: 1,
+                aigent_id: b"creator".to_vec(),
+                sequence: 1,
+                effect: CommandEffect::CreateEntity {
+                    position: PositionRequest::new(0.0, 1.0, 0.0),
+                    shape: Some(test_box_shape()),
+                },
+            })
+            .unwrap();
+        world.advance_tick().unwrap();
+        assert_eq!(
+            world.next_demo_body_variant(),
+            0,
+            "unbound objects do not consume a body slot"
+        );
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: 2,
+                aigent_id: b"binder".to_vec(),
+                sequence: 1,
+                effect: CommandEffect::BindAigentBody {
+                    aigent_id: b"new-binding".to_vec(),
+                    body_id: 1,
+                },
+            })
+            .unwrap();
+        assert_eq!(world.next_demo_body_variant(), 0);
+        assert!(matches!(
+            world.advance_tick_nonblocking().unwrap(),
+            TickAdvance::Submitted { .. }
+        ));
+        assert_eq!(
+            world.next_demo_body_variant(),
+            1,
+            "tentative bound body counts before writer installation"
+        );
+        world.wait_durable().unwrap();
+        assert_eq!(world.next_demo_body_variant(), 1);
+        drop(world);
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn spawn_review_world(existing_owner: &[u8]) -> (World, u64, ShapeSlot) {
+        let mut world = World::new(WorldConfig::default());
+        let mut rounded = ShapeTree::decode(test_box_shape().as_bytes()).unwrap();
+        rounded.nodes[0].primitive = Some(Primitive::Capsule(aigent_protocol::CapsulePrimitive {
+            radius_mm: 350,
+            segment_length_mm: 1100,
+        }));
+        let mut sphere = rounded.nodes[0].clone();
+        sphere.node_id = 2;
+        sphere.parent_node_id = 1;
+        sphere.primitive = Some(Primitive::Sphere(aigent_protocol::SpherePrimitive {
+            radius_mm: 500,
+        }));
+        rounded.nodes.push(sphere);
+        let mut pointed = rounded.clone();
+        pointed.nodes[0].primitive =
+            Some(Primitive::Cylinder(aigent_protocol::CylinderPrimitive {
+                radius_mm: 500,
+                height_mm: 1400,
+            }));
+        pointed.nodes[0]
+            .transform
+            .as_mut()
+            .unwrap()
+            .translation
+            .as_mut()
+            .unwrap()
+            .y_mm = -200;
+        pointed.nodes[1].primitive = Some(Primitive::Cone(aigent_protocol::ConePrimitive {
+            radius_mm: 500,
+            height_mm: 400,
+        }));
+        pointed.nodes[1]
+            .transform
+            .as_mut()
+            .unwrap()
+            .translation
+            .as_mut()
+            .unwrap()
+            .y_mm = 900;
+        let rounded = ShapeSlot::from_encoded(rounded.encode_to_vec());
+        let pointed = ShapeSlot::from_encoded(pointed.encode_to_vec());
+        let first_slot = world.next_demo_spawn_position(&rounded).unwrap();
+        let mut existing_controller = vec![0];
+        existing_controller.extend_from_slice(existing_owner);
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: world.next_tick(),
+                aigent_id: existing_controller,
+                sequence: 1,
+                effect: CommandEffect::CreateAndBindDemoBody {
+                    aigent_id: existing_owner.to_vec(),
+                    position: first_slot,
+                    shape: rounded,
+                },
+            })
+            .unwrap();
+        world.advance_tick().unwrap();
+        let existing_body = world.body_for_aigent(existing_owner).unwrap();
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: world.next_tick(),
+                aigent_id: existing_owner.to_vec(),
+                sequence: 1,
+                effect: CommandEffect::UpsertMoveLease {
+                    body_id: None,
+                    intent: MoveIntent::new(1000, 0, 500).unwrap(),
+                    ttl_ms: None,
+                },
+            })
+            .unwrap();
+        world.advance_ticks(40).unwrap();
+        assert_eq!(world.entities.get(existing_body).unwrap().position.x(), 1.0);
+        (world, existing_body, pointed)
+    }
+
+    fn queue_review_move(world: &mut World, owner: &[u8]) {
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: world.next_tick(),
+                aigent_id: owner.to_vec(),
+                sequence: 2,
+                effect: CommandEffect::UpsertMoveLease {
+                    body_id: None,
+                    intent: MoveIntent::new(0, 0, 500).unwrap(),
+                    ttl_ms: None,
+                },
+            })
+            .unwrap();
+    }
+
+    fn queue_review_newcomer(world: &mut World, shape: ShapeSlot, initial_move: bool) {
+        let reserved = world.next_demo_spawn_position(&shape).unwrap();
+        assert_eq!((reserved.x, reserved.z), (0.0, 0.0));
+        let arrival_tick = world.next_tick();
+        // These are exactly the keys/effects emitted by queue_world_effect.
+        let mut commands = vec![QueuedCommand {
+            arrival_tick,
+            aigent_id: b"\0z".to_vec(),
+            sequence: 1,
+            effect: CommandEffect::CreateAndBindDemoBody {
+                aigent_id: b"z".to_vec(),
+                position: reserved,
+                shape,
+            },
+        }];
+        if initial_move {
+            commands.push(QueuedCommand {
+                arrival_tick,
+                aigent_id: b"z".to_vec(),
+                sequence: 1,
+                effect: CommandEffect::UpsertMoveLease {
+                    body_id: None,
+                    intent: MoveIntent::new(0, 0, 500).unwrap(),
+                    ttl_ms: None,
+                },
+            });
+        }
+        world.enqueue_batch(commands).unwrap();
+    }
+
+    #[test]
+    fn demo_spawn_rechecks_a_slot_after_an_earlier_opaque_owner_moves() {
+        let (mut world, existing_body, shape) = spawn_review_world(b"\0a");
+        queue_review_move(&mut world, b"\0a");
+        queue_review_newcomer(&mut world, shape, true);
+        let generation = world.advance_tick().unwrap();
+        assert!(generation.entities[&existing_body].position.x() < 1.0);
+        assert!(
+            !generation.aigent_bodies.contains_key(b"z".as_slice()),
+            "occupied reserved slot must reject before binding: {:?}",
+            generation.applied_commands
+        );
+        assert_eq!(generation.next_entity_id, 2);
+        assert_eq!(generation.entities.len(), 1);
+        assert!(generation.applied_commands.iter().any(|command| command
+            .summary
+            .contains("create_and_bind_demo_body:rejected=overlap")));
+        assert!(generation.applied_commands.iter().any(|command| command
+            .summary
+            .contains("upsert_move_lease:rejected=unbound_aigent")));
+    }
+
+    #[test]
+    fn demo_spawn_reservation_blocks_a_later_ordinary_owner_before_first_move() {
+        let (mut world, existing_body, shape) = spawn_review_world(b"a");
+        queue_review_move(&mut world, b"a");
+        queue_review_newcomer(&mut world, shape, true);
+        let generation = world.advance_tick().unwrap();
+        assert_eq!(generation.entities[&existing_body].position.x(), 1.0);
+        let newcomer = generation.aigent_bodies[b"z".as_slice()];
+        assert_eq!(generation.entities[&newcomer].position.x(), 0.0);
+        assert_eq!(generation.next_entity_id, 3);
+        assert!(generation.active_leases.contains_key(&newcomer));
+        assert!(generation.applied_commands.iter().any(|command| command
+            .summary
+            .contains("move=no_progress:blocker=entity/2")));
+        assert!(!generation
+            .applied_commands
+            .iter()
+            .any(|command| command.summary.contains("illegal_overlap")));
+    }
+
+    #[test]
+    fn demo_spawn_application_accepts_exact_face_contact() {
+        let (mut world, _, shape) = spawn_review_world(b"a");
+        queue_review_newcomer(&mut world, shape, true);
+        let generation = world.advance_tick().unwrap();
+        let newcomer = generation.aigent_bodies[b"z".as_slice()];
+        assert_eq!(generation.entities[&newcomer].position.x(), 0.0);
+        assert_eq!(generation.next_entity_id, 3);
+        assert!(generation.active_leases.contains_key(&newcomer));
+        assert!(generation.applied_commands[0]
+            .summary
+            .contains("accepted:id=2"));
+    }
+
+    #[test]
+    fn demo_spawn_reservation_ends_with_generation_without_a_hidden_lease() {
+        let (mut world, existing_body, shape) = spawn_review_world(b"a");
+        queue_review_move(&mut world, b"a");
+        queue_review_newcomer(&mut world, shape, false);
+        let generation = world.advance_tick().unwrap();
+        let newcomer = generation.aigent_bodies[b"z".as_slice()];
+        assert_eq!(generation.entities[&existing_body].position.x(), 1.0);
+        assert!(!generation.active_leases.contains_key(&newcomer));
+        // At the next generation it is an established sleeping body. The
+        // continuing lease can enter that space; no local reservation leaks.
+        let next = world.advance_tick().unwrap();
+        assert!(next.entities[&existing_body].position.x() < 1.0);
+        assert!(!next.active_leases.contains_key(&newcomer));
+        assert_eq!(next.entities[&newcomer].position.x(), 0.0);
+    }
+
+    #[test]
+    fn demo_spawn_reservation_updates_an_already_initialized_movement_draft() {
+        let (mut world, existing_body, shape) = spawn_review_world(b"a");
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: world.next_tick(),
+                aigent_id: b"\0\0a".to_vec(),
+                sequence: 1,
+                effect: CommandEffect::CreateAndBindDemoBody {
+                    aigent_id: b"\0a".to_vec(),
+                    position: PositionRequest::new(4.0, 1.0, 0.0),
+                    shape: test_box_shape(),
+                },
+            })
+            .unwrap();
+        world.advance_tick().unwrap();
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: world.next_tick(),
+                aigent_id: b"\0a".to_vec(),
+                sequence: 1,
+                effect: CommandEffect::UpsertMoveLease {
+                    body_id: None,
+                    intent: MoveIntent::new(4025, 0, 500).unwrap(),
+                    ttl_ms: None,
+                },
+            })
+            .unwrap();
+        queue_review_move(&mut world, b"a");
+        queue_review_newcomer(&mut world, shape, true);
+        let generation = world.advance_tick().unwrap();
+        let earlier_body = generation.aigent_bodies[b"\0a".as_slice()];
+        assert_eq!(generation.entities[&earlier_body].position.x(), 4.025);
+        assert_eq!(generation.entities[&existing_body].position.x(), 1.0);
+        let newcomer = generation.aigent_bodies[b"z".as_slice()];
+        assert_eq!(newcomer, 3);
+        assert_eq!(generation.entities[&newcomer].position.x(), 0.0);
+        assert!(generation.applied_commands[2]
+            .summary
+            .contains("move=no_progress:blocker=entity/3"));
+    }
+
+    #[test]
+    fn demo_spawn_noop_does_not_reserve_an_established_sleeping_body() {
+        let (mut world, existing_body, shape) = spawn_review_world(b"a");
+        queue_review_newcomer(&mut world, shape.clone(), false);
+        let newcomer = world.advance_tick().unwrap().aigent_bodies[b"z".as_slice()];
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: world.next_tick(),
+                aigent_id: b"\0z".to_vec(),
+                sequence: 2,
+                effect: CommandEffect::CreateAndBindDemoBody {
+                    aigent_id: b"z".to_vec(),
+                    position: PositionRequest::new(0.0, 1.0, 0.0),
+                    shape,
+                },
+            })
+            .unwrap();
+        queue_review_move(&mut world, b"a");
+        let generation = world.advance_tick().unwrap();
+        assert!(generation.applied_commands[0].summary.contains(":noop:"));
+        assert_eq!(generation.entities[&existing_body].position.x(), 0.975);
+        assert_eq!(generation.aigent_bodies[b"z".as_slice()], newcomer);
+        assert!(!generation.active_leases.contains_key(&newcomer));
+        assert_eq!(generation.next_entity_id, 3);
+    }
+
+    #[test]
+    fn demo_spawn_application_reserves_a_body_whose_move_just_completed() {
+        let (mut world, existing_body, shape) = spawn_review_world(b"\0a");
+        world
+            .enqueue(QueuedCommand {
+                arrival_tick: world.next_tick(),
+                aigent_id: b"\0a".to_vec(),
+                sequence: 2,
+                effect: CommandEffect::UpsertMoveLease {
+                    body_id: None,
+                    intent: MoveIntent::new(975, 0, 500).unwrap(),
+                    ttl_ms: None,
+                },
+            })
+            .unwrap();
+        queue_review_newcomer(&mut world, shape, true);
+        let generation = world.advance_tick().unwrap();
+        assert_eq!(generation.entities[&existing_body].position.x(), 0.975);
+        assert!(!generation.active_leases.contains_key(&existing_body));
+        assert!(!generation.aigent_bodies.contains_key(b"z".as_slice()));
+        assert_eq!(generation.next_entity_id, 2);
+        assert!(generation.applied_commands[1]
+            .summary
+            .contains("rejected=overlap"));
+    }
+
+    #[test]
+    fn demo_spawn_collision_projects_current_budget_not_activation_preview() {
+        let (mut world, _, shape) = spawn_review_world(b"a");
+        let mut candidate = ShapeTree::decode(shape.as_bytes()).unwrap();
+        candidate.nodes.truncate(1);
+        candidate.nodes[0].primitive = Some(Primitive::Sphere(aigent_protocol::SpherePrimitive {
+            radius_mm: 500,
+        }));
+        candidate.nodes[0]
+            .transform
+            .as_mut()
+            .unwrap()
+            .translation
+            .as_mut()
+            .unwrap()
+            .y_mm = 0;
+        let mut parameters = RulesetParameters::catalog_defaults();
+        parameters.set("shape.body_max_parts", 1);
+        parameters.set("shape.body_max_joints", 0);
+        let candidate_id = world.schedule_ruleset(parameters).unwrap();
+        let activation_tick = world.rulesets().pending().unwrap().activate_at_tick;
+        if activation_tick > world.next_tick() {
+            world
+                .advance_ticks(activation_tick - world.next_tick())
+                .unwrap();
+        }
+        queue_review_newcomer(
+            &mut world,
+            ShapeSlot::from_encoded(candidate.encode_to_vec()),
+            true,
+        );
+        let generation = world.advance_tick().unwrap();
+        assert_eq!(generation.ruleset_generation_id, candidate_id);
+        assert!(generation.aigent_bodies.contains_key(b"z".as_slice()));
+        assert_eq!(generation.next_entity_id, 3);
     }
 
     #[test]

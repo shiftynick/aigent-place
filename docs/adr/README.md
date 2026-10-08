@@ -36,3 +36,4 @@ per decision.
 | [ADR-0009](0009-v1-product-open-question-answers.md) | V1 answers to ARCHITECTURE open product questions | accepted |
 | [ADR-0010](0010-async-websocket-stack.md) | Async runtime and WebSocket stack for world-server transport | accepted |
 | [ADR-0011](0011-snapshot-self-binding-and-public-aims.md) | Snapshot self binding and public physical movement aims | accepted (delegated operator authority, 2026-10-08) |
+| [ADR-0012](0012-authoritative-shape-presentation-and-demo-bodies.md) | Authoritative shape presentation and distinct demo bodies | accepted (delegated operator authority, 2026-10-08) |

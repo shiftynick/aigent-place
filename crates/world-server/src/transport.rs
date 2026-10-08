@@ -17,15 +17,17 @@ use crate::session::{
     ConnectionMode, ConnectionRole, DecodedCommandPayload, FeatureOffer, HandshakeOutcome,
     IdentityBinding, SessionHub,
 };
+use crate::shape::{validate_shape_tree, ShapeClass, ShapeRejection};
 use crate::tick::TICK_MS;
 use crate::world::{CommandEffect, QueuedCommand, World, WorldConfig, WorldError};
 use aigent_protocol::{
-    command_result, envelope, handshake_frame, shape_node::Primitive, BoxPrimitive, ColorRgba,
-    CommandAccepted, CommandKind, CommandRejected, CommandResult, ConnectionMode as ProtoMode,
-    ConnectionRole as ProtoRole, Envelope, FeatureSelection, FullSnapshot, HandshakeFrame,
-    HandshakeReject, LeaseTerminatedPayload, LeaseTerminationReason as ProtoLeaseTerminationReason,
-    LocalTransform, Percept, PerceptKind, ProtocolError, ProtocolErrorCode, Quaternion,
-    ServerHello, ShapeNode, ShapeTree, SnapshotDelta, SnapshotResyncRequired, Vector3Millimeters,
+    command_result, envelope, handshake_frame, shape_node::Primitive, CapsulePrimitive, ColorRgba,
+    CommandAccepted, CommandKind, CommandRejected, CommandResult, ConePrimitive,
+    ConnectionMode as ProtoMode, ConnectionRole as ProtoRole, CylinderPrimitive, Envelope,
+    FeatureSelection, FullSnapshot, HandshakeFrame, HandshakeReject, LeaseTerminatedPayload,
+    LeaseTerminationReason as ProtoLeaseTerminationReason, LocalTransform, Percept, PerceptKind,
+    ProtocolError, ProtocolErrorCode, Quaternion, ServerHello, ShapeNode, ShapeTree, SnapshotDelta,
+    SnapshotResyncRequired, SpherePrimitive, Vector3Millimeters,
 };
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{ConnectInfo, State, WebSocketUpgrade};
@@ -1160,7 +1162,21 @@ fn queue_world_effect(
     if !world.has_body_or_pending_spawn(aigent_id) && kind == CommandKind::Move {
         let mut demo_controller = vec![0u8];
         demo_controller.extend_from_slice(aigent_id);
-        let shape = demo_body_shape_slot();
+        let tree = demo_body_shape(world.next_demo_body_variant());
+        validate_shape_tree(&tree, ShapeClass::Body, &world.rulesets().live().parameters).map_err(
+            |error| {
+                AdmissionFailure::Rejected(match error {
+                    ShapeRejection::PartBudgetExceeded { .. }
+                    | ShapeRejection::JointBudgetExceeded { .. }
+                    | ShapeRejection::ExtentBudgetExceeded { .. }
+                    | ShapeRejection::AggregateExtentBudgetExceeded { .. } => {
+                        aigent_protocol::CommandRejectionCode::BudgetExceeded
+                    }
+                    _ => aigent_protocol::CommandRejectionCode::RulesetViolation,
+                })
+            },
+        )?;
+        let shape = ShapeSlot::from_encoded(tree.encode_to_vec());
         let position = world
             .next_demo_spawn_position(&shape)
             .ok_or(AdmissionFailure::Rejected(
@@ -1192,40 +1208,433 @@ fn queue_world_effect(
     Ok(Some(arrival_tick))
 }
 
-fn demo_body_shape_slot() -> ShapeSlot {
-    let tree = ShapeTree {
-        nodes: vec![ShapeNode {
-            node_id: 1,
-            parent_node_id: 0,
-            transform: Some(LocalTransform {
-                translation: Some(Vector3Millimeters {
-                    x_mm: 0,
-                    y_mm: 0,
-                    z_mm: 0,
-                }),
-                rotation: Some(Quaternion {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                    w: 1.0,
-                }),
+fn demo_body_shape(variant: usize) -> ShapeTree {
+    let node = |node_id, parent_node_id, y_mm, color, primitive| ShapeNode {
+        node_id,
+        parent_node_id,
+        transform: Some(LocalTransform {
+            translation: Some(Vector3Millimeters {
+                x_mm: 0,
+                y_mm,
+                z_mm: 0,
             }),
-            joint_name: None,
-            color: Some(ColorRgba {
-                red: 80,
-                green: 160,
-                blue: 220,
-                alpha: 255,
+            rotation: Some(Quaternion {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                w: 1.0,
             }),
-            material_tags: Vec::new(),
-            primitive: Some(Primitive::Box(BoxPrimitive {
-                size_x_mm: 1_000,
-                size_y_mm: 1_800,
-                size_z_mm: 1_000,
-            })),
-        }],
+        }),
+        joint_name: None,
+        color: Some(color),
+        material_tags: Vec::new(),
+        primitive: Some(primitive),
     };
-    ShapeSlot::from_encoded(ProstMessage::encode_to_vec(&tree))
+    let blue = ColorRgba {
+        red: 60,
+        green: 145,
+        blue: 230,
+        alpha: 255,
+    };
+    let light_blue = ColorRgba {
+        red: 80,
+        green: 170,
+        blue: 245,
+        alpha: 255,
+    };
+    let amber = ColorRgba {
+        red: 240,
+        green: 170,
+        blue: 45,
+        alpha: 255,
+    };
+    let light_amber = ColorRgba {
+        red: 255,
+        green: 205,
+        blue: 80,
+        alpha: 255,
+    };
+    // Both compositions have the existing centred 1 x 1.8 x 1 metre aggregate
+    // bounds. The wider sphere is visible around the narrower capsule; the
+    // second silhouette has a flat cylinder and an adjoining pointed cap.
+    ShapeTree {
+        nodes: if variant == 0 {
+            vec![
+                node(
+                    1,
+                    0,
+                    0,
+                    blue,
+                    Primitive::Capsule(CapsulePrimitive {
+                        radius_mm: 350,
+                        segment_length_mm: 1_100,
+                    }),
+                ),
+                node(
+                    2,
+                    1,
+                    0,
+                    light_blue,
+                    Primitive::Sphere(SpherePrimitive { radius_mm: 500 }),
+                ),
+            ]
+        } else {
+            vec![
+                node(
+                    1,
+                    0,
+                    -200,
+                    amber,
+                    Primitive::Cylinder(CylinderPrimitive {
+                        radius_mm: 500,
+                        height_mm: 1_400,
+                    }),
+                ),
+                node(
+                    2,
+                    1,
+                    900,
+                    light_amber,
+                    Primitive::Cone(ConePrimitive {
+                        radius_mm: 500,
+                        height_mm: 400,
+                    }),
+                ),
+            ]
+        },
+    }
+}
+
+#[cfg(test)]
+mod demo_shape_tests {
+    use super::*;
+    use crate::{derive_collider, RulesetParameters, WorldPointMm};
+
+    fn queue_move(
+        world: &mut World,
+        id: &[u8],
+        sequence: u64,
+    ) -> Result<Option<u64>, AdmissionFailure<WorldError>> {
+        queue_world_effect(
+            world,
+            id,
+            CommandKind::Move,
+            sequence,
+            &DecodedCommandPayload::Move(crate::movement::MoveIntent::new(0, 0, 500).unwrap()),
+        )
+    }
+
+    #[test]
+    fn silhouettes_have_distinct_visible_parts_and_original_aggregate_bounds() {
+        let parameters = RulesetParameters::catalog_defaults();
+        for variant in [0, 1] {
+            let tree = demo_body_shape(variant);
+            assert_eq!(tree.nodes.len(), 2);
+            assert_ne!(tree.nodes[0].color, tree.nodes[1].color);
+            assert!(tree
+                .nodes
+                .iter()
+                .all(|node| node.color.as_ref().unwrap().alpha == 255));
+            validate_shape_tree(&tree, ShapeClass::Body, &parameters).unwrap();
+            let collider = derive_collider(&tree, WorldPointMm::origin()).unwrap();
+            let bounds = collider.aggregate();
+            assert_eq!(
+                (bounds.min().x(), bounds.min().y(), bounds.min().z()),
+                (-500.0, -900.0, -500.0)
+            );
+            assert_eq!(
+                (bounds.max().x(), bounds.max().y(), bounds.max().z()),
+                (500.0, 900.0, 500.0)
+            );
+        }
+        let rounded = demo_body_shape(0);
+        assert!(matches!(
+            rounded.nodes[0].primitive,
+            Some(Primitive::Capsule(CapsulePrimitive {
+                radius_mm: 350,
+                segment_length_mm: 1100
+            }))
+        ));
+        assert!(matches!(
+            rounded.nodes[1].primitive,
+            Some(Primitive::Sphere(SpherePrimitive { radius_mm: 500 }))
+        ));
+        let pointed = demo_body_shape(1);
+        assert!(matches!(
+            pointed.nodes[0].primitive,
+            Some(Primitive::Cylinder(_))
+        ));
+        assert!(matches!(
+            pointed.nodes[1].primitive,
+            Some(Primitive::Cone(_))
+        ));
+        assert_eq!(pointed.nodes[1].parent_node_id, 1);
+    }
+
+    #[test]
+    fn demo_body_palettes_are_opaque_shaded_and_distinct_by_spawn_variant() {
+        let rounded = demo_body_shape(0);
+        let pointed = demo_body_shape(1);
+        let colors = |tree: &ShapeTree| {
+            tree.nodes
+                .iter()
+                .map(|node| node.color.unwrap())
+                .collect::<Vec<_>>()
+        };
+        let blue_palette = vec![
+            ColorRgba {
+                red: 60,
+                green: 145,
+                blue: 230,
+                alpha: 255,
+            },
+            ColorRgba {
+                red: 80,
+                green: 170,
+                blue: 245,
+                alpha: 255,
+            },
+        ];
+        let amber_palette = vec![
+            ColorRgba {
+                red: 240,
+                green: 170,
+                blue: 45,
+                alpha: 255,
+            },
+            ColorRgba {
+                red: 255,
+                green: 205,
+                blue: 80,
+                alpha: 255,
+            },
+        ];
+        assert_eq!(colors(&rounded), blue_palette);
+        assert_eq!(colors(&pointed), amber_palette);
+        assert_ne!(blue_palette[0], blue_palette[1]);
+        assert_ne!(amber_palette[0], amber_palette[1]);
+        assert!(blue_palette
+            .iter()
+            .all(|color| !amber_palette.contains(color)));
+        assert!(matches!(
+            rounded.nodes[0].primitive,
+            Some(Primitive::Capsule(_))
+        ));
+        assert!(matches!(
+            pointed.nodes[0].primitive,
+            Some(Primitive::Cylinder(_))
+        ));
+    }
+
+    #[test]
+    fn spawn_order_selects_shapes_independently_of_identity_and_pending_retries() {
+        for identities in [
+            [b"runner".as_slice(), b"seeker".as_slice()],
+            [b"seeker".as_slice(), b"runner".as_slice()],
+            [b"opaque-z".as_slice(), b"opaque-a".as_slice()],
+        ] {
+            let mut world = World::new(WorldConfig::default());
+            queue_move(&mut world, identities[0], 1).unwrap();
+            queue_move(&mut world, identities[0], 2).unwrap();
+            assert_eq!(world.next_demo_body_variant(), 1);
+            queue_move(&mut world, identities[1], 1).unwrap();
+            assert_eq!(world.next_demo_body_variant(), 0);
+            world.advance_tick().unwrap();
+            for (variant, id) in identities.into_iter().enumerate() {
+                let body = world.body_for_aigent(id).unwrap();
+                assert_eq!(
+                    world
+                        .entities()
+                        .get(body)
+                        .unwrap()
+                        .shape
+                        .as_ref()
+                        .unwrap()
+                        .as_bytes(),
+                    demo_body_shape(variant).encode_to_vec()
+                );
+            }
+            assert_eq!(world.entities().next_entity_id(), 3);
+            queue_move(&mut world, identities[0], 3).unwrap();
+            assert_eq!(world.next_demo_body_variant(), 0);
+            queue_move(&mut world, b"third", 1).unwrap();
+            world.advance_tick().unwrap();
+            let third = world.body_for_aigent(b"third").unwrap();
+            assert_eq!(
+                world
+                    .entities()
+                    .get(third)
+                    .unwrap()
+                    .shape
+                    .as_ref()
+                    .unwrap()
+                    .as_bytes(),
+                demo_body_shape(0).encode_to_vec()
+            );
+        }
+    }
+
+    #[test]
+    fn live_body_part_and_extent_budgets_reject_the_complete_queue_batch() {
+        for (path, value) in [("shape.body_max_parts", 1), ("shape.max_extent_mm", 1799)] {
+            let mut world = World::new(WorldConfig::default());
+            let mut parameters = RulesetParameters::catalog_defaults();
+            parameters.set(path, value);
+            if path == "shape.body_max_parts" {
+                parameters.set("shape.body_max_joints", 0);
+            }
+            world.schedule_ruleset(parameters).unwrap();
+            world.advance_ticks(2).unwrap();
+            assert!(matches!(
+                queue_move(&mut world, b"limited", 1),
+                Err(AdmissionFailure::Rejected(
+                    aigent_protocol::CommandRejectionCode::BudgetExceeded
+                ))
+            ));
+            assert!(!world.has_body_or_pending_spawn(b"limited"));
+            assert_eq!(world.next_demo_body_variant(), 0);
+            let generation = world.advance_tick().unwrap();
+            assert_eq!(generation.next_entity_id, 1);
+            assert!(generation.entities.is_empty());
+            assert!(generation.aigent_bodies.is_empty());
+            assert!(generation.active_leases.is_empty());
+            assert!(generation.applied_commands.is_empty());
+        }
+    }
+
+    #[test]
+    fn queued_creation_revalidates_the_activation_tick_and_soak_rollback() {
+        for soak_ok in [true, false] {
+            let mut world = World::new(WorldConfig::default());
+            let mut parameters = RulesetParameters::catalog_defaults();
+            parameters.set("shape.body_max_parts", 1);
+            parameters.set("shape.body_max_joints", 0);
+            let candidate_id = world.schedule_ruleset(parameters).unwrap();
+            let activation_tick = world.rulesets().pending().unwrap().activate_at_tick;
+            if activation_tick > 1 {
+                world.advance_ticks(activation_tick - 1).unwrap();
+            }
+            world.set_soak_ok(soak_ok);
+            queue_move(&mut world, b"boundary", 1).unwrap();
+            let generation = world.advance_tick().unwrap();
+            if soak_ok {
+                assert_eq!(generation.ruleset_generation_id, candidate_id);
+                assert_eq!(generation.next_entity_id, 1);
+                assert!(generation.entities.is_empty());
+                assert!(generation.aigent_bodies.is_empty());
+                assert!(generation.active_leases.is_empty());
+                assert!(generation.applied_commands[0]
+                    .summary
+                    .contains("PartBudgetExceeded"));
+            } else {
+                assert_ne!(generation.ruleset_generation_id, candidate_id);
+                assert_eq!(generation.next_entity_id, 2);
+                assert_eq!(generation.entities.len(), 1);
+                assert_eq!(generation.aigent_bodies.len(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn budget_rejection_consumes_one_sequence_and_replays_without_spawning() {
+        let mut world = World::new(WorldConfig::default());
+        let mut parameters = RulesetParameters::catalog_defaults();
+        parameters.set("shape.body_max_parts", 1);
+        parameters.set("shape.body_max_joints", 0);
+        world.schedule_ruleset(parameters).unwrap();
+        world.advance_ticks(2).unwrap();
+        let mut hub = SessionHub::new_v1();
+        let epoch = match hub.handshake(ClientHello {
+            role: ConnectionRole::Aigent,
+            offered_majors: vec![1],
+            offered_features: vec![],
+            aigent_id: Some(b"limited".to_vec()),
+            connection_id: b"socket".to_vec(),
+            identity: IdentityBinding::TestTrustedInject {
+                aigent_id: b"limited".to_vec(),
+            },
+        }) {
+            HandshakeOutcome::Accepted {
+                session_epoch: Some(epoch),
+                ..
+            } => epoch,
+            outcome => panic!("unexpected hello: {outcome:?}"),
+        };
+        let payload = aigent_protocol::MovePayload {
+            target_x_mm: 0,
+            target_z_mm: 0,
+            speed_mm_per_s: 500,
+        }
+        .encode_to_vec();
+        let command = |sequence| CommandSubmit {
+            connection_id: b"socket".to_vec(),
+            protocol_major: 1,
+            message_id: sequence,
+            session_epoch: epoch.clone(),
+            sequence,
+            idempotency_key: vec![sequence as u8],
+            kind: CommandKind::Move,
+            content_digest: Sha256::digest(&payload).to_vec(),
+            payload_bytes: payload.clone(),
+            required_features: vec![],
+        };
+        let rejected = hub
+            .submit_command_with_admission(command(1), |id, command, decoded| {
+                queue_world_effect(&mut world, id, command.kind, command.sequence, decoded)
+                    .map(|_| ())
+            })
+            .unwrap();
+        assert!(matches!(
+            rejected,
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Rejected {
+                    code: aigent_protocol::CommandRejectionCode::BudgetExceeded
+                },
+                replayed: false,
+                ..
+            }
+        ));
+        assert!(!world.has_body_or_pending_spawn(b"limited"));
+        world
+            .schedule_ruleset(RulesetParameters::catalog_defaults())
+            .unwrap();
+        world.advance_ticks(2).unwrap();
+        let replay = hub
+            .submit_command_with_admission(
+                command(1),
+                |_, _, _| -> Result<(), AdmissionFailure<WorldError>> {
+                    panic!("cached budget rejection must never re-admit")
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            replay,
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Rejected {
+                    code: aigent_protocol::CommandRejectionCode::BudgetExceeded
+                },
+                replayed: true,
+                ..
+            }
+        ));
+        let accepted = hub
+            .submit_command_with_admission(command(2), |id, command, decoded| {
+                queue_world_effect(&mut world, id, command.kind, command.sequence, decoded)
+                    .map(|_| ())
+            })
+            .unwrap();
+        assert!(matches!(
+            accepted,
+            CommandOutcome::Result {
+                result: AuthoritativeResult::Accepted { .. },
+                replayed: false,
+                ..
+            }
+        ));
+        world.advance_tick().unwrap();
+        assert_eq!(world.body_for_aigent(b"limited"), Some(1));
+        assert_eq!(world.entities().next_entity_id(), 2);
+    }
 }
 
 /// Deterministic focus mapping for AOI when no entity binding exists yet.
@@ -1544,7 +1953,7 @@ mod buffered_outbound_tests {
     #[test]
     fn full_demo_spawn_grid_rejects_without_a_partial_batch() {
         let mut world = World::new(WorldConfig::default());
-        let shape = demo_body_shape_slot();
+        let shape = ShapeSlot::from_encoded(demo_body_shape(0).encode_to_vec());
         let occupied = (0..4_096usize)
             .map(|slot| {
                 let aigent_id = format!("occupied-{slot}").into_bytes();
