@@ -5,6 +5,8 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
+  rmdirSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,9 +36,14 @@ function resolveShell() {
     }
   }
 
-  const direct = spawnSync("sh", ["--version"], { encoding: "utf8" });
-  if (!direct.error) {
-    return "sh";
+  const direct = spawnSync("sh", ["-c", "command -v sh"], {
+    encoding: "utf8",
+  });
+  if (!direct.error && direct.status === 0 && direct.stdout.trim()) {
+    const candidate = resolve(direct.stdout.trim());
+    if (existsSync(candidate)) {
+      return candidate;
+    }
   }
 
   throw new Error(
@@ -45,7 +52,7 @@ function resolveShell() {
 }
 
 const SHELL = resolveShell();
-const SHELL_DIR = dirname(SHELL === "sh" ? "/usr/bin/sh" : SHELL);
+const SHELL_DIR = dirname(SHELL);
 
 function toPosixPath(filePath) {
   const normalized = filePath.replaceAll("\\", "/");
@@ -54,6 +61,28 @@ function toPosixPath(filePath) {
     return `/${match[1].toLowerCase()}${match[2]}`;
   }
   return normalized;
+}
+
+function writeShellHelpers(dir) {
+  for (const helper of ["dirname", "cat"]) {
+    const found = spawnSync(SHELL, ["-c", `command -v ${helper}`], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    if (found.error || found.status !== 0 || !found.stdout.trim()) {
+      throw new Error(`pre-commit tests require the shell helper ${helper}`);
+    }
+    // Preserve Git-sh's absolute POSIX paths on Windows. Forward to the
+    // original executables so their native DLLs stay beside them.
+    const foundPath = found.stdout.trim();
+    const target = toPosixPath(
+      foundPath.startsWith("/") ? foundPath : resolve(ROOT, foundPath),
+    );
+    const quoted = `'${target.replaceAll("'", "'\\''")}'`;
+    const stub = join(dir, helper);
+    writeFileSync(stub, `#!/bin/sh\nexec ${quoted} "$@"\n`, "utf8");
+    chmodSync(stub, 0o755);
+  }
 }
 
 function writeNodeStub(exitCode) {
@@ -126,13 +155,23 @@ test("pre-commit hook runs under sh and reaches the product-check command", () =
 });
 
 test("pre-commit fails when node is missing from PATH", () => {
-  const result = runHook({
-    PATH: SHELL_DIR,
-    Path: SHELL_DIR,
-  });
-  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`);
-  assert.match(result.stderr, /node is required/);
-  assert.match(result.stderr, /\.nvmrc/);
+  const dir = mkdtempSync(join(tmpdir(), "aigent-precommit-no-node-"));
+  try {
+    writeShellHelpers(dir);
+    const pathValue = toPosixPath(dir);
+    const result = runHook({
+      PATH: pathValue,
+      Path: pathValue,
+    });
+    assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`);
+    assert.match(result.stderr, /node is required/);
+    assert.match(result.stderr, /\.nvmrc/);
+  } finally {
+    for (const helper of ["dirname", "cat"]) {
+      rmSync(join(dir, helper), { force: true });
+    }
+    rmdirSync(dir);
+  }
 });
 
 test("pre-commit exits 0 when product-check succeeds", () => {
