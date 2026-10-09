@@ -180,6 +180,16 @@ impl TransportState {
         Self::new_with_world(hub, allow_non_loopback, World::new(WorldConfig::default()))
     }
 
+    /// Explicit temporary demo mode; owns marked memory and resets on restart.
+    #[must_use]
+    pub fn new_demo_plaza(hub: SessionHub, allow_non_loopback: bool) -> Arc<Self> {
+        Self::new_with_world(
+            hub,
+            allow_non_loopback,
+            World::ephemeral_demo_plaza(WorldConfig::default()),
+        )
+    }
+
     /// Build shared state around an already-recovered or test-owned [`World`].
     #[must_use]
     pub fn new_with_world(hub: SessionHub, allow_non_loopback: bool, world: World) -> Arc<Self> {
@@ -1160,6 +1170,11 @@ fn queue_world_effect(
     let arrival_tick = world.next_command_tick().map_err(AdmissionFailure::Fatal)?;
     let mut commands = Vec::new();
     if !world.has_body_or_pending_spawn(aigent_id) && kind == CommandKind::Move {
+        if !world.demo_binding_capacity_available(aigent_id) {
+            return Err(AdmissionFailure::Rejected(
+                aigent_protocol::CommandRejectionCode::Conflict,
+            ));
+        }
         let mut demo_controller = vec![0u8];
         demo_controller.extend_from_slice(aigent_id);
         let tree = demo_body_shape(world.next_demo_body_variant());
@@ -1200,13 +1215,17 @@ fn queue_world_effect(
         effect,
     });
     world.enqueue_batch(commands).map_err(|error| match error {
-        WorldError::DuplicateCommandTuple => {
+        WorldError::DuplicateCommandTuple | WorldError::DemoBindingCapacityExceeded => {
             AdmissionFailure::Rejected(aigent_protocol::CommandRejectionCode::Conflict)
         }
         error => AdmissionFailure::Fatal(error),
     })?;
     Ok(Some(arrival_tick))
 }
+
+#[cfg(test)]
+#[path = "transport/demo_plaza_tests.rs"]
+mod demo_plaza_tests;
 
 fn demo_body_shape(variant: usize) -> ShapeTree {
     let node = |node_id, parent_node_id, y_mm, color, primitive| ShapeNode {

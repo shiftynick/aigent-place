@@ -5,6 +5,8 @@ use super::{CommittedGeneration, JournalError, RecoveredState};
 /// Single-writer in-memory journal.
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryJournal {
+    /// API ownership marker, deliberately absent from generation/SQLite codecs.
+    ephemeral_demo_plaza: bool,
     committed: Vec<CommittedGeneration>,
     /// At most one uncommitted pending packet.
     pending: Option<CommittedGeneration>,
@@ -14,6 +16,17 @@ impl InMemoryJournal {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub(crate) fn ephemeral_demo_plaza() -> Self {
+        Self {
+            ephemeral_demo_plaza: true,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn is_ephemeral_demo_plaza(&self) -> bool {
+        self.ephemeral_demo_plaza
     }
 
     /// Begin a generation packet. Fails if another is already uncommitted.
@@ -114,6 +127,9 @@ impl InMemoryJournal {
 
     /// Restart reconstruction: last committed generation only (pending discarded).
     pub fn recover(&self) -> Result<RecoveredState, JournalError> {
+        if self.ephemeral_demo_plaza {
+            return Err(JournalError::EphemeralRecoveryUnsupported);
+        }
         self.verify_committed()?;
         Ok(RecoveredState {
             last_committed: self.committed.last().cloned(),

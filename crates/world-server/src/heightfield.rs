@@ -134,11 +134,20 @@ impl HeightfieldConfig {
     }
 }
 
-/// Procedural heightfield: validated cell size plus world seed.
+/// Immutable height-generation identity (ADR-0013).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeightfieldProfile {
+    NoiseV1,
+    /// Fixed, temporary demo identity; never recovered from durable history.
+    EphemeralDemoPlazaV1,
+}
+
+/// Immutable generation identity and instance-wide authoritative sampling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Heightfield {
     seed: [u8; 32],
     config: HeightfieldConfig,
+    profile: HeightfieldProfile,
 }
 
 impl Heightfield {
@@ -151,7 +160,23 @@ impl Heightfield {
         Ok(Self {
             seed,
             config: HeightfieldConfig::new(cell_size_mm)?,
+            profile: HeightfieldProfile::NoiseV1,
         })
+    }
+
+    /// ADR-0013's fixed 1 m lattice and inclusive [-16,16] zero-height samples.
+    /// Columns, chunk views, grounding and sweep all consume this same seam.
+    #[must_use]
+    pub fn ephemeral_demo_plaza(seed: [u8; 32]) -> Self {
+        let mut heightfield = Self::new(seed, DEFAULT_HEIGHTFIELD_CELL_SIZE_MM)
+            .expect("fixed demo cell size is valid");
+        heightfield.profile = HeightfieldProfile::EphemeralDemoPlazaV1;
+        heightfield
+    }
+
+    #[must_use]
+    pub const fn profile(&self) -> HeightfieldProfile {
+        self.profile
     }
 
     #[must_use]
@@ -172,6 +197,12 @@ impl Heightfield {
     /// Pure deterministic sample height at global lattice coordinates.
     #[must_use]
     pub fn sample_height_mm(&self, global_sample_x: i64, global_sample_z: i64) -> i64 {
+        if self.profile == HeightfieldProfile::EphemeralDemoPlazaV1
+            && (-16..=16).contains(&global_sample_x)
+            && (-16..=16).contains(&global_sample_z)
+        {
+            return 0;
+        }
         sample_height_mm(&self.seed, global_sample_x, global_sample_z)
     }
 

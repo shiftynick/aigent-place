@@ -2,7 +2,7 @@
 
 use crate::entity::{EntityError, EntitySnapshot, EntityStore, PositionRequest, ShapeSlot};
 use crate::generation::{AppliedCommand, ImmutableGeneration};
-use crate::heightfield::{Heightfield, DEFAULT_HEIGHTFIELD_CELL_SIZE_MM};
+use crate::heightfield::{Heightfield, HeightfieldProfile, DEFAULT_HEIGHTFIELD_CELL_SIZE_MM};
 use crate::lease::{LeaseTable, LeaseTermination, LeaseTerminationReason};
 use crate::movement::{
     collider_at, ground_horizontal, step_move_toward, BlockerKey, DraftCollisionView, MoveIntent,
@@ -19,6 +19,8 @@ use prost::Message;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
+
+const DEMO_PLAZA_BINDING_CAPACITY: usize = 2;
 
 /// Configuration for a new world instance.
 #[derive(Debug, Clone)]
@@ -108,6 +110,11 @@ impl QueuedCommand {
 /// World-core failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorldError {
+    JournalProfileMismatch {
+        world_is_demo_plaza: bool,
+        journal_is_demo_plaza: bool,
+    },
+    DemoBindingCapacityExceeded,
     DuplicateCommandTuple,
     /// A sealed terminal tick has no unstarted successor for new commands.
     TickExhausted,
@@ -128,6 +135,16 @@ pub enum WorldError {
 impl fmt::Display for WorldError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::JournalProfileMismatch {
+                world_is_demo_plaza,
+                journal_is_demo_plaza,
+            } => write!(
+                f,
+                "world/journal profile mismatch: temporary plaza world={world_is_demo_plaza}, journal={journal_is_demo_plaza}"
+            ),
+            Self::DemoBindingCapacityExceeded => {
+                write!(f, "temporary demo plaza supports two concurrent demo bindings")
+            }
             Self::DuplicateCommandTuple => write!(f, "duplicate canonical command tuple"),
             Self::TickExhausted => write!(f, "no unstarted command tick remains"),
             Self::StaleArrivalTick {
@@ -203,6 +220,19 @@ struct TentativeTick {
 }
 
 impl World {
+    /// Fresh ADR-0013 world: fixed optional terrain plus marked memory ownership.
+    /// State resets on restart; generic recovery intentionally refuses it.
+    #[must_use]
+    pub fn ephemeral_demo_plaza(config: WorldConfig) -> Self {
+        let heightfield = Heightfield::ephemeral_demo_plaza(config.world_seed);
+        let mut world = Self::with_journal(
+            config,
+            DurableJournal::Memory(InMemoryJournal::ephemeral_demo_plaza()),
+        );
+        world.heightfield = heightfield;
+        world
+    }
+
     #[must_use]
     pub fn new(config: WorldConfig) -> Self {
         Self::with_journal(config, DurableJournal::memory())
@@ -281,8 +311,12 @@ impl World {
     /// binding and the command retained for writer recovery name the same slot.
     #[must_use]
     pub(crate) fn next_demo_body_variant(&self) -> usize {
-        let assigned: BTreeSet<&[u8]> = self
-            .aigent_bodies
+        self.reserved_demo_identities().len() % 2
+    }
+
+    /// Count each binding once across installed, tentative and queued state.
+    fn reserved_demo_identities(&self) -> BTreeSet<&[u8]> {
+        self.aigent_bodies
             .keys()
             .map(Vec::as_slice)
             .chain(
@@ -291,8 +325,16 @@ impl World {
                     .flat_map(|tick| tick.aigent_bodies.keys().map(Vec::as_slice)),
             )
             .chain(self.demo_spawn_commands())
-            .collect();
-        assigned.len() % 2
+            .collect()
+    }
+
+    #[must_use]
+    pub(crate) fn demo_binding_capacity_available(&self, aigent_id: &[u8]) -> bool {
+        if self.heightfield.profile() != HeightfieldProfile::EphemeralDemoPlazaV1 {
+            return true;
+        }
+        let assigned = self.reserved_demo_identities();
+        assigned.contains(aigent_id) || assigned.len() < DEMO_PLAZA_BINDING_CAPACITY
     }
 
     /// Reserve the first deterministic non-overlapping listen/demo grid slot.
@@ -379,6 +421,11 @@ impl World {
                 CommandEffect::CreateAndBindDemoBody { aigent_id, .. } => {
                     Some(aigent_id.as_slice())
                 }
+                CommandEffect::BindAigentBody { aigent_id, .. }
+                    if self.heightfield.profile() == HeightfieldProfile::EphemeralDemoPlazaV1 =>
+                {
+                    Some(aigent_id.as_slice())
+                }
                 _ => None,
             })
     }
@@ -406,7 +453,14 @@ impl World {
 
     /// Test/demo helper: bind without waiting for a tick (does not persist alone).
     /// Prefer [`CommandEffect::BindAigentBody`] inside a committed tick.
+    /// Panics on fixture misuse before mutation; production admission is typed.
     pub fn bind_aigent_body_for_test(&mut self, aigent_id: Vec<u8>, body_id: u64) {
+        self.validate_journal_profile()
+            .expect("fixture world/journal profiles must match");
+        assert!(
+            self.demo_binding_capacity_available(&aigent_id),
+            "fixture exceeds temporary demo plaza binding capacity"
+        );
         self.aigent_bodies.insert(aigent_id, body_id);
     }
 
@@ -425,6 +479,7 @@ impl World {
 
     /// Schedule a validated ruleset candidate. Invalid candidates leave live unchanged.
     pub fn schedule_ruleset(&mut self, parameters: RulesetParameters) -> Result<u64, WorldError> {
+        self.validate_journal_profile()?;
         self.rulesets
             .schedule(parameters, self.clock.last_completed())
             .map_err(WorldError::Ruleset)
@@ -451,6 +506,11 @@ impl World {
         config: WorldConfig,
         mut journal: DurableJournal,
     ) -> Result<Self, WorldError> {
+        if journal.is_ephemeral_demo_plaza() {
+            return Err(WorldError::Persistence(
+                JournalError::EphemeralRecoveryUnsupported,
+            ));
+        }
         journal.discard_pending();
         let recovered = journal.recover().map_err(WorldError::Persistence)?;
         let mut world = Self::with_journal(config, journal);
@@ -495,6 +555,7 @@ impl World {
     /// Earliest tick whose input batch has not started. An async tentative
     /// generation has already sealed its commands, even before durable install.
     pub(crate) fn next_command_tick(&self) -> Result<u64, WorldError> {
+        self.validate_journal_profile()?;
         match &self.tentative {
             Some(tentative) => tentative
                 .generation
@@ -532,6 +593,7 @@ impl World {
     /// Insert a complete local effect batch only after every command passes
     /// tick/key validation. This is queue admission, not durable installation.
     pub(crate) fn enqueue_batch(&mut self, commands: Vec<QueuedCommand>) -> Result<(), WorldError> {
+        self.validate_journal_profile()?;
         if commands.is_empty() {
             return Ok(());
         }
@@ -554,7 +616,37 @@ impl World {
                 return Err(WorldError::DuplicateCommandTuple);
             }
         }
+        if self.heightfield.profile() == HeightfieldProfile::EphemeralDemoPlazaV1 {
+            let mut assigned = self.reserved_demo_identities();
+            for command in &commands {
+                match &command.effect {
+                    CommandEffect::CreateAndBindDemoBody { aigent_id, .. }
+                    | CommandEffect::BindAigentBody { aigent_id, .. } => {
+                        assigned.insert(aigent_id.as_slice());
+                    }
+                    _ => {}
+                }
+            }
+            if assigned.len() > DEMO_PLAZA_BINDING_CAPACITY {
+                return Err(WorldError::DemoBindingCapacityExceeded);
+            }
+        }
         self.pending.extend(commands);
+        Ok(())
+    }
+
+    /// Check before draining commands, polling/committing storage or advancing
+    /// the clock. `journal_mut` cannot silently reinterpret either profile.
+    fn validate_journal_profile(&self) -> Result<(), WorldError> {
+        let world_is_demo_plaza =
+            self.heightfield.profile() == HeightfieldProfile::EphemeralDemoPlazaV1;
+        let journal_is_demo_plaza = self.journal.is_ephemeral_demo_plaza();
+        if world_is_demo_plaza != journal_is_demo_plaza {
+            return Err(WorldError::JournalProfileMismatch {
+                world_is_demo_plaza,
+                journal_is_demo_plaza,
+            });
+        }
         Ok(())
     }
 
@@ -588,6 +680,7 @@ impl World {
     /// Callers own durability polling via [`Self::poll_durable`] before invoking
     /// this method so an install cannot be swallowed inside a subsequent submit.
     pub fn advance_tick_nonblocking(&mut self) -> Result<TickAdvance, WorldError> {
+        self.validate_journal_profile()?;
         if self.tentative.is_some() {
             return Ok(TickAdvance::Busy);
         }
@@ -843,6 +936,7 @@ impl World {
 
     /// Install a successfully committed async generation, if ready.
     pub fn poll_durable(&mut self) -> Result<Option<&ImmutableGeneration>, WorldError> {
+        self.validate_journal_profile()?;
         let Some(writer) = self.journal.as_async_sqlite_mut() else {
             return Ok(None);
         };
@@ -873,6 +967,7 @@ impl World {
 
     /// Block until an in-flight async generation commits or fails.
     pub fn wait_durable(&mut self) -> Result<&ImmutableGeneration, WorldError> {
+        self.validate_journal_profile()?;
         while self.tentative.is_some() {
             if self.poll_durable()?.is_some() {
                 break;
@@ -1482,6 +1577,10 @@ pub fn replay_log(
     world.advance_ticks(ticks)?;
     Ok(world.published().expect("published").clone())
 }
+
+#[cfg(test)]
+#[path = "world/demo_plaza_tests.rs"]
+mod demo_plaza_tests;
 
 #[cfg(test)]
 mod tests {

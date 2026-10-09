@@ -306,3 +306,66 @@ passes appearance/controls with honest timing and occlusion/label limits; root
 current narrow-view/actual-disconnect checks pass. Fresh full code axes R2
 completed and were adjudicated with no new production defect. Final gate and
 protected delivery remain required before round4 selection.
+
+## 2026-10-08 — five-round-live-demo
+
+**Goal:** Improve the live spectator experience and world activity equally,
+so lively, goal-driven aigents produce events worth following.
+
+**Done when:** Five sequential rounds each finish one or two selected
+improvements, fresh independent proposal challenge and code review, real
+runtime validation, and protected PR delivery before the next critique.
+
+Approved front under the operator's confirmed selection delegation:
+
+1. `task-064` — round1 delivered through PR70, protected squash9274ffe.
+2. `task-067` — round2 delivered through PR71, protected squash67e1846.
+3. `task-068` — round3 delivered through PR72, protected squasheb2c921,
+   merged2026-10-08T23:49:49Z. Root verified exact tree/parent and green
+   required head/main checks; reviewed shapes and collision repair delivered.
+4. `task-069` — round4 A: explicit temporary authoritative plaza and wider
+   responsive owner-driven demo policies, with recovery/capacity guards.
+5. `task-070` — round4 B, dependent on task069 protected delivery: smooth
+   automatic framing from observed shapes and joint live spectator validation.
+
+Planned announcement: Two demo aigents have room for longer journeys. One
+visits wider points, while the other responds to observed peer movement.
+The spectator camera follows the growing activity until you take control.
+This optional demo world is temporary and resets when its server restarts.
+Owner-run brains retain the same generated movement protocol.
+
+The new round4 critic found distinct bodies but a small busy stage. Root
+read its captures and qualified sampling/occlusion claims. A real chosen
+8m route admitted MOVE but stopped at2.480m with typed BLOCKED; other noise
+regions remain unproved. The first independent proposal challenge rejected
+invented lifecycle text and wider coordinates without intercept validation.
+A second fresh binding review endorsed the smaller ephemeral alternative
+subject to two-sided journal/profile guards, loud bounded wrong-pair failure,
+capacity across queued and committed bindings, physical separation criteria
+and smoothed camera growth. Root adopted these revisions in accepted ADR0013
+before bodies. Concise adjudication is `.tasks/evidence/task-069/proposal-adjudication.md`.
+
+Task069 is claimed; both isolated warm server and SDK patches are root-integrated.
+Focused root nine Rust library tests, five integration tests, server build and
+69 SDK tests pass; 22 Rust and 39 JavaScript compiling assertion mutants and
+restores are verified. Root owns exact physical evidence. Acceptance includes both
+composed shapes through real grounding/sweeps in both directions and dense
+intercepts, compiling mutations, CLI path-touch and actual wrong-pair checks,
+and several fresh190s decoded runs. Long observed travel and repeated physical
+convergence after separation support acceptance; Accepted counters and body
+penetration do not. Task070 remains backlog and receives a separate branch/PR
+from the delivered main. Both tasks finish before a new round5 live critique.
+Private evidence-tool review is complete. Reproduced timing and relay cleanup
+fixes passed their regressions before outcomes; a fresh independent fix review
+found no material defect. Three actual235s fresh-world trials each pass17
+decoded checks and204.93s joint activity, repeated physical encounters,
+reconnect and STOP tails. Actual default-noise wide failure and both CLI
+journal conflicts pass. At this runtime checkpoint, code cold axes, the full
+gate and protected delivery are still pending.
+
+Assumptions: the fixed convex inset supports this two-body demo vocabulary.
+The wire still carries no terrain profile, general role or motivation.
+Normal durable/noise worlds and the compact preset remain available. No
+deployment or live-model credentials are needed. Governance exclusions,
+hooks and protected delivery remain unchanged. Mandatory milestone audit and
+retrospective still run after round5.

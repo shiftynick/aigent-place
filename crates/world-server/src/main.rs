@@ -6,7 +6,7 @@ use world_server::{serve, SessionHub, TransportState, DEFAULT_LISTEN_JOURNAL_PAT
 
 fn print_usage() {
     eprintln!(
-        "usage: world-server [--listen|--listen-any [HOST:PORT]] [--journal PATH]\n  default listen: 127.0.0.1:7600\n  default journal: {DEFAULT_LISTEN_JOURNAL_PATH} (cwd-relative; SQLite WAL)\n  without flags: print smoke marker"
+        "usage: world-server [--listen|--listen-any [HOST:PORT]] [--journal PATH | --demo-plaza]\n  default listen: 127.0.0.1:7600\n  default journal: {DEFAULT_LISTEN_JOURNAL_PATH} (cwd-relative; SQLite WAL; noise terrain)\n  --demo-plaza: temporary in-memory world; resets on restart; cannot combine with --journal\n  without flags: print smoke marker"
     );
 }
 
@@ -24,6 +24,7 @@ async fn main() {
 
     let mut listen_any = false;
     let mut listen = false;
+    let mut demo_plaza = false;
     let mut addr_raw: Option<String> = None;
     let mut journal_path: Option<PathBuf> = None;
     let mut index = 0;
@@ -35,6 +36,9 @@ async fn main() {
             }
             "--listen" => {
                 listen = true;
+            }
+            "--demo-plaza" => {
+                demo_plaza = true;
             }
             "--journal" => {
                 index += 1;
@@ -73,6 +77,12 @@ async fn main() {
         std::process::exit(2);
     }
 
+    // Reject before opening/touching storage or binding a listening socket.
+    if demo_plaza && journal_path.is_some() {
+        eprintln!("world-server: --demo-plaza is temporary and cannot combine with --journal");
+        std::process::exit(2);
+    }
+
     let addr_raw = addr_raw.unwrap_or_else(|| "127.0.0.1:7600".into());
     let addr: SocketAddr = match addr_raw.parse() {
         Ok(addr) => addr,
@@ -88,27 +98,37 @@ async fn main() {
         std::process::exit(2);
     }
 
-    let journal_path = journal_path.unwrap_or_else(|| PathBuf::from(DEFAULT_LISTEN_JOURNAL_PATH));
-    let state = match TransportState::try_new_with_durable_journal(
-        SessionHub::new_v1(),
-        listen_any,
-        &journal_path,
-    ) {
-        Ok(state) => state,
-        Err(error) => {
-            eprintln!(
-                "world-server: durable journal open/recovery failed for {}: {error}",
-                journal_path.display()
-            );
-            std::process::exit(1);
-        }
-    };
+    let state = if demo_plaza {
+        eprintln!(
+            "world-server: listening on ws://{addr}/ws (temporary demo plaza; marked in-memory state resets on restart; two demo bindings; demo trusted-inject{}; loopback peers only unless --listen-any)",
+            if listen_any { ", --listen-any" } else { "" }
+        );
+        TransportState::new_demo_plaza(SessionHub::new_v1(), listen_any)
+    } else {
+        let journal_path =
+            journal_path.unwrap_or_else(|| PathBuf::from(DEFAULT_LISTEN_JOURNAL_PATH));
+        let state = match TransportState::try_new_with_durable_journal(
+            SessionHub::new_v1(),
+            listen_any,
+            &journal_path,
+        ) {
+            Ok(state) => state,
+            Err(error) => {
+                eprintln!(
+                    "world-server: durable journal open/recovery failed for {}: {error}",
+                    journal_path.display()
+                );
+                std::process::exit(1);
+            }
+        };
 
-    eprintln!(
+        eprintln!(
         "world-server: listening on ws://{addr}/ws (journal {}; demo trusted-inject{}; loopback peers only unless --listen-any)",
         journal_path.display(),
         if listen_any { ", --listen-any" } else { "" }
-    );
+        );
+        state
+    };
     if let Err(error) = serve(addr, state).await {
         eprintln!("world-server: listen failed: {error}");
         std::process::exit(1);
