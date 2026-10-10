@@ -131,16 +131,29 @@ pub struct RecoveredState {
 /// Journal integrity / recovery failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JournalError {
+    /// Temporary terrain identity has no durable recovery contract, even empty.
+    EphemeralRecoveryUnsupported,
     WriterBusy,
     NoPending,
-    CorruptCommitted { generation: u64 },
-    GenerationGap { expected: u64, found: u64 },
+    CorruptCommitted {
+        generation: u64,
+    },
+    GenerationGap {
+        expected: u64,
+        found: u64,
+    },
     Storage(String),
 }
 
 impl std::fmt::Display for JournalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::EphemeralRecoveryUnsupported => {
+                write!(
+                    f,
+                    "temporary demo plaza history cannot be recovered; start a fresh world"
+                )
+            }
             Self::WriterBusy => write!(f, "writer already has an uncommitted generation"),
             Self::NoPending => write!(f, "no pending generation"),
             Self::CorruptCommitted { generation } => {
@@ -166,6 +179,10 @@ pub enum DurableJournal {
 }
 
 impl DurableJournal {
+    pub(crate) fn is_ephemeral_demo_plaza(&self) -> bool {
+        matches!(self, Self::Memory(journal) if journal.is_ephemeral_demo_plaza())
+    }
+
     #[must_use]
     pub fn memory() -> Self {
         Self::Memory(InMemoryJournal::new())

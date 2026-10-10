@@ -8,8 +8,8 @@ export function parseOptions(args, env = process.env) {
   const values = new Map();
   for (let index = 0; index < args.length; index++) {
     const option = args[index];
-    if (!['--role', '--ws', '--id', '--duration', '--fresh-two-body'].includes(option) || values.has(option)) throw new DemoError('INVALID_OPTIONS', `unknown or duplicate option ${option}`);
-    if (option === '--fresh-two-body') values.set(option, true);
+    if (!['--role', '--ws', '--id', '--duration', '--fresh-two-body', '--wide-plaza'].includes(option) || values.has(option)) throw new DemoError('INVALID_OPTIONS', `unknown or duplicate option ${option}`);
+    if (option === '--fresh-two-body' || option === '--wide-plaza') values.set(option, true);
     else {
       const value = args[++index];
       if (value === undefined || value.startsWith('--')) throw new DemoError('INVALID_OPTIONS', `missing value for ${option}`);
@@ -17,12 +17,13 @@ export function parseOptions(args, env = process.env) {
     }
   }
   const role = values.get('--role');
-  if (!['runner', 'seeker'].includes(role) || !values.has('--fresh-two-body')) throw new DemoError('INVALID_OPTIONS', 'usage: --role runner|seeker --fresh-two-body [--ws URL] [--id ID] [--duration SECONDS]; use a fresh journal and only these two bodies');
+  if (!['runner', 'seeker'].includes(role) || !values.has('--fresh-two-body')) throw new DemoError('INVALID_OPTIONS', 'usage: --role runner|seeker --fresh-two-body [--ws URL] [--id ID] [--duration SECONDS] [--wide-plaza]; use a fresh journal and only these two bodies; pair --wide-plaza with server --demo-plaza');
   const duration = values.has('--duration') ? Number(values.get('--duration')) : 0;
   if (values.has('--duration') && (!Number.isFinite(duration) || duration <= 0 || duration > 3_600)) throw new DemoError('INVALID_OPTIONS', '--duration must be positive and at most 3600 seconds');
   return {
     role, url: values.get('--ws') ?? env.AIGENT_WS_URL ?? 'ws://127.0.0.1:7600/ws',
     aigentId: values.get('--id') ?? env.AIGENT_ID ?? `demo-${role}`, durationMs: duration * 1_000,
+    ...(values.has('--wide-plaza') ? { preset: 'wide-plaza' } : {}),
   };
 }
 

@@ -100,3 +100,30 @@ the task, exact blocking condition, evidence already checked, and a concrete
   **Resolved 2026-07-30:** the operator explicitly accepted ADR-0005 as
   written. Task-025 records the decision; task-011 remains blocked only until
   that decision card completes validation and protected delivery.
+
+
+- 2026-10-08 — `task-069` cannot complete or deliver while the local unified
+  gate fails its preexisting missing-Node hook fixture. The actual gate exits1
+  with95/96process tests before product checks; the separate product gate
+  exits0/115.088s. Both fresh code review axes confirm this delivery blocker
+  and report no other implementation defect. A concrete test-only repair
+  passes6/6 against the unchanged hook; independent review reproduces the
+  original5/6 failure and verifies the repaired test rejects a weakened hook.
+  Operator approval was requested and remains pending: AGENTS requires
+  ask-first for `.githooks/`. No governance source edit or bypass has occurred.
+  **Resume:** obtain explicit approval for the reviewed fixture repair and
+  its separate protected PR/conditional merge; execute that task lifecycle,
+  incorporate the resulting main into task069, remove `needs:operator`, run
+  the final unified gate and fresh separate code review axes, then deliver
+  task069 through its protected PR. Task070 and round5 remain dependent.
+  **Resolved 2026-10-09:** the operator explicitly approved the exact test-only
+  repair and separate protected delivery. Task071 merged as PR73, squash
+  `c06dd7a87f81aac9412131b4a85d0c3998369572`, after complete local reviews/gate
+  and actual required remote success. The production hook is unchanged.
+  Root verified the exact reviewed tree, sole parent and absent remote head,
+  then fast-forwarded task069 with every existing WIP byte/mode preserved.
+  Task069 is reclaimed for its final unified gate and both fresh code axes;
+  task069 delivery remains pending. A subsequent owner read verified the
+  exact main-push workflow and required check successful at23:23:56Z on9
+  October. The inherited task069 unified gate then passed97.417s; fresh
+  separate code reviews remain required.

@@ -40,7 +40,7 @@ async function closeSocket(ws) {
  * not authentication, a resident registry, or durable command-result recovery.
  */
 export class DemoBrainClient {
-  constructor({ url, aigentId, role, log = () => {}, clock = () => performance.now(), durationMs = 0 }) {
+  constructor({ url, aigentId, role, preset = 'compact', log = () => {}, clock = () => performance.now(), durationMs = 0 }) {
     const parsed = new URL(url);
     if (!['ws:', 'wss:'].includes(parsed.protocol)) throw new DemoError('INVALID_OPTIONS', 'WS URL required');
     if (typeof aigentId !== 'string' || !TEXT.encode(aigentId).length || TEXT.encode(aigentId).length > 256) throw new DemoError('INVALID_OPTIONS', 'aigent ID must contain 1..256 UTF-8 bytes');
@@ -53,7 +53,7 @@ export class DemoBrainClient {
     this.log = event => log({ source: 'aigent-demo', role, wallTime: new Date().toISOString(), elapsedMs: Math.round(clock() - startedAt), ...event });
     this.clock = clock;
     this.durationMs = durationMs;
-    this.policy = createPolicy(role);
+    this.policy = createPolicy(role, preset);
     this.view = new SnapshotView();
     this.resyncs = 0;
   }
@@ -80,6 +80,7 @@ export class DemoBrainClient {
 
   session(signal) {
     this.view.reset();
+    this.policy.beginSession();
     return new Promise(resolve => {
       const ws = new WebSocket(this.url);
       ws.binaryType = 'arraybuffer';
@@ -140,6 +141,9 @@ export class DemoBrainClient {
       };
       const resync = reason => {
         this.view.reset();
+        // Suspend observation-based stall timing, retaining this session's
+        // qualifying failures and the ever-adopted explicit self identity.
+        this.policy.decide(this.view, this.clock());
         desired = { kind: 'hold' };
         terminationHint = undefined;
         boundDeadline = this.clock() + 5_000;
@@ -284,7 +288,8 @@ export class DemoBrainClient {
               const termination = decodeDemoBinary(LeaseTerminatedPayloadSchema, body.value.payload);
               if (termination.bodyId === 0n || !TERMINATION_REASONS.has(termination.reason) || termination.conflictingEntityId === 0n) throw new DemoError('INVALID_PERCEPT', 'invalid lease termination');
               if (termination.bodyId === this.view.selfBodyId) {
-                terminationHint = termination.reason === LeaseTerminationReason.BLOCKED ? 'BLOCKED' : undefined;
+                terminationHint = termination.reason === LeaseTerminationReason.BLOCKED
+                  ? { reason: 'BLOCKED', conflictingEntityId: termination.conflictingEntityId } : undefined;
                 this.log({ type: 'lease-terminated', selfBodyId: termination.bodyId.toString(), reason: termination.reason, conflictingEntityId: termination.conflictingEntityId?.toString() });
                 decide();
                 tick();

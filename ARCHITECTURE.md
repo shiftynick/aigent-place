@@ -153,6 +153,16 @@ thread (`DurableJournal::async_sqlite`); the 20 Hz simulation stage submits and
 polls without awaiting storage. A sync helper (`advance_tick`) may wait for the
 writer in tests. Mutations install only after durable success (ADR-0005).
 
+The optional `--demo-plaza` listen mode is an explicit temporary exception
+([ADR-0013](docs/adr/0013-ephemeral-demo-plaza-and-wide-journeys.md)). It owns a
+marked in-memory journal and an immutable flat sample region through the
+existing heightfield, grounding and collision path. It resets on restart,
+rejects a `--journal` argument before path access, and allows two concurrent
+demo bindings. Generic recovery rejects marked plaza memory even when empty;
+world/journal profile checks reject replacements in both directions before
+tick mutation or commit. No plaza generation enters the SQLite codec. The
+default world, noise generator and durable recovery semantics remain unchanged.
+
 **The tick thread never awaits storage, never awaits a socket, and never holds a lock a
 network task can contend.** Persistence and serialization both consume published
 generations asynchronously.

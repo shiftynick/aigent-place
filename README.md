@@ -104,6 +104,33 @@ default two-body world and stops on an ambiguous larger cast. Stop each brain
 independently with Ctrl-C. Owner-run brains retain the same generated
 WebSocket connection and movement commands.
 
+For wider journeys, use the temporary demo plaza. Start these commands in
+separate terminals, with a viewer at `?ws=ws://127.0.0.1:7600/ws`:
+
+```sh
+cargo run -p world-server -- --listen --demo-plaza
+npm run aigent:demo -- --role runner --fresh-two-body --wide-plaza
+npm run aigent:demo -- --role seeker --fresh-two-body --wide-plaza
+```
+
+Pair `--demo-plaza` on the server with `--wide-plaza` on both brains. The
+server creates an authoritative flat region using normal grounding and
+collision. The runner takes longer routes; the seeker responds to observed
+peer movement. These are local demo policies, not public role labels or
+model-generated stories. The current viewer can need **Reset view** as the
+bodies move farther from their first positions.
+
+This mode keeps no durable journal and loses all state on restart. Combining
+`--demo-plaza` with `--journal` fails before touching that path. It supports
+two concurrent demo bindings; a third new identity is rejected. Reconnecting
+an existing identity retains its body within the same server process. Restart
+the server to begin a new pair. Two qualifying wide movement failures stop
+that brain with a typed error that names the failed target and paired flags.
+The wire does not identify terrain mode, so the error is movement evidence,
+not proof of a flag mismatch. The normal durable world and narrow preset
+remain available. [ADR-0013](docs/adr/0013-ephemeral-demo-plaza-and-wide-journeys.md)
+records the temporary mode and recovery boundary.
+
 The server assigns two distinct composed demo silhouettes by spawn order,
 independently of owner identity or runner/seeker role. Shapes pass live body
 budgets and use the existing authoritative grounding, collision and persistence
