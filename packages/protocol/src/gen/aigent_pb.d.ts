@@ -1203,6 +1203,240 @@ export declare type RealEntityRecord = Message<"aigent.protocol.v1.RealEntityRec
 export declare const RealEntityRecordSchema: GenMessage<RealEntityRecord>;
 
 /**
+ * @generated from message aigent.protocol.v1.DemoActivityRules
+ */
+export declare type DemoActivityRules = Message<"aigent.protocol.v1.DemoActivityRules"> & {
+  /**
+   * @generated from field: uint32 inner_min_mm = 1;
+   */
+  innerMinMm: number;
+
+  /**
+   * @generated from field: uint32 inner_max_mm = 2;
+   */
+  innerMaxMm: number;
+
+  /**
+   * @generated from field: uint32 separate_mm = 3;
+   */
+  separateMm: number;
+
+  /**
+   * @generated from field: uint32 min_travel_mm = 4;
+   */
+  minTravelMm: number;
+
+  /**
+   * @generated from field: uint32 min_contribution_mm = 5;
+   */
+  minContributionMm: number;
+
+  /**
+   * @generated from field: uint32 dwell_ticks = 6;
+   */
+  dwellTicks: number;
+
+  /**
+   * @generated from field: uint32 complete_hold_ticks = 7;
+   */
+  completeHoldTicks: number;
+
+  /**
+   * @generated from field: uint32 recovery_hold_ticks = 8;
+   */
+  recoveryHoldTicks: number;
+
+  /**
+   * @generated from field: uint32 phase_timeout_ticks = 9;
+   */
+  phaseTimeoutTicks: number;
+};
+
+/**
+ * Describes the message aigent.protocol.v1.DemoActivityRules.
+ * Use `create(DemoActivityRulesSchema)` to create a new message.
+ */
+export declare const DemoActivityRulesSchema: GenMessage<DemoActivityRules>;
+
+/**
+ * @generated from message aigent.protocol.v1.DemoActivityParticipant
+ */
+export declare type DemoActivityParticipant = Message<"aigent.protocol.v1.DemoActivityParticipant"> & {
+  /**
+   * @generated from field: optional uint64 body_id = 1;
+   */
+  bodyId?: bigint | undefined;
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoParticipantAvailability availability = 2;
+   */
+  availability: DemoParticipantAvailability;
+
+  /**
+   * @generated from field: aigent.protocol.v1.Vector3Millimeters phase_start_position_mm = 3;
+   */
+  phaseStartPositionMm?: Vector3Millimeters | undefined;
+
+  /**
+   * @generated from field: uint32 travel_mm = 4;
+   */
+  travelMm: number;
+
+  /**
+   * @generated from field: sint32 contribution_mm = 5;
+   */
+  contributionMm: number;
+
+  /**
+   * @generated from field: optional uint64 earned_tick = 6;
+   */
+  earnedTick?: bigint | undefined;
+};
+
+/**
+ * Describes the message aigent.protocol.v1.DemoActivityParticipant.
+ * Use `create(DemoActivityParticipantSchema)` to create a new message.
+ */
+export declare const DemoActivityParticipantSchema: GenMessage<DemoActivityParticipant>;
+
+/**
+ * @generated from message aigent.protocol.v1.DemoActivityTransition
+ */
+export declare type DemoActivityTransition = Message<"aigent.protocol.v1.DemoActivityTransition"> & {
+  /**
+   * @generated from field: uint64 id = 1;
+   */
+  id: bigint;
+
+  /**
+   * @generated from field: uint64 tick = 2;
+   */
+  tick: bigint;
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoActivityPhase from = 3;
+   */
+  from: DemoActivityPhase;
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoActivityPhase to = 4;
+   */
+  to: DemoActivityPhase;
+
+  /**
+   * @generated from field: uint64 completed_rounds = 5;
+   */
+  completedRounds: bigint;
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoActivityReason reason = 6;
+   */
+  reason: DemoActivityReason;
+
+  /**
+   * @generated from field: uint64 reset_id = 7;
+   */
+  resetId: bigint;
+};
+
+/**
+ * Describes the message aigent.protocol.v1.DemoActivityTransition.
+ * Use `create(DemoActivityTransitionSchema)` to create a new message.
+ */
+export declare const DemoActivityTransitionSchema: GenMessage<DemoActivityTransition>;
+
+/**
+ * @generated from message aigent.protocol.v1.DemoActivitySnapshot
+ */
+export declare type DemoActivitySnapshot = Message<"aigent.protocol.v1.DemoActivitySnapshot"> & {
+  /**
+   * @generated from field: uint32 version = 1;
+   */
+  version: number;
+
+  /**
+   * @generated from field: bytes run_id = 2;
+   */
+  runId: Uint8Array;
+
+  /**
+   * @generated from field: uint64 reset_id = 3;
+   */
+  resetId: bigint;
+
+  /**
+   * @generated from field: uint64 observed_tick = 4;
+   */
+  observedTick: bigint;
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoActivityPhase phase = 5;
+   */
+  phase: DemoActivityPhase;
+
+  /**
+   * @generated from field: uint64 phase_started_tick = 6;
+   */
+  phaseStartedTick: bigint;
+
+  /**
+   * @generated from field: uint64 completed_rounds = 7;
+   */
+  completedRounds: bigint;
+
+  /**
+   * @generated from field: repeated aigent.protocol.v1.DemoActivityParticipant participants = 8;
+   */
+  participants: DemoActivityParticipant[];
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoActivityRules rules = 9;
+   */
+  rules?: DemoActivityRules | undefined;
+
+  /**
+   * @generated from field: uint64 transition_id = 10;
+   */
+  transitionId: bigint;
+
+  /**
+   * @generated from field: repeated aigent.protocol.v1.DemoActivityTransition recent_transitions = 11;
+   */
+  recentTransitions: DemoActivityTransition[];
+
+  /**
+   * @generated from field: aigent.protocol.v1.Vector3Millimeters formation_center_mm = 12;
+   */
+  formationCenterMm?: Vector3Millimeters | undefined;
+
+  /**
+   * @generated from field: aigent.protocol.v1.Vector3Millimeters formation_axis_mm = 13;
+   */
+  formationAxisMm?: Vector3Millimeters | undefined;
+
+  /**
+   * @generated from field: optional uint64 credit_started_tick = 14;
+   */
+  creditStartedTick?: bigint | undefined;
+
+  /**
+   * @generated from field: uint32 dwell_ticks = 15;
+   */
+  dwellTicks: number;
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoActivityReason reason = 16;
+   */
+  reason: DemoActivityReason;
+};
+
+/**
+ * Describes the message aigent.protocol.v1.DemoActivitySnapshot.
+ * Use `create(DemoActivitySnapshotSchema)` to create a new message.
+ */
+export declare const DemoActivitySnapshotSchema: GenMessage<DemoActivitySnapshot>;
+
+/**
  * Full-snapshot body: every authoritative entity that survived AOI truncation,
  * in AOI rank order (nearest-first, ties by ascending entity_id). The rank
  * is canonical so the wire stays deterministic across same-build replays.
@@ -1236,6 +1470,11 @@ export declare type WorldSnapshotBodyProto = Message<"aigent.protocol.v1.WorldSn
    * @generated from field: optional uint64 self_body_id = 5;
    */
   selfBodyId?: bigint | undefined;
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoActivitySnapshot demo_activity = 6;
+   */
+  demoActivity?: DemoActivitySnapshot | undefined;
 };
 
 /**
@@ -1282,6 +1521,11 @@ export declare type WorldSnapshotDeltaProto = Message<"aigent.protocol.v1.WorldS
    * @generated from field: optional uint64 self_body_id = 6;
    */
   selfBodyId?: bigint | undefined;
+
+  /**
+   * @generated from field: aigent.protocol.v1.DemoActivitySnapshot demo_activity = 7;
+   */
+  demoActivity?: DemoActivitySnapshot | undefined;
 };
 
 /**
@@ -2548,6 +2792,139 @@ export enum WorldRecoveryDiagnosticCode {
  * Describes the enum aigent.protocol.v1.WorldRecoveryDiagnosticCode.
  */
 export declare const WorldRecoveryDiagnosticCodeSchema: GenEnum<WorldRecoveryDiagnosticCode>;
+
+/**
+ * Optional ephemeral two-participant demonstration; complete replacement on
+ * every full/delta generation. Semantic bounds are normative in CONTRACT.md.
+ *
+ * @generated from enum aigent.protocol.v1.DemoActivityPhase
+ */
+export enum DemoActivityPhase {
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_PHASE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_PHASE_READY = 1;
+   */
+  READY = 1,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_PHASE_SEPARATE = 2;
+   */
+  SEPARATE = 2,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_PHASE_REGROUP = 3;
+   */
+  REGROUP = 3,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_PHASE_COMPLETE = 4;
+   */
+  COMPLETE = 4,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_PHASE_SUSPENDED = 5;
+   */
+  SUSPENDED = 5,
+}
+
+/**
+ * Describes the enum aigent.protocol.v1.DemoActivityPhase.
+ */
+export declare const DemoActivityPhaseSchema: GenEnum<DemoActivityPhase>;
+
+/**
+ * @generated from enum aigent.protocol.v1.DemoParticipantAvailability
+ */
+export enum DemoParticipantAvailability {
+  /**
+   * @generated from enum value: DEMO_PARTICIPANT_AVAILABILITY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DEMO_PARTICIPANT_AVAILABILITY_UNBOUND = 1;
+   */
+  UNBOUND = 1,
+
+  /**
+   * @generated from enum value: DEMO_PARTICIPANT_AVAILABILITY_MISSING_BODY = 2;
+   */
+  MISSING_BODY = 2,
+
+  /**
+   * @generated from enum value: DEMO_PARTICIPANT_AVAILABILITY_DISCONNECTED = 3;
+   */
+  DISCONNECTED = 3,
+
+  /**
+   * @generated from enum value: DEMO_PARTICIPANT_AVAILABILITY_AVAILABLE = 4;
+   */
+  AVAILABLE = 4,
+}
+
+/**
+ * Describes the enum aigent.protocol.v1.DemoParticipantAvailability.
+ */
+export declare const DemoParticipantAvailabilitySchema: GenEnum<DemoParticipantAvailability>;
+
+/**
+ * @generated from enum aigent.protocol.v1.DemoActivityReason
+ */
+export enum DemoActivityReason {
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_NORMAL = 1;
+   */
+  NORMAL = 1,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_PARTICIPANT_UNAVAILABLE = 2;
+   */
+  PARTICIPANT_UNAVAILABLE = 2,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_SESSION_CHANGED = 3;
+   */
+  SESSION_CHANGED = 3,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_BODY_CHANGED = 4;
+   */
+  BODY_CHANGED = 4,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_LEASE_INACTIVE = 5;
+   */
+  LEASE_INACTIVE = 5,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_NO_PROGRESS = 6;
+   */
+  NO_PROGRESS = 6,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_UNSAFE_GEOMETRY = 7;
+   */
+  UNSAFE_GEOMETRY = 7,
+
+  /**
+   * @generated from enum value: DEMO_ACTIVITY_REASON_COUNTER_EXHAUSTED = 8;
+   */
+  COUNTER_EXHAUSTED = 8,
+}
+
+/**
+ * Describes the enum aigent.protocol.v1.DemoActivityReason.
+ */
+export declare const DemoActivityReasonSchema: GenEnum<DemoActivityReason>;
 
 /**
  * @generated from enum aigent.protocol.v1.DurablePayloadMode

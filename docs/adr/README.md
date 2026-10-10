@@ -38,3 +38,4 @@ per decision.
 | [ADR-0011](0011-snapshot-self-binding-and-public-aims.md) | Snapshot self binding and public physical movement aims | accepted (delegated operator authority, 2026-10-08) |
 | [ADR-0012](0012-authoritative-shape-presentation-and-demo-bodies.md) | Authoritative shape presentation and distinct demo bodies | accepted (delegated operator authority, 2026-10-08) |
 | [ADR-0013](0013-ephemeral-demo-plaza-and-wide-journeys.md) | Ephemeral demo plaza and wider observed journeys | accepted (delegated operator authority, 2026-10-08) |
+| [ADR-0014](0014-shared-ephemeral-demo-activity.md) | Shared ephemeral demo activity and recoverable progress | accepted (delegated operator authority, 2026-10-10) |

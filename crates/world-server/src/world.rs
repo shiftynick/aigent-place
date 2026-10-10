@@ -1,5 +1,6 @@
 //! Fixed-tick world core: order, apply, execute leases, publish generation.
 
+use crate::demo_activity::{DemoActivity, DemoLeaseMotion, DemoPresence};
 use crate::entity::{EntityError, EntitySnapshot, EntityStore, PositionRequest, ShapeSlot};
 use crate::generation::{AppliedCommand, ImmutableGeneration};
 use crate::heightfield::{Heightfield, HeightfieldProfile, DEFAULT_HEIGHTFIELD_CELL_SIZE_MM};
@@ -203,6 +204,8 @@ pub struct World {
     soak_ok: bool,
     /// Tentative tick awaiting async durability (not yet authoritative).
     tentative: Option<TentativeTick>,
+    demo_activity: Option<DemoActivity>,
+    demo_presence: DemoPresence,
 }
 
 /// Draft world state for one tick, installed only after durable commit.
@@ -214,6 +217,7 @@ struct TentativeTick {
     world_value: i64,
     rulesets: RulesetStore,
     generation: ImmutableGeneration,
+    demo_activity: Option<DemoActivity>,
     /// Commands removed from `pending` for this tick; restored on writer failure.
     restored_pending: Vec<QueuedCommand>,
     remaining_pending: Vec<QueuedCommand>,
@@ -231,6 +235,46 @@ impl World {
         );
         world.heightfield = heightfield;
         world
+    }
+
+    /// Optional world-defined cooperative demo, never journal-recovered.
+    #[must_use]
+    pub fn ephemeral_demo_activity(config: WorldConfig, run_id: [u8; 16]) -> Self {
+        let mut world = Self::ephemeral_demo_plaza(config);
+        world.demo_activity = Some(DemoActivity::new(run_id));
+        world
+    }
+
+    /// Private narrow presence input. Transport validates the exact active
+    /// command session while holding the hub lock before it calls this seam.
+    pub fn attach_demo_participant(
+        &mut self,
+        owner: Vec<u8>,
+        connection_id: Vec<u8>,
+        command_epoch: Vec<u8>,
+    ) -> bool {
+        self.demo_activity.is_some()
+            && self.has_body_or_pending_spawn(&owner)
+            && self
+                .demo_presence
+                .attach(owner, connection_id, command_epoch)
+    }
+
+    pub fn detach_demo_participant(
+        &mut self,
+        owner: &[u8],
+        connection_id: &[u8],
+        command_epoch: &[u8],
+    ) -> bool {
+        self.demo_activity.is_some()
+            && self
+                .demo_presence
+                .detach(owner, connection_id, command_epoch)
+    }
+
+    #[must_use]
+    pub fn demo_activity_state(&self) -> Option<&crate::demo_activity::DemoActivityState> {
+        self.demo_activity.as_ref().map(|activity| &activity.state)
     }
 
     #[must_use]
@@ -263,6 +307,8 @@ impl World {
             journal,
             soak_ok: true,
             tentative: None,
+            demo_activity: None,
+            demo_presence: DemoPresence::default(),
         }
     }
 
@@ -714,6 +760,8 @@ impl World {
         let mut aigent_bodies = self.aigent_bodies.clone();
         let mut world_value = self.world_value;
         let mut rulesets = self.rulesets.clone();
+        let mut demo_activity = self.demo_activity.clone();
+        let mut demo_motions = BTreeMap::new();
         // Creation must satisfy the ruleset this generation will publish, even
         // when a candidate activates at its end boundary. Preview on a clone
         // so command/movement and actual ruleset activation retain their order.
@@ -796,6 +844,7 @@ impl World {
                             &mut entities,
                             &mut lease_terminations,
                             &mut movement_state,
+                            demo_activity.as_ref().map(|_| &mut demo_motions),
                         ) {
                             Ok(movement) => movement,
                             Err(error) => {
@@ -838,6 +887,7 @@ impl World {
             &mut entities,
             &mut lease_terminations,
             &mut movement_state,
+            demo_activity.as_ref().map(|_| &mut demo_motions),
         ) {
             restore_pending(self, due, remaining);
             return Err(error);
@@ -852,6 +902,17 @@ impl World {
             let max_speed = rulesets.live().parameters.max_speed_mm_per_s();
             lease_terminations.extend(leases.revalidate_for_ruleset(max_speed));
         }
+
+        let activity_state = demo_activity.as_mut().map(|activity| {
+            activity.advance(
+                tick,
+                &aigent_bodies,
+                (&entities.snapshots(), &rulesets.live().parameters),
+                &self.demo_presence,
+                &demo_motions,
+                &lease_terminations,
+            )
+        });
 
         let command_summaries: Vec<String> = applied
             .iter()
@@ -882,6 +943,7 @@ impl World {
             rng_draws,
             entities: entities.snapshots(),
             next_entity_id: entities.next_entity_id(),
+            demo_activity: activity_state,
         };
 
         if self.journal.is_async() {
@@ -895,6 +957,7 @@ impl World {
                         world_value,
                         rulesets,
                         generation,
+                        demo_activity,
                         restored_pending: due,
                         remaining_pending: remaining,
                     });
@@ -920,6 +983,7 @@ impl World {
                         world_value,
                         rulesets,
                         generation,
+                        demo_activity,
                         restored_pending: due,
                         remaining_pending: Vec::new(),
                     });
@@ -991,6 +1055,7 @@ impl World {
         self.aigent_bodies = tentative.aigent_bodies;
         self.world_value = tentative.world_value;
         self.rulesets = tentative.rulesets;
+        self.demo_activity = tentative.demo_activity;
         self.published = Some(tentative.generation);
     }
 
@@ -1116,6 +1181,7 @@ fn execute_active_leases(
     entities: &mut EntityStore,
     lease_terminations: &mut Vec<LeaseTermination>,
     movement_state: &mut Option<MovementExecutionState>,
+    mut demo_motions: Option<&mut BTreeMap<u64, DemoLeaseMotion>>,
 ) -> Result<BTreeMap<u64, String>, WorldError> {
     let blocked_limit = context.parameters.blocked_lease_ticks();
     let all_snapshots: Vec<_> = leases.iter_snapshots().collect();
@@ -1176,6 +1242,10 @@ fn execute_active_leases(
                 reached_target,
                 blocked_contact,
             } => {
+                let before = entities
+                    .get(lease.body_id)
+                    .expect("lease body exists")
+                    .position;
                 let outcome = match entities.set_position(
                     lease.body_id,
                     PositionRequest::new(position.x(), position.y(), position.z()),
@@ -1197,6 +1267,16 @@ fn execute_active_leases(
                     .get(lease.body_id)
                     .expect("moved entity remains present")
                     .clone();
+                if let Some(motions) = demo_motions.as_deref_mut() {
+                    motions.insert(
+                        lease.body_id,
+                        DemoLeaseMotion {
+                            owner: lease.aigent_id.clone(),
+                            before,
+                            after: updated.position,
+                        },
+                    );
+                }
                 let (_, collider) = crate::movement::collider_at(&updated, &context.parameters)?;
                 state.entity_snapshots.insert(lease.body_id, updated);
                 state.draft.insert(lease.body_id, collider);
@@ -1579,6 +1659,10 @@ pub fn replay_log(
 }
 
 #[cfg(test)]
+#[path = "world/demo_activity_tests.rs"]
+mod demo_activity_tests;
+
+#[cfg(test)]
 #[path = "world/demo_plaza_tests.rs"]
 mod demo_plaza_tests;
 
@@ -1642,6 +1726,7 @@ mod tests {
             world_value: world.world_value,
             rulesets: world.rulesets.clone(),
             generation,
+            demo_activity: world.demo_activity.clone(),
             restored_pending: Vec::new(),
             remaining_pending: Vec::new(),
         });

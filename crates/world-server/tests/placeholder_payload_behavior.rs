@@ -45,6 +45,7 @@ fn stub_payload_from_generation_includes_active_leases() {
         },
     );
     let generation = ImmutableGeneration {
+        demo_activity: None,
         generation: 3,
         tick: 3,
         world_value: 0,

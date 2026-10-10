@@ -12,13 +12,30 @@ import {
   decodeWorldSnapshotBody,
   decodeWorldSnapshotDelta,
 } from "../src/wire/real-snapshot.js";
-import { entity, shape } from "./snapshot-fixtures.mjs";
+import { activity, completedActivity, entity, shape } from "./snapshot-fixtures.mjs";
 
 const digest = new Uint8Array(32).fill(0xab);
 const bodyBytes = (overrides = {}) => toBinary(WorldSnapshotBodyProtoSchema,
   create(WorldSnapshotBodyProtoSchema, { version: 1, tick: 42n, generationDigest: digest, bodies: [], ...overrides }));
 const deltaBytes = (overrides = {}) => toBinary(WorldSnapshotDeltaProtoSchema,
   create(WorldSnapshotDeltaProtoSchema, { version: 1, generationDigest: digest, ...overrides }));
+
+test("optional activity is validated with full/delta bodies and absent activity stays absent", () => {
+  const state = completedActivity();
+  const full = decodeWorldSnapshotBody(bodyBytes({ bodies: [entity(1n)], demoActivity: state }));
+  assert.equal(full.demoActivity.completedRounds, 1n);
+  assert.equal(full.demoActivity.participants[0].earnedTick, 35n);
+  assert.equal(decodeWorldSnapshotBody(bodyBytes({ tick: 43n, bodies: [entity(1n)], demoActivity: state })), null,
+    "activity and bodies must belong to the same frozen full generation");
+  const delta = decodeWorldSnapshotDelta(deltaBytes({ modified: [entity(1n)], demoActivity: activity() }));
+  assert.equal(delta.demoActivity.phase, 3);
+  for (const invalid of [{ ...state, version: 2 }, { ...state, phase: 99 }, { ...state, runId: new Uint8Array(15) }]) {
+    assert.throws(() => decodeWorldSnapshotBody(bodyBytes({ bodies: [entity(1n)], demoActivity: invalid })), TypeError);
+    assert.throws(() => decodeWorldSnapshotDelta(deltaBytes({ entered: [entity(2n)], leftIds: [1n], demoActivity: invalid })), TypeError);
+  }
+  assert.equal(decodeWorldSnapshotBody(bodyBytes()).demoActivity, undefined);
+  assert.equal(decodeWorldSnapshotDelta(deltaBytes()).demoActivity, undefined);
+});
 
 test("optional self-body binding rejects an encoded present zero in full and delta while preserving absence/nonzero", () => {
   for (const [schema, encode, decode] of [

@@ -97,6 +97,7 @@ fn generation(
         .unwrap_or(0)
         .saturating_add(1);
     ImmutableGeneration {
+        demo_activity: None,
         generation: 7,
         tick: 7,
         world_value: 0,

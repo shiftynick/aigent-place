@@ -190,6 +190,20 @@ impl TransportState {
         )
     }
 
+    /// Explicit optional ADR-0014 rules on the ephemeral demo plaza.
+    #[must_use]
+    pub fn new_demo_activity(
+        hub: SessionHub,
+        allow_non_loopback: bool,
+        run_id: [u8; 16],
+    ) -> Arc<Self> {
+        Self::new_with_world(
+            hub,
+            allow_non_loopback,
+            World::ephemeral_demo_activity(WorldConfig::default(), run_id),
+        )
+    }
+
     /// Build shared state around an already-recovered or test-owned [`World`].
     #[must_use]
     pub fn new_with_world(hub: SessionHub, allow_non_loopback: bool, world: World) -> Arc<Self> {
@@ -282,6 +296,7 @@ impl TransportState {
                     rng_draws: Vec::new(),
                     entities: world.entities().snapshots(),
                     next_entity_id: world.entities().next_entity_id(),
+                    demo_activity: world.demo_activity_state().cloned(),
                 })
         };
 
@@ -506,6 +521,16 @@ impl TransportState {
         for (connection_id, outcome) in observe {
             if matches!(outcome, ObserveOutcome::Closed { .. }) {
                 closed.push(connection_id.clone());
+                {
+                    let hub = self.sessions.lock().await;
+                    if let Some((owner, epoch)) = hub.active_demo_participant_for(&connection_id) {
+                        self.world.lock().await.detach_demo_participant(
+                            &owner,
+                            &connection_id,
+                            &epoch,
+                        );
+                    }
+                }
                 let sockets = self.sockets.lock().await;
                 if let Some(live) = sockets.get(&connection_id) {
                     let _ = live.close_tx.send(true);
@@ -736,6 +761,22 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, state, peer))
 }
 
+/// Acquire the tick boundary before activating the new hub epoch. If this
+/// future is cancelled while waiting for world, the old session stays current.
+async fn handshake_at_tick_boundary(
+    state: &TransportState,
+    semantic: ClientHello,
+    connection_id: &[u8],
+) -> HandshakeOutcome {
+    let mut hub = state.sessions.lock().await;
+    let mut world = state.world.lock().await;
+    let outcome = hub.handshake(semantic);
+    if let Some((owner, epoch)) = hub.active_demo_participant_for(connection_id) {
+        world.attach_demo_participant(owner, connection_id.to_vec(), epoch);
+    }
+    outcome
+}
+
 async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: SocketAddr) {
     if !state.allow_non_loopback.load(Ordering::Relaxed) && !peer.ip().is_loopback() {
         let reject = encode_reject(ProtocolErrorCode::InvalidEnvelope);
@@ -782,11 +823,15 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
     // interest set is centred on the body its own commands move.
     let focus_body_id = semantic.aigent_id.as_deref().map(body_id_for_aigent);
 
-    let outcome = {
-        let mut hub = state.sessions.lock().await;
-        hub.handshake(semantic)
-    };
+    let outcome = handshake_at_tick_boundary(&state, semantic, &connection_id).await;
 
+    let demo_presence = match &outcome {
+        HandshakeOutcome::Accepted {
+            session_epoch: Some(epoch),
+            ..
+        } => aigent_id.clone().map(|owner| (owner, epoch.clone())),
+        _ => None,
+    };
     let (close_tx, mut close_rx) = watch::channel(false);
     let outbound_wake = Arc::new(Notify::new());
     match outcome {
@@ -868,6 +913,13 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
             }
             .encode_to_vec();
             if socket.send(Message::Binary(bytes.into())).await.is_err() {
+                if let Some((owner, epoch)) = &demo_presence {
+                    state
+                        .world
+                        .lock()
+                        .await
+                        .detach_demo_participant(owner, &connection_id, epoch);
+                }
                 cleanup_connection(&state, &connection_id).await;
                 return;
             }
@@ -904,6 +956,13 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TransportState>, peer: 
                         }
                     }
                 }
+            }
+            if let Some((owner, epoch)) = &demo_presence {
+                state
+                    .world
+                    .lock()
+                    .await
+                    .detach_demo_participant(owner, &connection_id, epoch);
             }
             cleanup_connection(&state, &connection_id).await;
         }
@@ -1117,6 +1176,11 @@ async fn handle_command_envelope(
             admitted_tick = tick;
             Ok(())
         });
+        if outcome.is_ok() {
+            if let Some((owner, epoch)) = hub.active_demo_participant_for(connection_id) {
+                world.attach_demo_participant(owner, connection_id.to_vec(), epoch);
+            }
+        }
         (outcome, admitted_tick)
     };
     if let Some(tick) = admitted_tick {
@@ -2340,5 +2404,56 @@ mod buffered_outbound_tests {
         let connection = fanout.get(&connection_id).unwrap();
         assert!(connection.hold_observe);
         assert_eq!(connection.queue.queued_bytes(), retained);
+    }
+}
+
+#[cfg(test)]
+mod demo_activity_handshake_tests {
+    use super::*;
+    use futures_util::{pin_mut, poll};
+
+    fn hello(connection_id: &[u8]) -> ClientHello {
+        ClientHello {
+            role: ConnectionRole::Aigent,
+            offered_majors: vec![1],
+            offered_features: vec![],
+            aigent_id: Some(b"a".to_vec()),
+            connection_id: connection_id.to_vec(),
+            identity: IdentityBinding::TestTrustedInject {
+                aigent_id: b"a".to_vec(),
+            },
+        }
+    }
+    #[tokio::test]
+    async fn replacement_cancelled_while_tick_boundary_is_locked_cannot_activate_epoch() {
+        let state = TransportState::new_demo_activity(SessionHub::new_v1(), false, [7; 16]);
+        let first = handshake_at_tick_boundary(&state, hello(b"old"), b"old").await;
+        let HandshakeOutcome::Accepted {
+            session_epoch: Some(epoch),
+            ..
+        } = first
+        else {
+            panic!("initial command session");
+        };
+        let world = state.world.lock().await;
+        {
+            let replacement = handshake_at_tick_boundary(&state, hello(b"new"), b"new");
+            pin_mut!(replacement);
+            assert!(poll!(replacement).is_pending());
+            // Drop the blocked replacement, including its held hub guard.
+        }
+        let hub = state.sessions.lock().await;
+        assert_eq!(
+            hub.active_demo_participant_for(b"old"),
+            Some((b"a".to_vec(), epoch))
+        );
+        assert!(hub.active_demo_participant_for(b"new").is_none());
+        drop(hub);
+        drop(world);
+        let replacement = handshake_at_tick_boundary(&state, hello(b"new"), b"new").await;
+        assert!(matches!(replacement, HandshakeOutcome::Accepted { .. }));
+        let hub = state.sessions.lock().await;
+        assert!(hub.active_demo_participant_for(b"old").is_none());
+        assert!(hub.active_demo_participant_for(b"new").is_some());
     }
 }

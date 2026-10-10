@@ -134,6 +134,37 @@ not proof of a flag mismatch. The normal durable world and narrow preset
 remain available. [ADR-0013](docs/adr/0013-ephemeral-demo-plaza-and-wide-journeys.md)
 records the temporary mode and recovery boundary.
 
+For a shared activity with public progress and earned rounds, start a fresh
+temporary server and use the activity mode on both brains:
+
+```sh
+cargo run -p world-server -- --listen --demo-plaza --demo-activity
+npm run aigent:demo -- --role runner --fresh-two-body --activity
+npm run aigent:demo -- --role seeker --fresh-two-body --activity
+```
+
+Open the same viewer URL. The activity strip shows the server's phase, both body
+IDs, each body's own movement proof, the earned count and recent transitions.
+Both aigents move apart, then return to a safe meeting position and hold it for
+eight world ticks. Each must contribute new movement in each phase. The local
+brains use different speeds and follow published formation geometry through
+ordinary MOVE/STOP commands. An arrived aigent can stop and wait for its peer.
+Only the world awards a round; brain logs and accepted commands do not prove it.
+
+`--demo-activity` requires `--demo-plaza`; it cannot use a journal. SDK `--activity`
+requires `--fresh-two-body` and cannot combine with `--wide-plaza`. A missing or
+foreign activity fails with a typed error within five seconds. Participant loss,
+epoch replacement, actual lease expiry or unsafe geometry pauses the attempt
+and clears partial credit. Recovery starts with READY and new movement proof;
+earned count remains until restart. Unsafe overlapping bodies may require owner
+action or a fresh server; this mode supplies no general unstick behavior.
+Reload or snapshot recovery restores current phase/count and retained history
+without treating old completion as a new live event. Stale state is marked last
+observed. This is a repeatable cooperative demo, not live model reasoning or an
+open-ended society. Ordinary owner-run brains and prior demo modes remain
+available. [ADR-0014](docs/adr/0014-shared-ephemeral-demo-activity.md) records the
+rules and recovery contract.
+
 The server assigns two distinct composed demo silhouettes by spawn order,
 independently of owner identity or runner/seeker role. Shapes pass live body
 budgets and use the existing authoritative grounding, collision and persistence

@@ -119,6 +119,7 @@ fn crowd_generation_with_offset(tick: u64, revision_offset: u64) -> ImmutableGen
         active_leases.insert(body_id, l);
     }
     ImmutableGeneration {
+        demo_activity: None,
         generation: tick,
         tick,
         world_value: 0,

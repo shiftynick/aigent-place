@@ -463,6 +463,27 @@ impl SessionHub {
             .and_then(|connection| connection.aigent_id.clone())
     }
 
+    /// Private demo presence accepts only the exact current command session.
+    /// Keeping this query under the hub lock prevents a displaced socket from
+    /// attaching after its replacement has already received a newer epoch.
+    pub(crate) fn active_demo_participant_for(
+        &self,
+        connection_id: &[u8],
+    ) -> Option<(Vec<u8>, Vec<u8>)> {
+        let connection = self.connections.get(connection_id)?;
+        let owner = connection.aigent_id.as_ref()?;
+        if connection.displaced
+            || connection.mode != ConnectionMode::CommandCapable
+            || self.live_aigent.get(owner).map(Vec::as_slice) != Some(connection_id)
+        {
+            return None;
+        }
+        Some((
+            owner.clone(),
+            connection.session.as_ref()?.active_epoch.clone(),
+        ))
+    }
+
     pub fn submit_command(&mut self, command: CommandSubmit) -> CommandOutcome {
         let outcome = self.submit_command_with_admission(command, |_, _, _| {
             Ok::<(), AdmissionFailure<std::convert::Infallible>>(())

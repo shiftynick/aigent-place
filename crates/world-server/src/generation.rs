@@ -1,8 +1,10 @@
 //! Immutable world generation published at each tick boundary.
 
+use crate::demo_activity::DemoActivityState;
 use crate::entity::EntitySnapshot;
 use crate::lease::{LeaseSnapshot, LeaseTermination, LeaseTerminationReason};
 use crate::rng::DrawResult;
+use prost::Message;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
@@ -35,6 +37,8 @@ pub struct ImmutableGeneration {
     pub entities: BTreeMap<u64, EntitySnapshot>,
     /// Global monotonic ID allocator state; `0` marks an exhausted space.
     pub next_entity_id: u64,
+    /// Bounded complete replacement frozen with this generation.
+    pub demo_activity: Option<DemoActivityState>,
 }
 
 impl ImmutableGeneration {
@@ -121,6 +125,13 @@ impl ImmutableGeneration {
             }
         }
         hasher.update(self.next_entity_id.to_be_bytes());
+        if let Some(activity) = &self.demo_activity {
+            // No suffix at all for ordinary worlds: preserve their v2 bytes.
+            hasher.update(b"aigent.world.demo-activity.v1\0");
+            let bytes = activity.to_proto().encode_to_vec();
+            hasher.update((bytes.len() as u64).to_be_bytes());
+            hasher.update(bytes);
+        }
         hasher.finalize().into()
     }
 }

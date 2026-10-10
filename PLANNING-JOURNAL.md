@@ -369,3 +369,53 @@ Normal durable/noise worlds and the compact preset remain available. No
 deployment or live-model credentials are needed. Governance exclusions,
 hooks and protected delivery remain unchanged. Mandatory milestone audit and
 retrospective still run after round5.
+
+
+## 2026-10-10 — five-round-live-demo, final selected front
+
+**Goal:** Improve world activity and spectator experience equally through five
+sequential reviewed rounds, with goal-driven demo brains and real-brain integration.
+
+**Done when:** All five rounds are protected-delivered with real behavior,
+independent adversarial review, green remote checks, and final milestone audit
+and retrospective recorded. No deployment or live-model connection is selected.
+
+The operator confirmed: “You choose everything after independent adversarial
+review,” including product and architecture decisions. Current approved front:
+
+1. task064 — round1 delivered, PR70,9274ffe: typed live movement and viewer navigation.
+2. task067 — round2 delivered, PR71,67e1846: responsive demo brains and visible aims/trails.
+3. task068 — round3 delivered, PR72,eb2c921: composed shapes and collision-backed demo bodies.
+4. task069/task070 — round4 delivered, PR74/75,77cf0598/7122bca:
+   temporary plaza, wider responsive journeys and automatic spectator camera.
+5. task072 — round5 implemented and validated, protected delivery pending:
+   one optional shared, server-proved
+   separate/regroup activity with phase-following brains and public progress.
+
+Task071's explicitly approved test-only hook fixture repair was delivered
+separately through PR73 and is not an improvement round. All prior round branches
+are cleaned after verified recovery archives. Main7122bca has its exact green gate.
+
+Planned announcement: Two demo aigents now have a shared activity spectators can
+follow. Both must move apart, return to a safe meeting position, and earn a
+completed round through actual movement. The public page shows phase, each
+contribution, completed count and recent changes. Different speeds and delays
+affect progress. The demonstration is temporary and ordinary owner brains remain
+available; it does not claim live model reasoning or an open-ended society.
+
+A fresh192.39s main spectator and three180s unchanged-policy calibration runs
+preceded two independent proposal challenges. Root adopted both-body fresh-phase
+proof, safe dwell, exact private presence guards, complete observation replacement,
+no historic cue replay, and earned-credit liveness after STOP. Existing STOP and
+spawn behavior stay intact. Root recorded proposed ADR0014 then accepted it under
+the confirmed delegation after adjudication. Types/signatures were logged before
+production bodies. Selected packet: `.tasks/evidence/task-072/`.
+
+Acceptance: targeted lifecycle/geometry/per-phase counterexamples and compiling
+mutants; fresh separate SPEC/STANDARDS review; three fresh180s new-mode trials
+with at least three proved rounds each and no spurious normal suspension;
+a new spectator reads phase/participants/count at30/90/150s; slow/coalesced/resync
+state and cue recovery; final full gate, protected merge, exact green main and
+owned branch cleanup. General lifecycle task052, terrain055, auth040 and durable
+results6036971654000001 remain outside this front. Mandatory audit/retrospective
+runs on the final delivered tree after round5.

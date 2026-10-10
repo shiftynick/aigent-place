@@ -433,6 +433,87 @@ message RealEntityRecord {
   optional MoveAim aim = 5;
 }
 
+// Optional ephemeral two-participant demonstration; complete replacement on
+// every full/delta generation. Semantic bounds are normative in CONTRACT.md.
+enum DemoActivityPhase {
+  DEMO_ACTIVITY_PHASE_UNSPECIFIED = 0;
+  DEMO_ACTIVITY_PHASE_READY = 1;
+  DEMO_ACTIVITY_PHASE_SEPARATE = 2;
+  DEMO_ACTIVITY_PHASE_REGROUP = 3;
+  DEMO_ACTIVITY_PHASE_COMPLETE = 4;
+  DEMO_ACTIVITY_PHASE_SUSPENDED = 5;
+}
+
+enum DemoParticipantAvailability {
+  DEMO_PARTICIPANT_AVAILABILITY_UNSPECIFIED = 0;
+  DEMO_PARTICIPANT_AVAILABILITY_UNBOUND = 1;
+  DEMO_PARTICIPANT_AVAILABILITY_MISSING_BODY = 2;
+  DEMO_PARTICIPANT_AVAILABILITY_DISCONNECTED = 3;
+  DEMO_PARTICIPANT_AVAILABILITY_AVAILABLE = 4;
+}
+
+enum DemoActivityReason {
+  DEMO_ACTIVITY_REASON_UNSPECIFIED = 0;
+  DEMO_ACTIVITY_REASON_NORMAL = 1;
+  DEMO_ACTIVITY_REASON_PARTICIPANT_UNAVAILABLE = 2;
+  DEMO_ACTIVITY_REASON_SESSION_CHANGED = 3;
+  DEMO_ACTIVITY_REASON_BODY_CHANGED = 4;
+  DEMO_ACTIVITY_REASON_LEASE_INACTIVE = 5;
+  DEMO_ACTIVITY_REASON_NO_PROGRESS = 6;
+  DEMO_ACTIVITY_REASON_UNSAFE_GEOMETRY = 7;
+  DEMO_ACTIVITY_REASON_COUNTER_EXHAUSTED = 8;
+}
+
+message DemoActivityRules {
+  uint32 inner_min_mm = 1;
+  uint32 inner_max_mm = 2;
+  uint32 separate_mm = 3;
+  uint32 min_travel_mm = 4;
+  uint32 min_contribution_mm = 5;
+  uint32 dwell_ticks = 6;
+  uint32 complete_hold_ticks = 7;
+  uint32 recovery_hold_ticks = 8;
+  uint32 phase_timeout_ticks = 9;
+}
+
+message DemoActivityParticipant {
+  optional uint64 body_id = 1;
+  DemoParticipantAvailability availability = 2;
+  Vector3Millimeters phase_start_position_mm = 3;
+  uint32 travel_mm = 4;
+  sint32 contribution_mm = 5;
+  optional uint64 earned_tick = 6;
+}
+
+message DemoActivityTransition {
+  uint64 id = 1;
+  uint64 tick = 2;
+  DemoActivityPhase from = 3;
+  DemoActivityPhase to = 4;
+  uint64 completed_rounds = 5;
+  DemoActivityReason reason = 6;
+  uint64 reset_id = 7;
+}
+
+message DemoActivitySnapshot {
+  uint32 version = 1;
+  bytes run_id = 2;
+  uint64 reset_id = 3;
+  uint64 observed_tick = 4;
+  DemoActivityPhase phase = 5;
+  uint64 phase_started_tick = 6;
+  uint64 completed_rounds = 7;
+  repeated DemoActivityParticipant participants = 8;
+  DemoActivityRules rules = 9;
+  uint64 transition_id = 10;
+  repeated DemoActivityTransition recent_transitions = 11;
+  Vector3Millimeters formation_center_mm = 12;
+  Vector3Millimeters formation_axis_mm = 13;
+  optional uint64 credit_started_tick = 14;
+  uint32 dwell_ticks = 15;
+  DemoActivityReason reason = 16;
+}
+
 // Full-snapshot body: every authoritative entity that survived AOI truncation,
 // in AOI rank order (nearest-first, ties by ascending entity_id). The rank
 // is canonical so the wire stays deterministic across same-build replays.
@@ -443,6 +524,7 @@ message WorldSnapshotBodyProto {
   repeated RealEntityRecord bodies = 4;
   // Restated private binding; absence means unbound. Viewers receive no binding.
   optional uint64 self_body_id = 5;
+  DemoActivitySnapshot demo_activity = 6;
 }
 
 // Delta body: explicit enter / modified / left sets. Absence from the wire is
@@ -456,6 +538,7 @@ message WorldSnapshotDeltaProto {
   repeated RealEntityRecord modified = 4;
   repeated uint64 left_ids = 5;
   optional uint64 self_body_id = 6;
+  DemoActivitySnapshot demo_activity = 7;
 }
 
 message SnapshotResyncRequest {

@@ -15,6 +15,14 @@
         <button id="reset-view" type="button" disabled>Reset view</button>
         <p id="hint">Drag to orbit · Right-drag to pan · Scroll to zoom</p>
       </div>
+      <section id="activity-strip" aria-label="Shared demo activity" hidden>
+        <div class="activity-heading"><h2 id="activity-phase"></h2><strong id="activity-count"></strong><span id="activity-status"></span></div>
+        <p id="activity-goal"></p>
+        <p id="activity-rules"></p>
+        <div id="activity-participants"></div>
+        <div class="activity-footer"><p id="activity-dwell"></p><p id="activity-cue" role="status" hidden></p><details><summary>Recent phase changes</summary><ol id="activity-history"></ol></details></div>
+        <p id="activity-gap" hidden></p>
+      </section>
       <div class="watch-layout">
         <aside id="residents" aria-label="Observed bodies and movement inspector">
           <div class="resident-heading"><h2>Bodies</h2><span id="resident-count">0 observed</span></div>
