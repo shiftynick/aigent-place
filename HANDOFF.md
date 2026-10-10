@@ -75,39 +75,46 @@ Task069 acceptance includes three235s physical trials and adversarial guards.
 Task070 acceptance includes191.026s and11,463 native frames, actual geometry,
 manual/Follow/Reset/stale/reconnect controls,154 viewer tests, compiling mutants,
 fresh separate cold axes and final full gate. Evidence limits remain in each
-completed task packet. Four rounds are delivered.
+completed task packet.
 
-Round5 is selected and task072 is claimed on `task-072-shared-demo-activity`,
-branched from verified main7122bca. A new spectator observed that main for
-192.39seconds; movement is readable but purpose and outcome are absent. Three
-fresh180s unchanged wide-policy runs are calibration only. Two fresh independent
-proposal challenges were adjudicated before selection. Accepted ADR0014 uses the
-operator's explicit delegation and defines ONE optional shared activity:
-server-proved separate/regroup phases, owner-side phase-following brains, and a
-compact public activity strip. Each body must earn new own leased-motion proof
-per phase. Intentional STOP preserves earned proof while a slower peer arrives;
-STOP still cancels its lease. Unsafe geometry or participant/epoch loss suspends
-and clears partial credit. Typed complete replacement state recovers phase/count
-without celebrating historical events. See task072's design-contract,
-proposal-adjudication and interface-outline, logged before code bodies.
-Three isolated workers are integrated. Root fmt/clippy/build,25 activity tests
-and261 protocol/SDK/viewer tests passed. Twelve compiling Rust mutations,
-nine viewer mutations and four shared-validator mutations failed by assertion;
-the SDK mutation suite also passed. The private physical collector was reviewed
-and its repairs passed synthetic checks, which have no runtime acceptance credit.
-Three fresh new-mode180s captures completed and all owned processes were
-actually waited for. The final analyzer and independent root custody checks
-pass29 proved rounds in each capture, with87 strict physical crossings,
-fresh both-body proof in both phases and eight safe hold ticks per completion.
-Private tool repairs were independently verified. A fresh spectator identified purpose,
-both participants, progress and count at30/90/150s and both viewport sizes.
-Root camera, disconnect, recovered silent FULL and world-restart checks passed.
-Separate cold CODE axes and a fresh scoped low geometry-fix review are accepted.
-The safety check now uses its published ruleset; the activation/restoration
-regression and compiling mutant pass. Final captures repeat29 proved rounds
-per run on the repaired binary with exact source manifests. Final prose review,
-full gate and protected delivery remain required.
-The mandatory milestone audit and retrospective follow the fifth delivery.
+Round5 `task-072` is delivered through PR76 as protected squash
+`937db2773aefee41cd789e3fd236e449d3a078fc`, merged 2026-10-10T06:07:18Z.
+Root verified the exact reviewed tree `906c69970366e1e3317bdec8b340157f57ff057b`
+and sole parent `7122bca07c9eb058141d3c169092087e237aee29`. The required
+head check passed; main-push process-gate114148261762, run38029837565,
+completed successfully at06:12:08Z on the exact squash commit. Its remote
+head is absent. Root checked all63 worker-source archive files and saved
+worktree/index/diff snapshots before removing the three owned worker worktrees
+and four local task072 branches. The reviewed head is also preserved in a
+verified Git bundle. The detached support checkout is retained.
+
+Accepted ADR0014 defines one optional shared activity: separate, regroup,
+and earn a completed round through fresh leased movement by each aigent.
+Intentional STOP keeps earned proof while cancelling its lease. Unsafe geometry
+or participant/epoch loss suspends the activity and clears partial credit.
+Typed replacement state recovers phase/count without historical celebrations.
+The spectator sees phase, each contribution, completed count and recent changes.
+
+Final acceptance includes three fresh180s runs on the repaired binary,29
+proved rounds each,87 strict physical crossings, fresh own-body proof in both
+phases and eight safe hold ticks per completion. Separate cold SPEC/STANDARDS,
+a scoped published-ruleset geometry repair review, and final prose review were
+adjudicated. The final full gate passed in110.96s before normal hook commit
+and protected delivery. A fresh spectator read purpose, participants, progress
+and count at30/90/150s at both viewport sizes. Root exercised manual camera,
+Follow/Reset, disconnect, silent recovered FULL and world restart. The browser
+run preceded the localized server geometry repair; no final-binary browser
+rerun or physically throttled socket is claimed. Detailed failures, repairs,
+source manifests and limits remain in task072's completed packet.
+
+All five product rounds are delivered. Task073 records the mandatory final
+milestone audit and retrospective on a branch from verified main937db277.
+Its documentation PR is the remaining closeout step, not a sixth product round.
+Separate final source and historical-process readbacks supplement the actual
+churn/process commands recorded through task073. The journal records six reused
+audit cards and one queued cap-sizing mold proposal, task-2070663731000001.
+The proposal needs operator approval before any guidance change; task073 only
+files it. Existing task066 remains a separate pending operator decision.
 
 ## Product facts and remaining work
 
@@ -117,8 +124,7 @@ real effects. Main includes sustained demo brains and public movement aims,
 trails, selection and follow, shape rendering and distinct physical demo bodies.
 Main includes task069's optional temporary plaza and wider demo policies.
 Main includes task070's automatic camera and tested manual/Follow/Reset recovery.
-Task072's optional shared activity is integrated and live acceptance is complete
-on its task branch; protected delivery remains pending.
+Main includes task072's optional shared activity and public progress strip.
 Authoritative terrain transport/rendering,
 origin rebasing and full interpolation acceptance remain `task-055`. Sleep/wake/restore/unstick
 is `task-052`; atomic set_shape is `task-053`. Those cards are unfinished.
@@ -137,7 +143,7 @@ Use Node from `.nvmrc` and Rust from `rust-toolchain.toml`:
 
 ```sh
 node .agents/skills/task-tracker/scripts/task.mjs board
-node .agents/skills/task-tracker/scripts/task.mjs show task-072
+node .agents/skills/task-tracker/scripts/task.mjs show task-073
 node scripts/check.mjs
 ```
 
