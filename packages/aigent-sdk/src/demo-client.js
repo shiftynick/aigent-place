@@ -6,11 +6,12 @@ import {
   LeaseTerminationReason, MovePayloadSchema, PerceptKind, ProtocolErrorCode,
 } from '@aigent-place/protocol';
 import { createPolicy } from './demo-policy.js';
+import { createActivityPolicy } from './activity-policy.js';
 import { decodeDemoBinary, DemoError, SnapshotView } from './demo-observation.js';
 
 const TEXT = new TextEncoder();
 const sameBytes = (a, b) => a?.length === b?.length && a.every((byte, index) => byte === b[index]);
-const commandKey = command => command.kind === 'move' ? `move:${command.targetXMm}:${command.targetZMm}:${command.speedMmPerS}` : command.kind;
+const commandKey = command => command.kind === 'move' ? `move:${command.targetXMm}:${command.targetZMm}:${command.speedMmPerS}:${command.retryId ?? 0}` : command.kind;
 const SERVER_BODIES = new Set(['commandResult', 'protocolError', 'percept', 'fullSnapshot', 'snapshotDelta', 'snapshotResyncRequired', 'orderedEvent', 'eventResyncRequired', 'eventStreamReset', 'connectionDisplaced']);
 const enumValues = generatedEnum => new Set(Object.values(generatedEnum).filter(value => typeof value === 'number' && value > 0));
 const REJECT_CODES = enumValues(CommandRejectionCode);
@@ -40,11 +41,12 @@ async function closeSocket(ws) {
  * not authentication, a resident registry, or durable command-result recovery.
  */
 export class DemoBrainClient {
-  constructor({ url, aigentId, role, preset = 'compact', log = () => {}, clock = () => performance.now(), durationMs = 0 }) {
+  constructor({ url, aigentId, role, preset = 'compact', activity = false, log = () => {}, clock = () => performance.now(), durationMs = 0 }) {
     const parsed = new URL(url);
     if (!['ws:', 'wss:'].includes(parsed.protocol)) throw new DemoError('INVALID_OPTIONS', 'WS URL required');
     if (typeof aigentId !== 'string' || !TEXT.encode(aigentId).length || TEXT.encode(aigentId).length > 256) throw new DemoError('INVALID_OPTIONS', 'aigent ID must contain 1..256 UTF-8 bytes');
     if (!Number.isFinite(durationMs) || durationMs < 0 || durationMs > 3_600_000) throw new DemoError('INVALID_OPTIONS', 'duration exceeds demo bound');
+    if (activity && preset !== 'compact') throw new DemoError('INVALID_OPTIONS', '--activity is incompatible with --wide-plaza');
     this.url = url;
     this.aigentId = TEXT.encode(aigentId);
     this.role = role;
@@ -53,7 +55,7 @@ export class DemoBrainClient {
     this.log = event => log({ source: 'aigent-demo', role, wallTime: new Date().toISOString(), elapsedMs: Math.round(clock() - startedAt), ...event });
     this.clock = clock;
     this.durationMs = durationMs;
-    this.policy = createPolicy(role, preset);
+    this.policy = activity ? createActivityPolicy(role) : createPolicy(role, preset);
     this.view = new SnapshotView();
     this.resyncs = 0;
   }

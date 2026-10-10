@@ -3,6 +3,7 @@ import { BinaryReader, WireType } from "@bufbuild/protobuf/wire";
 import {
   WorldSnapshotBodyProtoSchema,
   WorldSnapshotDeltaProtoSchema,
+  validateDemoActivity,
 } from "@aigent-place/protocol";
 
 const WORLD_BOUND_MM = 100_000_000n;
@@ -135,6 +136,8 @@ export function decodeWorldSnapshotBody(bytes) {
   const body = decodeSnapshotBinary(WorldSnapshotBodyProtoSchema, bytes);
   if (body.version !== 1 || body.generationDigest.length !== 32 || body.selfBodyId === 0n ||
       body.bodies.length > 100 || !body.bodies.every(validEntity) || !uniqueIds(body.bodies.map(record => record.entityId))) return null;
+  validateDemoActivity(body.demoActivity);
+  if (body.demoActivity !== undefined && body.demoActivity.observedTick !== body.tick) return null;
   return body;
 }
 
@@ -148,5 +151,6 @@ export function decodeWorldSnapshotDelta(bytes) {
   if (delta.version !== 1 || delta.generationDigest.length !== 32 || delta.selfBodyId === 0n ||
       records.length > 100 || delta.leftIds.length > 100 ||
       !records.every(validEntity) || !uniqueIds([...records.map(record => record.entityId), ...delta.leftIds])) return null;
+  validateDemoActivity(delta.demoActivity);
   return delta;
 }

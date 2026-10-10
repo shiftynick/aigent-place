@@ -211,6 +211,7 @@ async fn sustained_overflow_isolates_only_slow_connection() {
     let mut isolated = false;
     for i in 0u64..(u64::from(OVERFLOW_TICK_OBSERVATIONS) + 24) {
         let gen = ImmutableGeneration {
+            demo_activity: None,
             generation: i + 1,
             tick: i + 1,
             world_value: 0,
@@ -256,6 +257,7 @@ async fn sustained_overflow_isolates_only_slow_connection() {
     assert!(saw_end, "slow socket should end after overflow isolation");
 
     let gen = ImmutableGeneration {
+        demo_activity: None,
         generation: 9_001,
         tick: 9_001,
         world_value: 1,
@@ -304,6 +306,7 @@ async fn drain_does_not_block_logical_ticks() {
     let deadline = Instant::now() + Duration::from_millis(500);
     for i in 0u64..20 {
         state.publish_generation(ImmutableGeneration {
+            demo_activity: None,
             generation: i + 1,
             tick: i + 1,
             world_value: 0,

@@ -121,6 +121,7 @@ pub struct WorldSnapshotBody {
     pub generation_digest: [u8; 32],
     pub bodies: Vec<RealEntityRecord>,
     pub self_body_id: Option<u64>,
+    pub demo_activity: Option<crate::demo_activity::DemoActivityState>,
 }
 
 impl WorldSnapshotBody {
@@ -132,6 +133,10 @@ impl WorldSnapshotBody {
             generation_digest: self.generation_digest.to_vec(),
             bodies: self.bodies.iter().map(record_to_proto).collect(),
             self_body_id: self.self_body_id,
+            demo_activity: self
+                .demo_activity
+                .as_ref()
+                .map(crate::demo_activity::DemoActivityState::to_proto),
         }
     }
 
@@ -146,11 +151,24 @@ impl WorldSnapshotBody {
             .iter()
             .map(record_from_proto)
             .collect::<Option<Vec<_>>>()?;
+        let demo_activity = match &proto.demo_activity {
+            Some(activity) => Some(crate::demo_activity::DemoActivityState::from_proto(
+                activity,
+            )?),
+            None => None,
+        };
+        if demo_activity
+            .as_ref()
+            .is_some_and(|activity| activity.observed_tick != proto.tick)
+        {
+            return None;
+        }
         Some(Self {
             tick: proto.tick,
             generation_digest,
             bodies,
             self_body_id: proto.self_body_id,
+            demo_activity,
         })
     }
 }
@@ -163,6 +181,7 @@ pub struct WorldSnapshotDelta {
     pub modified: Vec<RealEntityRecord>,
     pub left_ids: Vec<u64>,
     pub self_body_id: Option<u64>,
+    pub demo_activity: Option<crate::demo_activity::DemoActivityState>,
 }
 
 impl WorldSnapshotDelta {
@@ -175,6 +194,10 @@ impl WorldSnapshotDelta {
             modified: self.modified.iter().map(record_to_proto).collect(),
             left_ids: self.left_ids.clone(),
             self_body_id: self.self_body_id,
+            demo_activity: self
+                .demo_activity
+                .as_ref()
+                .map(crate::demo_activity::DemoActivityState::to_proto),
         }
     }
 
@@ -201,6 +224,12 @@ impl WorldSnapshotDelta {
             modified,
             left_ids,
             self_body_id: proto.self_body_id,
+            demo_activity: match &proto.demo_activity {
+                Some(activity) => Some(crate::demo_activity::DemoActivityState::from_proto(
+                    activity,
+                )?),
+                None => None,
+            },
         })
     }
 }
@@ -424,6 +453,7 @@ mod tests {
     #[test]
     fn body_round_trip_is_bit_identical() {
         let body = WorldSnapshotBody {
+            demo_activity: None,
             self_body_id: None,
             tick: 42,
             generation_digest: [0xAB; 32],
@@ -442,6 +472,7 @@ mod tests {
     fn delta_round_trip_is_bit_identical() {
         let delta =
             WorldSnapshotDelta {
+                demo_activity: None,
                 self_body_id: None,
                 generation_digest: [0xCD; 32],
                 entered: vec![RealEntityRecord::from_snapshot(&sample_record(10))
@@ -459,6 +490,7 @@ mod tests {
     #[test]
     fn unknown_body_version_rejects_at_decode() {
         let mut proto = WorldSnapshotBodyProto {
+            demo_activity: None,
             self_body_id: None,
             version: BODY_VERSION,
             tick: 1,
@@ -472,6 +504,7 @@ mod tests {
     #[test]
     fn unknown_delta_version_rejects_at_decode() {
         let mut proto = WorldSnapshotDeltaProto {
+            demo_activity: None,
             self_body_id: None,
             version: DELTA_VERSION,
             generation_digest: vec![0; 32],
@@ -490,6 +523,7 @@ mod tests {
     #[test]
     fn conformance_fixtures_match_committed_bytes() {
         let body = WorldSnapshotBody {
+            demo_activity: None,
             self_body_id: None,
             tick: 42,
             generation_digest: [0xAB; 32],
@@ -500,6 +534,7 @@ mod tests {
         };
         let body_bytes = encode_world_snapshot_body(&body);
         let delta = WorldSnapshotDelta {
+            demo_activity: None,
             self_body_id: None,
             generation_digest: [0xCD; 32],
             entered: vec![
@@ -538,6 +573,7 @@ mod tests {
             return;
         }
         let body = WorldSnapshotBody {
+            demo_activity: None,
             self_body_id: None,
             tick: 42,
             generation_digest: [0xAB; 32],
@@ -548,6 +584,7 @@ mod tests {
         };
         let body_bytes = encode_world_snapshot_body(&body);
         let delta = WorldSnapshotDelta {
+            demo_activity: None,
             self_body_id: None,
             generation_digest: [0xCD; 32],
             entered: vec![
@@ -581,6 +618,7 @@ mod tests {
             speed_mm_per_s: 500,
         });
         let body = WorldSnapshotBody {
+            demo_activity: None,
             tick: 42,
             generation_digest: [0xAB; 32],
             self_body_id: Some(1),
@@ -591,6 +629,7 @@ mod tests {
         };
         record.aim.as_mut().unwrap().target_x_mm = 2500;
         let delta = WorldSnapshotDelta {
+            demo_activity: None,
             generation_digest: [0xCD; 32],
             self_body_id: Some(1),
             entered: vec![],
@@ -633,6 +672,7 @@ mod tests {
     #[test]
     fn optional_binding_and_aim_reject_invalid_values() {
         let mut proto = WorldSnapshotBodyProto {
+            demo_activity: None,
             version: 1,
             tick: 1,
             generation_digest: vec![0; 32],
@@ -641,6 +681,7 @@ mod tests {
         };
         assert!(WorldSnapshotBody::decode(&proto).is_none());
         let mut delta = WorldSnapshotDeltaProto {
+            demo_activity: None,
             version: 1,
             generation_digest: vec![0; 32],
             self_body_id: Some(0),

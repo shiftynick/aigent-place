@@ -8,6 +8,7 @@
 mod aoi;
 mod broadphase;
 mod collider;
+mod demo_activity;
 mod entity;
 mod fanout;
 mod generation;
@@ -44,6 +45,10 @@ pub use heightfield::{
     HEIGHTFIELD_GENERATOR_DOMAIN, HEIGHTFIELD_GENERATOR_VERSION, HEIGHTFIELD_MAX_SELECTED_CELLS,
 };
 
+pub use demo_activity::{
+    DemoActivityState, DemoAvailability, DemoParticipant, DemoPhase, DemoPoint, DemoReason,
+    DemoRules, DemoTransition, DEMO_ACTIVITY_MAX_BYTES,
+};
 pub use entity::{
     EntityError, EntitySnapshot, EntityStore, MutationOutcome, Position, PositionRequest,
     ShapeSlot, FIRST_ENTITY_ID, FIRST_REVISION, REVISION_EXHAUSTION_THRESHOLD, TERMINAL_REVISION,

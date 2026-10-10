@@ -406,3 +406,69 @@ fn plaza_simultaneous_newborns_keep_per_part_collision_reservations() {
     }
     assert_eq!(typed_entity_blocks, 2);
 }
+
+#[test]
+fn activity_stopped_first_bootstrap_preserves_occupied_spawn_footprint() {
+    let mut world = World::ephemeral_demo_activity(WorldConfig::default(), [9; 16]);
+    queue_world_effect(
+        &mut world,
+        b"first",
+        CommandKind::Move,
+        1,
+        &DecodedCommandPayload::Move(MoveIntent::new(0, 0, 500).unwrap()),
+    )
+    .unwrap();
+    assert!(world.attach_demo_participant(
+        b"first".to_vec(),
+        b"cfirst".to_vec(),
+        b"sess-1".to_vec()
+    ));
+    world.advance_tick().unwrap();
+    queue_world_effect(
+        &mut world,
+        b"first",
+        CommandKind::Stop,
+        2,
+        &DecodedCommandPayload::None,
+    )
+    .unwrap();
+    world.advance_tick().unwrap();
+    let first = world.body_for_aigent(b"first").unwrap();
+    assert!(world.leases().get(first).is_none());
+    queue_world_effect(
+        &mut world,
+        b"second",
+        CommandKind::Move,
+        1,
+        &DecodedCommandPayload::Move(MoveIntent::new(2000, 0, 500).unwrap()),
+    )
+    .unwrap();
+    assert!(world.attach_demo_participant(
+        b"second".to_vec(),
+        b"csecond".to_vec(),
+        b"sess-2".to_vec()
+    ));
+    let generation = world.advance_tick().unwrap();
+    let bodies = generation.entities.values().collect::<Vec<_>>();
+    assert_eq!(bodies.len(), 2);
+    assert_ne!(bodies[0].position, bodies[1].position);
+    let colliders = bodies
+        .iter()
+        .map(|e| {
+            collider_at(e, &RulesetParameters::catalog_defaults())
+                .unwrap()
+                .1
+        })
+        .collect::<Vec<_>>();
+    assert!(!colliders[0].parts().iter().any(|a| colliders[1]
+        .parts()
+        .iter()
+        .any(|b| a.bounds().overlaps_positive_volume(b.bounds()))));
+    for _ in 0..21 {
+        world.advance_tick().unwrap();
+    }
+    assert_eq!(
+        world.demo_activity_state().unwrap().phase,
+        crate::demo_activity::DemoPhase::Separate
+    );
+}

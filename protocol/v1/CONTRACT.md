@@ -282,6 +282,77 @@ A write already in progress remains charged until completion. Resync observation
 remains held until the matching full snapshot write completes; an older full
 write cannot release the hold for a newer baseline.
 
+### Optional ephemeral demo activity
+
+[ADR-0014](../../docs/adr/0014-shared-ephemeral-demo-activity.md) defines an
+explicit opt-in, ephemeral two-participant cooperative activity. Full field6 and
+delta field7 carry `DemoActivitySnapshot` version1 as a complete replacement from
+the same immutable generation as bodies and aims. Absence clears the previous
+activity. Body/delta version1 remains unchanged; older consumers may ignore the
+additive fields. New consumers validate activity and body transition before
+installing either. Invalid, unknown-version or oversized activity requires
+snapshot recovery with no partial body/activity commit.
+
+The non-auth `run_id` is a 16-byte nonzero token minted once at startup; restart
+changes it and clears earned rounds. The state has exactly two ordered numeric
+participant slots. Present body IDs are nonzero, distinct and ordered ascending;
+unbound slots follow bound slots.
+Availability is explicit. Owner identities, connection IDs and command epochs
+are private. Global participant references do not expand the AOI: an omitted
+body has no invented pose and is described as absent from that observation.
+
+The world alone advances READY, SEPARATE, REGROUP, COMPLETE and SUSPENDED. READY
+forms a safe inner band without earning movement credit or a completed round.
+SEPARATE starts below its separation threshold and requires both participants'
+new own outward leased-motion path and signed net directed contribution before
+an observed crossing. REGROUP resets both proofs, requires both new inward
+contributions, then safe consecutive dwell. COMPLETE adds one earned round and
+holds it briefly. A phase-earned proof stays valid while current net contribution
+and exact private presence/identity/shape remain valid. Intentional arrival or
+STOP may hold for a slower peer. STOP still cancels its lease; continuous recent
+movement and lease renewal are not required after earning proof.
+
+Initial v1 rules are inner distance1800–2200mm, separation5500mm, minimum own
+path1000mm and signed contribution1000mm per movement phase,8 consecutive dwell
+ticks,20 COMPLETE/recovery hold ticks, and400 phase-timeout ticks. Rules are
+published explicitly. Formation centre and horizontal axis freeze during setup,
+persist across completed rounds, and refreeze after reset recovery. Horizontal
+anchors stay within ±8000mm. The horizontal axis is scaled to1000mm length with
+integer-rounding tolerance2mm. Coordinates retain canonical world bounds.
+Travel progress caps at its minimum; signed net progress is bounded ±32000mm.
+An earned tick is within this attempt's credit interval and cannot be inferred
+from a command result. COMPLETE retains REGROUP's `credit_started_tick`, so its
+proof ticks may precede COMPLETE's phase-entry tick. READY/SUSPENDED clear credit,
+phase origins, earned ticks and dwell; SUSPENDED also clears formation anchors.
+
+Participant loss or epoch/body/shape replacement, actual outstanding lease
+expiry/invalidation, unsafe geometry or timeout suspends before completion and
+clears partial credit. Recovery goes through READY even without active leases.
+Unsafe overlap does not promise automatic displacement. A connected stationary
+participant without this phase's contribution cannot qualify. An externally
+paused brain that already earned valid proof may permit later completion within
+the bounded phase lifetime; the server cannot instantly infer process state.
+
+Reset, transition and completed-round IDs are checked uint64 counters. Reset
+preserves the run's earned total and monotonic transition IDs. Up to eight typed
+recent transitions carry ordered IDs/ticks/reset/counts. Latest retained ID is
+the state's transition ID and latest target phase is current phase. Counter
+exhaustion fails closed as SUSPENDED/COUNTER_EXHAUSTED with cleared credit and
+retained IDs/count/history; only that terminal condition permits latest target
+phase to differ. No completion or transition key is reused. Encoded activity is
+bounded to2048bytes, including retained history. No arbitrary narrative strings
+are included. Normal-world absent-state generation digest bytes stay unchanged.
+
+Full, delta, newest coalesced full, ordered-pressure promoted full and explicit
+resync retain this complete current state/history from their frozen generation.
+Activity-only changes must not be suppressed by an entity-only diff. Initial
+or recovery FULL establishes the presentation watermark without celebrating
+historical transitions. Fresh subsequent DELTAs may cue new IDs once. Same-run
+memory can retain its watermark through reconnect; reload adopts a new baseline
+and promises no exactly-once effect across memory loss. A missing retained
+transition range is disclosed. Stale/recovery presentation is last-observed
+state and produces no live completion cue.
+
 ## Semantic examples
 
 [`conformance/envelope-v1.json`](conformance/envelope-v1.json) contains

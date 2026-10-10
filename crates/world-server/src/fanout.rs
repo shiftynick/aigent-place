@@ -725,6 +725,7 @@ impl ConnectionOutbound {
             WorldSnapshotBody {
                 tick: generation.tick,
                 self_body_id,
+                demo_activity: generation.demo_activity.clone(),
                 generation_digest: generation.digest(),
                 bodies,
             },
@@ -831,6 +832,7 @@ impl SnapshotFanout {
         }
         let delta = WorldSnapshotDelta {
             self_body_id: body.self_body_id,
+            demo_activity: generation.demo_activity.clone(),
             generation_digest: generation.digest(),
             entered: diff.entered,
             modified: diff.modified,
@@ -1023,6 +1025,139 @@ mod aim_binding_tests {
             panic!("expected promoted full");
         };
         WorldSnapshotBodyProto::decode(wire_bytes.as_slice()).unwrap()
+    }
+
+    fn completed_activity() -> crate::demo_activity::DemoActivityState {
+        use crate::demo_activity::{
+            DemoActivity, DemoAvailability, DemoParticipant, DemoPhase, DemoPoint, DemoReason,
+            DemoTransition,
+        };
+        let mut state = DemoActivity::new([3; 16]).state;
+        state.observed_tick = 3;
+        state.phase_started_tick = 3;
+        state.phase = DemoPhase::Complete;
+        state.completed_rounds = 1;
+        state.credit_started_tick = Some(2);
+        state.dwell_ticks = 8;
+        state.transition_id = 3;
+        state.formation_center_mm = Some(DemoPoint { x: 0, y: 900, z: 0 });
+        state.formation_axis_mm = Some(DemoPoint {
+            x: 1000,
+            y: 0,
+            z: 0,
+        });
+        state.participants = [
+            DemoParticipant {
+                body_id: Some(7),
+                availability: DemoAvailability::Available,
+                phase_start_position_mm: Some(DemoPoint {
+                    x: -3250,
+                    y: 900,
+                    z: 0,
+                }),
+                travel_mm: 1000,
+                contribution_mm: 2250,
+                earned_tick: Some(3),
+            },
+            DemoParticipant {
+                body_id: Some(9),
+                availability: DemoAvailability::Available,
+                phase_start_position_mm: Some(DemoPoint {
+                    x: 3250,
+                    y: 900,
+                    z: 0,
+                }),
+                travel_mm: 1000,
+                contribution_mm: 2250,
+                earned_tick: Some(3),
+            },
+        ];
+        for (id, from, to) in [
+            (1, DemoPhase::Ready, DemoPhase::Separate),
+            (2, DemoPhase::Separate, DemoPhase::Regroup),
+            (3, DemoPhase::Regroup, DemoPhase::Complete),
+        ] {
+            state.recent_transitions.push_back(DemoTransition {
+                id,
+                tick: id,
+                from,
+                to,
+                completed_rounds: u64::from(to == DemoPhase::Complete),
+                reason: DemoReason::Normal,
+                reset_id: 0,
+            });
+        }
+        assert!(crate::demo_activity::DemoActivityState::from_proto(&state.to_proto()).is_some());
+        state
+    }
+
+    #[test]
+    fn activity_only_delta_pressure_promotions_and_resync_carry_same_frozen_replacement() {
+        let mut fanout = fanout();
+        let mut generation = generation();
+        let first = full(
+            fanout
+                .publish_real_interest_to(b"c", &generation, &size)
+                .unwrap(),
+        );
+        assert!(first.demo_activity.is_none());
+        generation.demo_activity = Some(completed_activity());
+        generation.tick = 3;
+        generation.generation = 3;
+        let expected = generation.demo_activity.as_ref().unwrap().to_proto();
+        let digest = generation.digest().to_vec();
+        let valid_body = crate::wire::WorldSnapshotBody {
+            tick: 3,
+            generation_digest: generation.digest(),
+            bodies: vec![],
+            self_body_id: None,
+            demo_activity: generation.demo_activity.clone(),
+        }
+        .encode();
+        assert!(crate::wire::WorldSnapshotBody::decode(&valid_body).is_some());
+        let mut incoherent = valid_body;
+        incoherent.tick = 4;
+        assert!(crate::wire::WorldSnapshotBody::decode(&incoherent).is_none());
+        let RealPublishOutcome::Delta { wire_bytes, .. } = fanout
+            .publish_real_interest_to(b"c", &generation, &size)
+            .unwrap()
+        else {
+            panic!("activity-only delta");
+        };
+        let delta = WorldSnapshotDeltaProto::decode(wire_bytes.as_slice()).unwrap();
+        assert!(delta.entered.is_empty() && delta.modified.is_empty() && delta.left_ids.is_empty());
+        assert_eq!(delta.demo_activity, Some(expected.clone()));
+        assert_eq!(delta.generation_digest, digest);
+        let pending = full(fanout.coalesce_real_pending(b"c", &size).unwrap());
+        assert_eq!(pending.demo_activity, Some(expected.clone()));
+        assert_eq!(pending.generation_digest, digest);
+        let (_, resynced, _, _) = fanout
+            .client_resync_real(b"c", &generation, &size)
+            .unwrap()
+            .unwrap();
+        assert_eq!(resynced.encode().demo_activity, Some(expected.clone()));
+        assert_eq!(resynced.generation_digest, generation.digest());
+        let pressure = QUEUE_LIMIT_BYTES - fanout.get(b"c").unwrap().queue.queued_bytes() - 1;
+        assert!(fanout.get_mut(b"c").unwrap().queue.enqueue_event(pressure));
+        let promoted = full(
+            fanout
+                .publish_real_interest_to(b"c", &generation, &size)
+                .unwrap(),
+        );
+        assert_eq!(promoted.demo_activity, Some(expected));
+        assert_eq!(promoted.generation_digest, digest);
+        generation.demo_activity = None;
+        // Removing activity shrinks the next delta. Restore actual ordered
+        // pressure before asking for another promoted full, rather than assume
+        // the preceding coalesce leaves only one byte of free capacity.
+        let pressure = QUEUE_LIMIT_BYTES - fanout.get(b"c").unwrap().queue.queued_bytes() - 1;
+        assert!(fanout.get_mut(b"c").unwrap().queue.enqueue_event(pressure));
+        let cleared = full(
+            fanout
+                .publish_real_interest_to(b"c", &generation, &size)
+                .unwrap(),
+        );
+        assert!(cleared.demo_activity.is_none());
     }
 
     #[test]

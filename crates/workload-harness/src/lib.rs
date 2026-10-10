@@ -1041,6 +1041,7 @@ fn broadphase_load_fixture() -> (ImmutableGeneration, RulesetGeneration) {
         );
     }
     let generation = ImmutableGeneration {
+        demo_activity: None,
         generation: 1,
         tick: 1,
         world_value: 0,

@@ -59,88 +59,55 @@ mutants fail when its protections are removed. Final viewer121/world307
 checks, a190s physical/wire run, fresh spectator and actual narrow/disconnect
 checks passed. The full final gate passed in102.6s. Timing, occlusion and label
 limits remain recorded. Task and worker recovery archives were checked before
-cleanup. This is a partial of task-055, which remains open. Three rounds are
-delivered; two remain.
+cleanup. This is a partial of task-055, which remains open. Its delivery is complete; later rounds are recorded below.
 
-Round4 selects two sequential tasks after a new live critique, a real blocked
-wider-route probe and two independent adversarial design reviews. Accepted
-ADR0013 was recorded before implementation under the operator's delegation.
-The operator approved the separate
-test-only hook-fixture repair. Task071 completed its full gate, separate cold
-axes and scoped evidence correction, then merged through protected PR73 after
-the required remote check passed. Root verified its exact tree, sole parent
-and deleted remote head. The new main-push check was pending at merge; a later
-owner read verified the exact main push and required check completed with
-success at23:23:56Z on9 October. The plaza branch inherited that repair with
-all existing worker changes preserved. Task069's full unified gates passed
-after the repair was inherited, with current prose covered before round2 review.
-Fresh separate SPEC/STANDARDS round2 calls completed52.246s/55.790s. Root
-adjudicated their sole low lifecycle observations; no new implementation
-defect was found. The final unified gate passed in94.342s, and the normal
-task commit completed with its hook. Protected PR74 squash-merged as
-`77cf0598cd82050b926e1a20c7955cdd9e76318c`, reviewed tree
-`10303a1952fbaf5f717825f88f3fc3f40ae7c09a`, sole parent
-`c06dd7a87f81aac9412131b4a85d0c3998369572`. Root verified the required PR
-check and exact main push check (success at00:21:48Z on10 October), normal
-protection, and absent remote head. The merge wrapper exited2 while the main
-check was pending; its later main-check invocation exited0. That distinction
-is retained. Recovery archives were verified before removing only the owned
-task/worker branches and two worker worktrees. Local main fast-forwarded to
-the verified squash; root is on the new task070 branch.
-Both isolated warm patches are root-integrated: the marked temporary plaza
-and wider SDK policies. Root's focused nine Rust library tests, five integration
-tests, server build and 69 SDK tests pass. Root verified 22 Rust and 39 JavaScript
-compiling assertion mutants and exact source restores. Root owns documentation,
-physical validation and cold review. The old noise planning world and brains were stopped with ownership
-guards; the viewer and isolated browser were preserved.
+Round4 is fully delivered. Task069 added the optional temporary plaza and wider
+owner-driven journeys through protected PR74, squash
+`77cf0598cd82050b926e1a20c7955cdd9e76318c`. Task070 added automatic spectator
+framing, preserved manual controls/Follow/Reset, and recovery through PR75,
+squash `7122bca07c9eb058141d3c169092087e237aee29`. Exact reviewed trees, sole
+parents, required head checks and main-push checks were verified. PR75 main
+process-gate114121412735 completed successfully at03:35:43Z on10 October.
+Owned task/worker recovery archives were verified before local cleanup. Both
+remote heads are absent. The approved test-only hook fixture repair was
+separately delivered through PR73; the production hook is unchanged.
+Task069 acceptance includes three235s physical trials and adversarial guards.
+Task070 acceptance includes191.026s and11,463 native frames, actual geometry,
+manual/Follow/Reset/stale/reconnect controls,154 viewer tests, compiling mutants,
+fresh separate cold axes and final full gate. Evidence limits remain in each
+completed task packet. Four rounds are delivered.
 
-`task-070` is in review on `task-070-automatic-spectator-camera`, from that
-verified main. Design review R1 requested corrections; fresh R2 approved the
-four completed control, Reset, near-plane and shapeless bindings. Root logged
-the four pure helper signatures and six-item rubric before claiming the task.
-The selected contract is `.tasks/evidence/task-070/design-contract.md`.
-Separate math and viewer workers are frozen and root-integrated. Root's
-combined viewer suite passes154/154. Thirty math mutations and19 viewer
-mutations fail assertions; the exact old viewer source fails eight regression
-assertions. Installed OrbitControls and actual shape-vertex matrices cover
-the control and geometry seams. Root found and fixed stale status being
-overwritten by camera recovery. Worker fixture errors, the original surviving
-mutation, and reconstructed first-failure test custody are recorded honestly.
-The fresh camera trial passed: 11,463 native rendered frames over191.026s,
-maximum gap21.5ms, four actual meshes/623 referenced vertices, no extraction,
-coverage or control-event errors. The immutable capture joins the independent
-physical observations and ends5.646s before seeker STOP. Actual Follow moved
-0.550m with matching camera/pivot translation; manual control, Reset, four
-actual canvas aspects, stale Follow disable, new-connection empty Reset and
-manual-before-discovery/reconnect all pass. A clean public spectator found
-movement/targets and controls readable, but no readable motivation or larger
-story. Small/overlapping bodies and faint trails remain experience limits.
-Tuning is exercised for this local fixture, not universal visual smoothness.
-Private producer R3 cleared the repaired native-render instance wrapper;
-earlier producer, setup and late-export failures remain preserved without
-success credit. The exact evidence and limits are in
-`.tasks/evidence/task-070/validation.md`. Both separate rung1 CODE axes are
-complete and root-adjudicated; no high or medium defect was found. The full
-gate passed in95.908s before CODE review. The refreshed prose needs its scoped
-cold check and final gate; protected delivery remains pending. Both tasks'
-delivery is required before round4 completes.
-The private measurement tools received independent adversarial review. Before
-any real acceptance run, root reproduced and tightened a path-window false pass.
-The relay cleanup fix, three exception regressions, four unchanged relay controls
-and 28 synthetic measurement cases pass; a fresh independent fix review found
-no material defect. Three actual235s plaza trials each pass17 decoded checks
-and204.93s joint activity, with physical encounters, reconnect and STOP tails.
-The actual default-noise negative and both journal conflicts also pass.
-The full product gate passes115.088s. First separate cold SPEC/STANDARDS
-reviews found no new code defect; both identify the same local unified-gate
-blocker:95/96 process tests pass, but the existing missing-Node hook fixture
-finds `/usr/bin/node` and reaches a version error. The test-only repair was
-independently reviewed, approved and delivered in PR73. The production hook
-remains unchanged; task069 inherits the repaired test from main. The old red
-gate and first review findings remain historical evidence. The fresh separate
-reviews confirmed the blocker resolved; task069 is now delivered. Round5 remains
-unselected and its fresh critic must observe the delivered plaza, wider demo
-and automatic camera after task070 completes.
+Round5 is selected and task072 is claimed on `task-072-shared-demo-activity`,
+branched from verified main7122bca. A new spectator observed that main for
+192.39seconds; movement is readable but purpose and outcome are absent. Three
+fresh180s unchanged wide-policy runs are calibration only. Two fresh independent
+proposal challenges were adjudicated before selection. Accepted ADR0014 uses the
+operator's explicit delegation and defines ONE optional shared activity:
+server-proved separate/regroup phases, owner-side phase-following brains, and a
+compact public activity strip. Each body must earn new own leased-motion proof
+per phase. Intentional STOP preserves earned proof while a slower peer arrives;
+STOP still cancels its lease. Unsafe geometry or participant/epoch loss suspends
+and clears partial credit. Typed complete replacement state recovers phase/count
+without celebrating historical events. See task072's design-contract,
+proposal-adjudication and interface-outline, logged before code bodies.
+Three isolated workers are integrated. Root fmt/clippy/build,25 activity tests
+and261 protocol/SDK/viewer tests passed. Twelve compiling Rust mutations,
+nine viewer mutations and four shared-validator mutations failed by assertion;
+the SDK mutation suite also passed. The private physical collector was reviewed
+and its repairs passed synthetic checks, which have no runtime acceptance credit.
+Three fresh new-mode180s captures completed and all owned processes were
+actually waited for. The final analyzer and independent root custody checks
+pass29 proved rounds in each capture, with87 strict physical crossings,
+fresh both-body proof in both phases and eight safe hold ticks per completion.
+Private tool repairs were independently verified. A fresh spectator identified purpose,
+both participants, progress and count at30/90/150s and both viewport sizes.
+Root camera, disconnect, recovered silent FULL and world-restart checks passed.
+Separate cold CODE axes and a fresh scoped low geometry-fix review are accepted.
+The safety check now uses its published ruleset; the activation/restoration
+regression and compiling mutant pass. Final captures repeat29 proved rounds
+per run on the repaired binary with exact source manifests. Final prose review,
+full gate and protected delivery remain required.
+The mandatory milestone audit and retrospective follow the fifth delivery.
 
 ## Product facts and remaining work
 
@@ -149,7 +116,8 @@ transitions. Server movement consumes typed MOVE leases; STOP/CANCEL have
 real effects. Main includes sustained demo brains and public movement aims,
 trails, selection and follow, shape rendering and distinct physical demo bodies.
 Main includes task069's optional temporary plaza and wider demo policies.
-Task070's camera changes passed local runtime acceptance and CODE review
+Main includes task070's automatic camera and tested manual/Follow/Reset recovery.
+Task072's optional shared activity is integrated and live acceptance is complete
 on its task branch; protected delivery remains pending.
 Authoritative terrain transport/rendering,
 origin rebasing and full interpolation acceptance remain `task-055`. Sleep/wake/restore/unstick
@@ -169,8 +137,7 @@ Use Node from `.nvmrc` and Rust from `rust-toolchain.toml`:
 
 ```sh
 node .agents/skills/task-tracker/scripts/task.mjs board
-node .agents/skills/task-tracker/scripts/task.mjs show task-069
-node .agents/skills/task-tracker/scripts/task.mjs show task-070
+node .agents/skills/task-tracker/scripts/task.mjs show task-072
 node scripts/check.mjs
 ```
 

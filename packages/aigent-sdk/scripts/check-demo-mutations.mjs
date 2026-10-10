@@ -20,6 +20,12 @@ const mutations = [
   { name: 'binding-absence-clears', source: 'demo-observation.js', test: 'demo-observation.test.mjs', pattern: 'binding is adopted only', before: 'this.selfBodyId = selfBodyId;', after: 'this.selfBodyId = selfBodyId ?? this.selfBodyId;' },
   { name: 'recovery-clears-binding', source: 'demo-observation.js', test: 'demo-observation.test.mjs', pattern: 'binding is adopted only', before: 'this.selfBodyId = undefined;', after: 'this.selfBodyId = this.selfBodyId;' },
   { name: 'invalid-snapshot-recovers', source: 'demo-client.js', test: 'demo-client.test.mjs', pattern: 'malformed full and invalid delta recover', before: "['BASELINE_MISMATCH', 'INVALID_OBSERVATION'].includes(error.code)", after: "['BASELINE_MISMATCH'].includes(error.code)" },
+  { name: 'activity-slot-side', source: 'activity-policy.js', test: 'activity.test.mjs', pattern: 'one public state controls both roles', before: 'const side = slot === 0 ? -1 : 1;', after: "const side = role === 'runner' ? -1 : 1;" },
+  { name: 'activity-frozen-center', source: 'activity-policy.js', test: 'activity.test.mjs', pattern: 'fixed center drives READY', before: 'const center = activity.formationCenterMm;', after: 'const center = { xMm: 0n, zMm: 0n };' },
+  { name: 'activity-stopped-credit-hold', source: 'activity-policy.js', test: 'activity.test.mjs', pattern: 'arrived credited body waits five seconds', before: 'if (distance(ownPose, target) <= ARRIVAL_MM)', after: 'if (false)' },
+  { name: 'activity-complete-stops', source: 'activity-policy.js', test: 'activity.test.mjs', pattern: 'fixed center drives READY', before: '[Phase.COMPLETE, Phase.SUSPENDED].includes(activity.phase)', after: 'false' },
+  { name: 'activity-atomic-validation', source: 'demo-observation.js', test: 'activity.test.mjs', pattern: 'body and activity observation replacement commits atomically', before: 'const valid = validateDemoActivity(activity);', after: 'const valid = activity;' },
+  { name: 'activity-absence-clears', source: 'demo-observation.js', test: 'activity.test.mjs', pattern: 'body and activity observation replacement commits atomically', before: 'this.demoActivity = demoActivity;', after: 'this.demoActivity = demoActivity ?? this.demoActivity;' },
 ];
 
 for (const mutation of mutations) {
@@ -29,8 +35,8 @@ for (const mutation of mutations) {
     await mkdir(join(temp, 'src'));
     await mkdir(join(temp, 'test'));
     await mkdir(join(temp, 'scripts'));
-    for (const name of ['demo-policy.js', 'demo-observation.js', 'demo-client.js']) await cp(join(sdk, 'src', name), join(temp, 'src', name));
-    for (const name of ['demo-policy.test.mjs', 'demo-observation.test.mjs', 'demo-client.test.mjs', 'demo-fixture.mjs']) await cp(join(sdk, 'test', name), join(temp, 'test', name));
+    for (const name of ['demo-policy.js', 'demo-observation.js', 'demo-client.js', 'activity-policy.js']) await cp(join(sdk, 'src', name), join(temp, 'src', name));
+    for (const name of ['demo-policy.test.mjs', 'demo-observation.test.mjs', 'demo-client.test.mjs', 'demo-fixture.mjs', 'activity.test.mjs']) await cp(join(sdk, 'test', name), join(temp, 'test', name));
     await cp(join(sdk, 'scripts', 'demo.mjs'), join(temp, 'scripts', 'demo.mjs'));
     const path = join(temp, 'src', mutation.source);
     const original = await readFile(path, 'utf8');

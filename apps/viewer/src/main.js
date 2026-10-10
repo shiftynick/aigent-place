@@ -4,6 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { admitObservedBounds, planObservedFit, stepAutomaticFit, observedBounds, bodyColor } from "./camera.js";
 import { createResidentVisual } from "./resident-visuals.js";
 import { prepareShapeTree } from "./shape-visuals.js";
+import { activityPresentation, createActivityCueTracker } from "./activity-presentation.js";
 import { create, toBinary } from "@bufbuild/protobuf";
 import {
   ClientHelloSchema,
@@ -31,6 +32,17 @@ const selectedAim = document.querySelector("#selected-aim");
 const selectedPosition = document.querySelector("#selected-position");
 const observationStatus = document.querySelector("#observation-status");
 const residentCount = document.querySelector("#resident-count");
+const activityStrip = document.querySelector("#activity-strip");
+const activityPhase = document.querySelector("#activity-phase");
+const activityCount = document.querySelector("#activity-count");
+const activityStatus = document.querySelector("#activity-status");
+const activityGoal = document.querySelector("#activity-goal");
+const activityRules = document.querySelector("#activity-rules");
+const activityDwell = document.querySelector("#activity-dwell");
+const activityParticipants = document.querySelector("#activity-participants");
+const activityHistory = document.querySelector("#activity-history");
+const activityGap = document.querySelector("#activity-gap");
+const activityCue = document.querySelector("#activity-cue");
 const MAX_MESSAGE_IDS = 65_536;
 const FRAMING_TUNING = Object.freeze({
   paddingMetres: 1, minimumGrowthMetres: 0.25,
@@ -111,6 +123,9 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   // Entries own their graphics and DOM; records/targets are authoritative,
   // while mesh positions are display interpolation only.
   const bodies = new Map();
+  const activityCueTracker = createActivityCueTracker();
+  let demoActivity;
+  let activityFeedback = { cue: null, historyGap: null };
   let selectedId = null;
   let following = false;
   let observationFresh = false;
@@ -282,7 +297,59 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     if (fresh !== observationFresh) automaticFrameTime = null;
     observationFresh = fresh;
     if (observationStatus) observationStatus.textContent = message;
+    if (!fresh) activityFeedback = activityCueTracker.stale();
+    refreshActivity();
     refreshInspector();
+  }
+
+  function refreshActivity() {
+    if (!activityStrip) return;
+    const presentation = activityPresentation(demoActivity, bodies, {
+      fresh: observationFresh, historyGap: activityFeedback.historyGap,
+    });
+    activityStrip.hidden = presentation === null;
+    if (!presentation) return;
+    activityStrip.classList.toggle("last-observed", !observationFresh);
+    activityPhase.textContent = presentation.phase;
+    activityCount.textContent = presentation.count;
+    activityStatus.textContent = presentation.status;
+    activityGoal.textContent = presentation.goal;
+    activityRules.textContent = presentation.rules;
+    activityDwell.textContent = presentation.dwell;
+    activityParticipants.replaceChildren(...presentation.participants.map(participant => {
+      const row = document.createElement("p");
+      const identity = document.createElement("strong");
+      identity.textContent = `${participant.identity} · ${participant.availability}`;
+      const progress = document.createElement("span");
+      progress.textContent = [participant.observation, participant.progress, participant.proof].filter(Boolean).join(" · ");
+      row.append(identity, progress);
+      return row;
+    }));
+    activityHistory.replaceChildren(...presentation.history.map(text => {
+      const item = document.createElement("li");
+      item.textContent = text;
+      return item;
+    }));
+    activityGap.textContent = presentation.historyGap ?? "";
+    activityGap.hidden = !presentation.historyGap;
+    const cue = observationFresh ? activityFeedback.cue : null;
+    if (activityCue.textContent !== (cue ?? "")) {
+      activityCue.textContent = cue ?? "";
+      activityCue.classList.toggle("earned", cue !== null);
+    }
+    activityCue.hidden = cue === null;
+  }
+
+  function adoptActivity(activity, kind) {
+    const feedback = activityCueTracker.observe(activity, { kind, fresh: true });
+    // Keep the earned-round notice visible during its COMPLETE hold, rather
+    // than erase it on the next 20 Hz replacement. Every FULL stays silent.
+    const keepCue = kind === "delta" && activity?.phase === demoActivity?.phase &&
+      activity?.completedRounds === demoActivity?.completedRounds &&
+      activity?.resetId === demoActivity?.resetId && activity !== undefined &&
+      demoActivity !== undefined && activity.runId.every((byte, index) => byte === demoActivity.runId[index]);
+    activityFeedback = { ...feedback, cue: feedback.cue ?? (keepCue ? activityFeedback.cue : null) };
+    demoActivity = activity;
   }
 
   function resetView() {
@@ -489,6 +556,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       for (const record of decoded.bodies) {
         upsertBody(record);
       }
+      adoptActivity(decoded.demoActivity, "full");
       shapeRecoveryAttempts = 0;
       updateSceneState();
       setObservationStatus(
@@ -530,6 +598,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       for (const record of decoded.modified) {
         upsertBody(record);
       }
+      adoptActivity(decoded.demoActivity, "delta");
       shapeRecoveryAttempts = 0;
       updateSceneState();
       setObservationStatus(

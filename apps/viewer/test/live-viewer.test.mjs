@@ -15,7 +15,7 @@ import {
   WorldSnapshotDeltaProtoSchema,
 } from "@aigent-place/protocol";
 import { scenes, cameras, controls, renderers, graphicsResources } from "./fake-three.mjs";
-import { entity } from "./snapshot-fixtures.mjs";
+import { activity, completedActivity, entity } from "./snapshot-fixtures.mjs";
 
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -46,11 +46,14 @@ class Element {
   setAttribute(name, value) { this.attributes[name] = value; }
   addEventListener(name, callback) { this.listeners[name] = callback; }
   removeEventListener(name) { delete this.listeners[name]; }
-  append(child) { child.parent = this; this.children.push(child); }
+  append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
+  replaceChildren(...children) { this.children = []; this.append(...children); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(value => value !== this); }
   click() { if (!this.disabled) this.listeners.click?.(); }
 }
-const ui = Object.fromEntries(["follow-body", "resident-list", "body-labels", "selected-title", "selected-aim", "selected-position", "observation-status", "resident-count"].map(id => [`#${id}`, new Element()]));
+const ui = Object.fromEntries(["follow-body", "resident-list", "body-labels", "selected-title", "selected-aim", "selected-position", "observation-status", "resident-count",
+  "activity-strip", "activity-phase", "activity-count", "activity-status", "activity-goal", "activity-rules", "activity-dwell", "activity-participants", "activity-history", "activity-gap", "activity-cue",
+].map(id => [`#${id}`, new Element()]));
 globalThis.document = {
   querySelector: selector => ({ "#status": status, "#scene-state": sceneState, "#reset-view": resetButton, ...ui })[selector],
   createElement: () => new Element(),
@@ -258,6 +261,81 @@ function assertVectorClose(actual, expected) {
   actual.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) < 1e-10,
     `coordinate ${index}: expected ${expected[index]}, observed ${value}`));
 }
+
+test("initial public activity restores full history silently and discloses AOI body omission without selection", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)], { demoActivity: completedActivity() })));
+  assert.equal(ui["#activity-strip"].hidden, false);
+  assert.equal(ui["#activity-count"].textContent, "1 round earned");
+  assert.equal(ui["#activity-phase"].textContent, "COMPLETE · Round earned");
+  assert.equal(ui["#activity-history"].children.length, 2);
+  assert.match(ui["#activity-participants"].children[1].children[1].textContent, /body not in this observation/);
+  assert.equal(ui["#activity-cue"].hidden, true);
+  assert.equal(ui["#selected-title"].textContent, "Choose a body");
+  assert.equal(h.meshes().length, 1, "activity participant references cannot create an AOI body");
+});
+
+test("fresh completion cues hold visibly, reconnect FULL is silent, and stale activity cannot cue", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n), entity(2n)], { demoActivity: activity() })));
+  socket.receive(envelope("snapshotDelta", deltaPayload({ demoActivity: completedActivity() })));
+  assert.match(ui["#activity-cue"].textContent, /^Round 1 earned/);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ demoActivity: completedActivity({ observedTick: 43n }) })));
+  assert.equal(ui["#activity-cue"].hidden, false, "next 20 Hz replacement retains notice during COMPLETE hold");
+  socket.close();
+  assert.match(ui["#activity-status"].textContent, /^Last observed/);
+  assert.equal(ui["#activity-cue"].hidden, true);
+  h.timers.shift().callback();
+  const next = h.handshake(h.sockets.at(-1), bytes => bytes, new Uint8Array(16).fill(10));
+  next.receive(envelope("fullSnapshot", fullPayload([entity(1n), entity(2n)], { demoActivity: completedActivity() })));
+  assert.equal(ui["#activity-count"].textContent, "1 round earned");
+  assert.equal(ui["#activity-cue"].hidden, true, "reconnect does not celebrate old success");
+  next.receive(envelope("snapshotDelta", deltaPayload({ demoActivity: completedActivity() })));
+  assert.equal(ui["#activity-cue"].hidden, true, "watermark survives reconnect");
+});
+
+test("malformed activity rejects the entire body transition and recovery FULL restores a silent latest state", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)], { demoActivity: activity() })));
+  const original = h.meshes()[0];
+  socket.receive(envelope("snapshotDelta", deltaPayload({ entered: [entity(2n)], leftIds: [1n], demoActivity: completedActivity({ version: 2 }) })));
+  assert.equal(h.meshes()[0], original);
+  assert.equal(h.meshes().length, 1);
+  assert.equal(ui["#activity-count"].textContent, "0 rounds earned");
+  assert.match(ui["#activity-status"].textContent, /^Last observed/);
+  assert.equal(h.requests().at(-1).body.case, "snapshotResyncRequest");
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(2n)], { demoActivity: completedActivity() }), 6n));
+  assert.equal(ui["#activity-count"].textContent, "1 round earned");
+  assert.equal(ui["#activity-cue"].hidden, true);
+  assert.equal(h.meshes()[0].position.x, 1.5);
+});
+
+test("every accepted absent activity replacement clears the strip while malformed FULL retains the last strip", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)], { demoActivity: activity() })));
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(2n)], { demoActivity: activity({ phase: 99 }) }), 6n));
+  assert.equal(ui["#activity-strip"].hidden, false);
+  assert.equal(h.meshes().length, 1);
+  assert.equal(ui["#resident-list"].children[0].dataset.bodyId, "1");
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)]), 7n));
+  assert.equal(ui["#activity-strip"].hidden, true);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ demoActivity: activity() }), 7n));
+  assert.equal(ui["#activity-strip"].hidden, false);
+  socket.receive(envelope("snapshotDelta", deltaPayload(), 7n));
+  assert.equal(ui["#activity-strip"].hidden, true);
+});
+
+test("mismatched activity observed tick cannot partially install a full body's pose or earned count", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n)], { demoActivity: activity() })));
+  const previous = h.meshes()[0];
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(2n)], { tick: 43n, demoActivity: completedActivity() }), 6n));
+  assert.equal(h.meshes()[0], previous);
+  assert.equal(ui["#resident-list"].children[0].dataset.bodyId, "1");
+  assert.equal(ui["#activity-count"].textContent, "0 rounds earned");
+  assert.match(ui["#activity-status"].textContent, /^Last observed/);
+  assert.equal(h.requests().at(-1).body.case, "snapshotResyncRequest");
+});
 
 test("live scene renders decoded primitive geometry and alpha instead of a local cube", t => {
   const h = harness(t), socket = h.handshake();

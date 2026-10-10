@@ -212,6 +212,7 @@ fn generation_of(
         active_leases.insert(lease.body_id, lease);
     }
     ImmutableGeneration {
+        demo_activity: None,
         generation: tick,
         tick,
         world_value: 0,

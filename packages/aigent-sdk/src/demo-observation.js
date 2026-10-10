@@ -1,6 +1,6 @@
 import { fromBinary, ScalarType } from '@bufbuild/protobuf';
 import { BinaryReader, WireType } from '@bufbuild/protobuf/wire';
-import { WorldSnapshotBodyProtoSchema, WorldSnapshotDeltaProtoSchema } from '@aigent-place/protocol';
+import { WorldSnapshotBodyProtoSchema, WorldSnapshotDeltaProtoSchema, validateDemoActivity } from '@aigent-place/protocol';
 
 export class DemoError extends Error {
   constructor(code, message, retryable = false) {
@@ -91,6 +91,13 @@ function validateRecord(body) {
 function unique(ids) {
   if (!ids.every(validId) || new Set(ids).size !== ids.length) bad('duplicate or zero entity IDs');
 }
+function activityReplacement(activity, tick) {
+  try {
+    const valid = validateDemoActivity(activity);
+    if (valid !== undefined && tick !== undefined && valid.observedTick !== tick) bad('activity tick differs from body generation');
+    return valid;
+  } catch (error) { bad(error.message); }
+}
 
 /** Atomic observation owner. No guesses; reset and field absence clear binding. */
 export class SnapshotView {
@@ -102,14 +109,16 @@ export class SnapshotView {
     this.baselineId = undefined;
     this.bodies = new Map();
     this.selfBodyId = undefined;
+    this.demoActivity = undefined;
   }
-  commit(baselineId, bodies, selfBodyId) {
+  commit(baselineId, bodies, selfBodyId, demoActivity) {
     if (selfBodyId !== undefined && !validId(selfBodyId)) bad('invalid self binding');
     if (selfBodyId !== undefined && this.expectedSelfBodyId !== undefined && selfBodyId !== this.expectedSelfBodyId) throw new DemoError('SELF_BODY_CHANGED', 'self binding changed across observation/recovery');
     if (bodies.size > 2) throw new DemoError('AMBIGUOUS_CAST', 'demo requires a fresh journal with exactly two aigent bodies');
     this.baselineId = baselineId;
     this.bodies = bodies;
     this.selfBodyId = selfBodyId;
+    this.demoActivity = demoActivity;
     if (selfBodyId !== undefined) this.expectedSelfBodyId = selfBodyId;
   }
   applyFull(snapshot) {
@@ -119,7 +128,7 @@ export class SnapshotView {
     if (body.bodies.length > 100) bad('snapshot exceeds AOI cap');
     body.bodies.forEach(validateRecord);
     unique(body.bodies.map(record => record.entityId));
-    this.commit(snapshot.baselineId, new Map(body.bodies.map(record => [record.entityId, record])), body.selfBodyId);
+    this.commit(snapshot.baselineId, new Map(body.bodies.map(record => [record.entityId, record])), body.selfBodyId, activityReplacement(body.demoActivity, body.tick));
   }
   applyDelta(snapshot) {
     if (this.baselineId === undefined || snapshot.baselineId !== this.baselineId) throw new DemoError('BASELINE_MISMATCH', 'delta requires the current baseline');
@@ -143,6 +152,6 @@ export class SnapshotView {
       if (record.revision === prior.revision && ['xMm', 'yMm', 'zMm'].some(axis => record.positionMm[axis] !== prior.positionMm[axis])) bad('position changed without revision');
       next.set(record.entityId, record);
     }
-    this.commit(this.baselineId, next, delta.selfBodyId);
+    this.commit(this.baselineId, next, delta.selfBodyId, activityReplacement(delta.demoActivity));
   }
 }

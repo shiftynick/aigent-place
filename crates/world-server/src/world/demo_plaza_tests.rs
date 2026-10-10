@@ -51,6 +51,7 @@ fn plaza_defensive_tentative_capacity_counts_union_once() {
         world_value: 0,
         rulesets: world.rulesets.clone(),
         generation,
+        demo_activity: world.demo_activity.clone(),
         restored_pending: vec![],
         remaining_pending: vec![],
     });
