@@ -388,15 +388,15 @@ review,” including product and architecture decisions. Current approved front:
 3. task068 — round3 delivered, PR72,eb2c921: composed shapes and collision-backed demo bodies.
 4. task069/task070 — round4 delivered, PR74/75,77cf0598/7122bca:
    temporary plaza, wider responsive journeys and automatic spectator camera.
-5. task072 — round5 implemented and validated, protected delivery pending:
-   one optional shared, server-proved
+5. task072 — round5 delivered, PR76,937db277: one optional shared, server-proved
    separate/regroup activity with phase-following brains and public progress.
 
 Task071's explicitly approved test-only hook fixture repair was delivered
-separately through PR73 and is not an improvement round. All prior round branches
-are cleaned after verified recovery archives. Main7122bca has its exact green gate.
+separately through PR73 and is not an improvement round. All five rounds have
+green required head and main-push checks. Owned round branches are cleaned after verified recovery archives. Main937db277 has its
+exact green gate; task073 records the milestone closure through a separate PR.
 
-Planned announcement: Two demo aigents now have a shared activity spectators can
+Delivered result: Two demo aigents now have a shared activity spectators can
 follow. Both must move apart, return to a safe meeting position, and earn a
 completed round through actual movement. The public page shows phase, each
 contribution, completed count and recent changes. Different speeds and delays
@@ -419,3 +419,97 @@ state and cue recovery; final full gate, protected merge, exact green main and
 owned branch cleanup. General lifecycle task052, terrain055, auth040 and durable
 results6036971654000001 remain outside this front. Mandatory audit/retrospective
 runs on the final delivered tree after round5.
+
+
+## 2026-10-10 — five-round milestone audit and retrospective (task073)
+
+Scope: the accumulated repository at delivered commit
+`937db2773aefee41cd789e3fd236e449d3a078fc`, after all five product rounds.
+Task073 records closure only; no sixth product round is selected. Product PR76
+merged at06:07:18Z with the reviewed tree and sole expected parent. Its required
+head check and the exact main-push workflow passed; main process-gate114148261762
+completed at06:12:08Z. Root preserved the reviewed head in a verified Git bundle,
+checked all63 task072 worker-source archive files and saved Git snapshots,
+then removed only the three owned worker worktrees and four local branches.
+The remote head is absent. A detached support checkout remains available.
+Private merge, main-check, archive and cleanup receipts remain under the existing
+local five-round evidence directory. Task073's later delivery has its own checks;
+these completed product checks do not claim that future result.
+
+Audit commands recorded through task073: churn `--limit 30`, six-month churn
+`--since='6 months ago' --limit 20`, and dated process signals
+`--since 2026-10-08 --json`, all exit0. The first six-month invocation split
+the date and failed exit2; corrected quoting passed, with the failed output
+retained. Churn nominated README29, world-server library22, transport18,
+world12, viewer/fanout9 and the contracts/orientation/history documents.
+Final source reads covered retained session/command histories, movement/awake
+membership, listen-loop durability/drain diagnostics, harness stage accounting,
+catalog/contract projections and capability prose. Metrics nominate reads;
+file size, churn and known planned features are not findings by themselves.
+
+Six existing findings still meet locations, accumulation, concrete cost and a
+bounded first step. Reuse their cards; create no duplicate audit task:
+
+- task043: retained SessionHub/session, stamped-arrival and message-ID histories
+  grow across commands and reconnects; define bounded retention and test expiry.
+- task052: awake collision membership follows MOVE leases rather than the
+  connected lifecycle; a connected STOP or stationary body can lose membership.
+  Separate sleep/wake state from lease expiry with bounded lifecycle tests.
+- task042: poll/advance results and ignored DrainReport diagnostics can hide
+  writer/drain failures across the live loop. Inject and expose those failure
+  transitions. Task064 repaired admission; do not reopen that repaired scope.
+- task-7210989894000007: the in-process harness measures simulation/publish and
+  verifies encoded frames, but omits scheduled transport drain and lock timing
+  at the300/500 targets. First measure those actual stages against tick budgets.
+- task-2929451841000002: movement/physics catalog facts remain hand-transcribed
+  across Rust, JavaScript and prose; current movement values match, but their
+  tests are not independently table-derived. Extend exact table checks to those
+  rows, retaining known prototype governance soak exclusions (1/2 vs1200/6000).
+- task065: architecture MOVE/collider and README validator/collider capability
+  prose still contradict executable behavior. Reconcile current capability
+  statements while preserving approved product decisions.
+
+Dropped: young task072 code has not accumulated drift; size alone has no cost;
+similar validators with different lifetimes are not a duplication finding;
+repaired task064 catalog behavior is not a current defect; unfinished terrain,
+authentication and durable recovery features stay on their existing cards.
+No new review lens is justified: existing boundary, charged-artifact, behavioral
+oracle and runtime-catalog lenses cover these patterns. No governance document
+is changed by this closeout.
+
+Retrospective window: after the first recorded window ending2026-10-08 through
+this five-round delivery on2026-10-10. The dated helper selected cards by their
+update time; historical notes were read by actual event time, so old task054
+failures and deliberate mutation reds are not new friction. Both journals,
+existing LOCAL-CHANGES, review lenses and cold-review guidance were read.
+The sweep reports no forced transitions in its selected cards.
+
+One pattern clears all four retrospective bars. Review caps ended incomplete
+reviews in three independent tasks:064 at6USD per axis (139.3s; completed retry
+at12),068 at12USD (99.5s; completed retry at18),071 documentary delta at3USD
+(30.9s; completed retry at6). That is269.7s of recorded incomplete wrapper time
+plus repeated review effort; no aggregate monetary loss is inferred. Both
+Execute Task cold-review references show an illustrative3USD dispatch cap and
+lack sizing guidance. The example is not proof it caused all selected caps.
+One p3 mold card, task-2070663731000001, proposes exactly: “Choose the per-axis
+spending cap from the packet size and recent completed review costs. The
+example’s $3 is illustrative. A cap termination leaves the axis incomplete.”
+It is queued with `needs:operator`; filing is not implementation authority.
+A future approved task must change both harness copies and record any generic
+implemented divergence/upstream treatment. Existing task066 remains queued;
+no duplicate completion-wording correction is filed.
+
+Pruning: none justified. This is only the second recorded window; no guidance
+is demonstrated inactive for two completed windows. Existing review, validation,
+authorization and behavioral-evidence rules were used during the program. No
+three-window net-growth trend is established. LOCAL-CHANGES records no current
+divergence after Foundry0.28/task060; there are no live unsent or packeted
+upstream entries. The queued cap proposal is not an implemented divergence.
+No new feedback packet or message to another party was sent.
+
+Watch: distinct collector/validator repairs in069/070/072 do not establish one
+shared governing cause; environment prerequisite failures in068/071 are fewer
+than three and differ; prior quoting notes046/047,064 and this task073 remain
+covered by existing command guidance without a demonstrated wording defect.
+Repeated host PR-watch reads have no verified repository-policy cause. Retain
+those concrete contexts; do not convert every failed run into a new rule.
