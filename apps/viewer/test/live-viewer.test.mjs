@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
+import { Vector3 } from "three";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { BinaryReader, BinaryWriter } from "@bufbuild/protobuf/wire";
 import {
@@ -57,6 +58,52 @@ globalThis.document = {
 globalThis.HTMLCanvasElement = class {};
 const { startLiveViewer } = await import("../src/main.js");
 hooks.deregister();
+
+// Only the graphics boundary is faked here. This second viewer module uses
+// installed OrbitControls and delegates every math call to the real helpers.
+const realMainUrl = new URL("../src/main.js?installed-controls", import.meta.url).href;
+const fakeThreeUrl = new URL("./fake-three.mjs", import.meta.url).href;
+const cameraUrl = new URL("../src/camera.js", import.meta.url).href;
+const controlsUrl = import.meta.resolve("three/addons/controls/OrbitControls.js");
+const realControlsModule = `import { OrbitControls as Installed } from ${JSON.stringify(controlsUrl)};
+import { controls } from ${JSON.stringify(fakeThreeUrl)};
+export class OrbitControls extends Installed {
+  constructor(camera, canvas) { super(camera, canvas); this.disposals = 0; controls.push(this); }
+  emit(type) { this.dispatchEvent({ type }); }
+  dispose() { this.disposals += 1; super.dispose(); }
+}`;
+const tracedCameraModule = `export * from ${JSON.stringify(cameraUrl)};
+import { admitObservedBounds as admit, stepAutomaticFit as step } from ${JSON.stringify(cameraUrl)};
+export function admitObservedBounds(...args) {
+  const result = admit(...args);
+  globalThis.__viewerCameraCalls?.push({ kind: "admit", history: args[0]?.clone() ?? null,
+    applied: args[2]?.clone() ?? null, result });
+  return result;
+}
+export function stepAutomaticFit(input) {
+  const call = { kind: "step", input };
+  globalThis.__viewerCameraCalls?.push(call);
+  const result = step(input);
+  call.result = result;
+  return result;
+}`;
+const realHooks = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (context.parentURL === realMainUrl) {
+      if (specifier === "./style.css") return { url: "data:text/javascript,export%20{}", shortCircuit: true };
+      if (specifier === "three") return { url: fakeThreeUrl, shortCircuit: true };
+      if (specifier === "three/addons/controls/OrbitControls.js") {
+        return { url: `data:text/javascript,${encodeURIComponent(realControlsModule)}`, shortCircuit: true };
+      }
+      if (specifier === "./camera.js") {
+        return { url: `data:text/javascript,${encodeURIComponent(tracedCameraModule)}`, shortCircuit: true };
+      }
+    }
+    return nextResolve(specifier, context);
+  },
+});
+const { startLiveViewer: startInstalledControlsViewer } = await import(realMainUrl);
+realHooks.deregister();
 
 const digest = new Uint8Array(32).fill(0xab);
 const connectionId = new Uint8Array(16).fill(7);
@@ -127,8 +174,8 @@ function appendUnknownMessageField(schema, bytes, name, suffix) {
   assert.fail("generated message field was not encoded");
 }
 
-function harness(t) {
-  const globals = ["WebSocket", "window", "requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "ResizeObserver"];
+function harness(t, startViewer = startLiveViewer) {
+  const globals = ["WebSocket", "window", "requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "ResizeObserver", "__viewerCameraCalls"];
   const previous = globals.map(name => [name, globalThis[name]]);
   let viewer;
   t.after(() => { viewer?.dispose(); for (const [name, value] of previous) globalThis[name] = value; });
@@ -149,6 +196,7 @@ function harness(t) {
   }
   globalThis.WebSocket = FakeSocket;
   globalThis.window = { devicePixelRatio: 1 };
+  globalThis.__viewerCameraCalls = [];
   globalThis.requestAnimationFrame = callback => animations.push(callback);
   globalThis.cancelAnimationFrame = id => cancelledFrames.push(id);
   globalThis.setTimeout = (callback, delay) => { timers.push({ callback, delay }); return timers.length; };
@@ -163,8 +211,14 @@ function harness(t) {
   status.textContent = "";
   incomingIdentity = connectionId;
   nextIncomingMessageId = 1n;
-  const canvas = { clientWidth: 800, clientHeight: 600 };
-  viewer = startLiveViewer(canvas, "ws://viewer.test/ws");
+  const canvas = new Element();
+  Object.assign(canvas, {
+    clientWidth: 800, clientHeight: 600,
+    getRootNode: () => ({ addEventListener() {}, removeEventListener() {} }),
+    setPointerCapture() {}, releasePointerCapture() {},
+  });
+  let frameTime = 0;
+  viewer = startViewer(canvas, "ws://viewer.test/ws");
   const scene = scenes[0];
   function handshake(socket = sockets.at(-1), transform = bytes => bytes, identity = connectionId) {
     socket.readyState = FakeSocket.OPEN;
@@ -181,10 +235,11 @@ function harness(t) {
   }
   return {
     sockets, timers, scene, handshake, viewer, canvas, camera: cameras[0], controls: controls[0], renderer: renderers[0], observers, cancelledFrames, clearedTimers,
+    cameraCalls: globalThis.__viewerCameraCalls,
     meshes: () => scene.children.filter(child => child.isGroup).map(child => { graphicsResources(child); return child; }),
     lines: () => scene.children.filter(child => child.isLine),
     choose: id => ui["#resident-list"].children.find(button => button.dataset.bodyId === String(id)).click(),
-    frame: () => animations.shift()(),
+    frame: (elapsedMs = 1000 / 60) => { frameTime += elapsedMs; animations.shift()(frameTime); },
     requests: (socket = sockets.at(-1)) => socket.sent.slice(1).map(bytes => fromBinary(EnvelopeSchema, bytes)),
   };
 }
@@ -309,6 +364,7 @@ test("offset tall shape controls and label use the full observed geometry", t =>
   record.shape.nodes[0].transform.translation = { xMm: 3000n, yMm: 4000n, zMm: -2000n };
   record.shape.nodes[0].primitive.value = { sizeXMm: 2000n, sizeYMm: 10000n, sizeZMm: 1000n };
   socket.receive(envelope("fullSnapshot", fullPayload([record])));
+  h.frame();
   assertVectorClose(h.controls.target.toArray(), [4.5, 4, -4.25]);
   h.choose(1n); ui["#follow-body"].click(); h.frame();
   assertVectorClose(h.controls.target.toArray(), [4.5, 4, -4.25]);
@@ -317,6 +373,7 @@ test("offset tall shape controls and label use the full observed geometry", t =>
   assert.ok(Math.abs(parseFloat(label.style.left) - (expected.x + 1) * h.canvas.clientWidth / 2) < 1e-9);
   assert.ok(Math.abs(parseFloat(label.style.top) - (1 - expected.y) * h.canvas.clientHeight / 2) < 1e-9);
   resetButton.listeners.click();
+  h.frame();
   assertVectorClose(h.controls.target.toArray(), [4.5, 4, -4.25]);
 });
 
@@ -413,6 +470,7 @@ test("selection and follow retain exact ID through full/resync, stop on leave or
   assert.equal(ui["#selected-title"].textContent, `Body ${id}`);
   ui["#follow-body"].click();
   assert.equal(ui["#follow-body"].attributes["aria-pressed"], "true");
+  h.frame();
   assertVectorClose(h.controls.target.toArray(), [4, 3.02, 0.97]);
   const offset = h.camera.position.clone().sub(h.controls.target);
   socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [entity(id, { positionMm: { xMm: 6000n, yMm: 3000n, zMm: 2000n }, aim: aim() })] })));
@@ -438,6 +496,7 @@ test("selection and follow retain exact ID through full/resync, stop on leave or
   ui["#follow-body"].click();
   resetButton.listeners.click();
   assert.equal(ui["#follow-body"].attributes["aria-pressed"], "false");
+  h.frame();
   assertVectorClose(h.controls.target.toArray(), [4.25, 1.52, 0.345]);
   ui["#follow-body"].click();
   const selectedGraphics = [h.meshes()[1], ...h.lines().slice(3)];
@@ -534,6 +593,7 @@ test("first observed bounds frame elevated and separated bodies, deltas preserve
     entity(1n, { positionMm: { xMm: -25000n, yMm: 8905n, zMm: 0n } }),
     entity(2n, { positionMm: { xMm: 30000n, yMm: 17000n, zMm: 20000n } }),
   ])));
+  h.frame();
   assertVectorClose(h.controls.target.toArray(), [2.5, 12.9725, 9.97]);
   assert.equal(shapeParts(h.meshes()[0])[0].material.color.getHex(), 0x0a141e);
   assert.equal(shapeParts(h.meshes()[1])[0].material.color.getHex(), 0x0a141e,
@@ -556,6 +616,7 @@ test("first observed bounds frame elevated and separated bodies, deltas preserve
   assert.equal(h.camera.aspect, 0.5);
   assert.deepEqual(h.camera.position.toArray(), [7, 30, 9], "manual resize does not jump");
   resetButton.listeners.click();
+  h.frame();
   assertVectorClose(h.controls.target.toArray(), [40, 18.52, 4.97]);
   assert.notDeepEqual(h.camera.position.toArray(), [7, 30, 9]);
   assert.equal(h.requests().length, 0, "local navigation never sends a world command");
@@ -568,20 +629,22 @@ test("empty baseline waits for first discovery and automatic framing fits a narr
   assert.match(sceneState.textContent, /Waiting for the first/);
   socket.receive(envelope("fullSnapshot", fullPayload()));
   assert.match(sceneState.textContent, /No bodies.*scripted aigent/);
-  assert.equal(resetButton.disabled, true);
+  assert.equal(resetButton.disabled, false, "empty Reset can restore automatic discovery");
   socket.receive(envelope("snapshotDelta", deltaPayload({ entered: [
     entity(1n, { positionMm: { xMm: 3000n, yMm: 8905n, zMm: -4000n } }),
   ] })));
+  h.frame();
   assertVectorClose(h.controls.target.toArray(), [3, 8.925, -4.03]);
   assert.equal(sceneState.hidden, true);
   const distance = h.camera.position.distanceTo(h.controls.target);
   h.canvas.clientWidth = 150;
   h.observers[0].callback();
   assert.equal(h.camera.aspect, 0.25);
+  h.frame();
   assert.ok(h.camera.position.distanceTo(h.controls.target) > distance, "narrow aspect needs greater distance");
   socket.receive(envelope("snapshotDelta", deltaPayload({ leftIds: [1n] })));
   assert.match(sceneState.textContent, /No bodies/);
-  assert.equal(resetButton.disabled, true);
+  assert.equal(resetButton.disabled, false);
 });
 
 test("disconnect marks prior observation stale; disposal cancels recovery and releases resources once", t => {
@@ -954,3 +1017,372 @@ test("message history accepts 65536 IDs then reconnects once with a fresh baseli
   assert.equal(socket.closeCalls, 1);
   assert.equal(recovered.closeCalls, 0);
 });
+
+function boxBody(id, position = [0, 0, 0], size = [2, 2, 2], offset = [0, 0, 0], overrides = {}) {
+  const record = entity(id, { positionMm: Object.fromEntries(["xMm", "yMm", "zMm"]
+    .map((axis, index) => [axis, BigInt(Math.round(position[index] * 1000))])), ...overrides });
+  const root = record.shape.nodes[0];
+  record.shape.nodes = [root];
+  root.transform.translation = Object.fromEntries(["xMm", "yMm", "zMm"]
+    .map((axis, index) => [axis, BigInt(Math.round(offset[index] * 1000))]));
+  root.primitive.value = Object.fromEntries(["sizeXMm", "sizeYMm", "sizeZMm"]
+    .map((axis, index) => [axis, BigInt(Math.round(size[index] * 1000))]));
+  return record;
+}
+
+function assertMeshesContained(h) {
+  h.camera.updateMatrixWorld(true);
+  let vertices = 0;
+  for (const root of h.meshes()) {
+    root.updateMatrixWorld(true);
+    for (const mesh of shapeParts(root)) {
+      const position = mesh.geometry.getAttribute("position");
+      for (let index = 0; index < position.count; index++) {
+        const world = new Vector3().fromBufferAttribute(position, index).applyMatrix4(mesh.matrixWorld);
+        const depth = -world.clone().applyMatrix4(h.camera.matrixWorldInverse).z;
+        const point = world.project(h.camera);
+        assert.ok(point.toArray().every(Number.isFinite), "rendered geometry projects to finite NDC");
+        assert.ok(Math.abs(point.x) <= 0.95 + 1e-9 && Math.abs(point.y) <= 0.95 + 1e-9,
+          `displayed vertex outside framing margin: ${point.toArray()}`);
+        assert.ok(point.z > -1 && point.z < 1, "displayed geometry lies between the actual clip planes");
+        assert.ok(h.camera.near < depth && depth < h.camera.far, "actual view depth is retained");
+        vertices++;
+      }
+    }
+  }
+  assert.ok(vertices > 0, "oracle must inspect installed shape vertices");
+}
+
+function pose(h) {
+  return { position: h.camera.position.toArray(), target: h.controls.target.toArray(), quaternion: h.camera.quaternion.toArray() };
+}
+
+function assertPoseClose(h, expected) {
+  assertVectorClose(h.camera.position.toArray(), expected.position);
+  assertVectorClose(h.controls.target.toArray(), expected.target);
+  assertVectorClose(h.camera.quaternion.toArray(), expected.quaternion);
+}
+
+test("automatic camera handlers defer writes and elapsed easing applies the same capped alpha to pivot and distance", t => {
+  const h = harness(t), socket = h.handshake(), startup = pose(h);
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)])));
+  assertPoseClose(h, startup);
+  h.frame(0);
+  assertVectorClose(h.controls.target.toArray(), [0, 0, 0]);
+  const initialDistance = h.camera.position.distanceTo(h.controls.target);
+  assert.ok(Math.abs(initialDistance - 2.3 * Math.sqrt(12)) < 1e-10);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [20, 0, 0])] })));
+  const alpha = -Math.expm1(-0.05 / 0.25), goalDistance = 2.3 * Math.sqrt(152);
+  h.frame(50);
+  assertVectorClose(h.controls.target.toArray(), [10 * alpha, 0, 0]);
+  assert.ok(Math.abs(h.camera.position.distanceTo(h.controls.target)
+    - (initialDistance + (goalDistance - initialDistance) * alpha)) < 1e-10, "distance and target share elapsed alpha");
+  const before = h.controls.target.x;
+  h.frame(5000);
+  assert.ok(Math.abs(h.controls.target.x - (before + (10 - before) * -Math.expm1(-0.1 / 0.25))) < 1e-10,
+    "a long fresh frame uses the maximum step, not a per-frame constant");
+  assertMeshesContained(h);
+});
+
+test("manual use before first shapes survives discovery and reconnect; explicit Reset restores automatic discovery", t => {
+  const h = harness(t), socket = h.handshake();
+  h.controls.emit("start");
+  h.camera.position.set(9, 15, 22); h.controls.target.set(3, 4, 5); h.frame(0);
+  const manual = pose(h);
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n, [80, 12, -30])] )));
+  h.frame(); assertPoseClose(h, manual);
+  socket.close(); h.timers.shift().callback();
+  const next = h.handshake(h.sockets.at(-1), bytes => bytes, new Uint8Array(16).fill(9));
+  next.receive(envelope("fullSnapshot", fullPayload([boxBody(2n, [-90, 0, 30])] )));
+  h.frame(); assertPoseClose(h, manual);
+  resetButton.listeners.click();
+  assertPoseClose(h, manual);
+  h.frame(); assertVectorClose(h.controls.target.toArray(), [-90, 0, 30]);
+  assertMeshesContained(h);
+});
+
+test("same-session resync and departures retain observed history; Reset discards departed history and trails", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n, [-100, 0, 0]), boxBody(2n, [100, 0, 0])] )));
+  h.frame(0);
+  const distance = h.camera.position.distanceTo(h.controls.target);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [0, 0, 0])], leftIds: [2n] })));
+  h.frame(50);
+  socket.receive(serverEnvelope({ case: "snapshotResyncRequired", value: {} }));
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)]), 6n));
+  for (let index = 0; index < 30; index++) h.frame(100);
+  assertVectorClose(h.controls.target.toArray(), [0, 0, 0]);
+  assert.ok(Math.abs(h.camera.position.distanceTo(h.controls.target) - distance) < 1e-10,
+    "full/resync does not shrink departed or prior applied extents");
+  assert.equal(h.lines()[2].geometry.drawRange.count, 2, "the body's trail still includes its old position");
+  resetButton.listeners.click(); h.frame();
+  assert.ok(Math.abs(h.camera.position.distanceTo(h.controls.target) - 2.3 * Math.sqrt(12)) < 1e-10,
+    "Reset uses current shape bounds, excluding history and trail geometry");
+  assertMeshesContained(h);
+});
+
+test("history grows during manual and follow modes from applied shapes, never aim targets or display roots", t => {
+  const h = harness(t, startInstalledControlsViewer), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)])));
+  h.frame(0); h.controls.emit("start");
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [20, 0, 0], [2, 2, 2], [0, 0, 0], { aim: aim(90000000n, 0n) })] })));
+  const manualAdmission = h.cameraCalls.filter(call => call.kind === "admit").at(-1);
+  assert.deepEqual(manualAdmission.result.history.min.toArray(), [-1, -1, -1]);
+  assert.deepEqual(manualAdmission.result.history.max.toArray(), [21, 1, 1]);
+  assert.equal(h.meshes()[0].position.x, 0, "history admission precedes interpolation");
+  h.choose(1n); ui["#follow-body"].click(); h.frame();
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [-30, 0, 0])] })));
+  const followingAdmission = h.cameraCalls.filter(call => call.kind === "admit").at(-1);
+  assert.deepEqual(followingAdmission.result.history.min.toArray(), [-31, -1, -1]);
+  assert.deepEqual(followingAdmission.result.history.max.toArray(), [21, 1, 1]);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ leftIds: [1n] })));
+  const departure = h.cameraCalls.filter(call => call.kind === "admit").at(-1);
+  assert.deepEqual(departure.result.history.min.toArray(), [-31, -1, -1]);
+  resetButton.listeners.click();
+  assert.equal(h.cameraCalls.filter(call => call.kind === "admit").at(-1).result.history, null);
+});
+
+test("far shapeless observations do not frame; empty Reset enables later shaped discovery", t => {
+  const h = harness(t, startInstalledControlsViewer), socket = h.handshake(), startup = pose(h);
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(1n, { shape: undefined,
+    positionMm: { xMm: 90000000n, yMm: 0n, zMm: 0n }, aim: aim(-90000000n, 0n) })])));
+  h.frame(0); assertPoseClose(h, startup);
+  assert.match(sceneState.textContent, /no shapes to frame/i);
+  assert.equal(h.cameraCalls.filter(call => call.kind === "admit").at(-1).result.history, null);
+  h.choose(1n); ui["#follow-body"].click(); h.frame();
+  assertVectorClose(h.controls.target.toArray(), [90000, 0, 0]);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ leftIds: [1n] })));
+  const emptyPose = pose(h);
+  resetButton.listeners.click();
+  assert.equal(ui["#follow-body"].attributes["aria-pressed"], "false");
+  h.frame(); assertPoseClose(h, emptyPose);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ entered: [boxBody(2n, [4, 2, -3])] })));
+  h.frame(); assertVectorClose(h.controls.target.toArray(), [4, 2, -3]);
+  assertMeshesContained(h);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ entered: [entity(3n, { shape: undefined,
+    positionMm: { xMm: -90000000n, yMm: 0n, zMm: 0n } })] })));
+  resetButton.listeners.click(); h.frame();
+  assertVectorClose(h.controls.target.toArray(), [4, 2, -3]);
+  assert.ok(h.camera.position.distanceTo(h.controls.target) < 9, "far identity labels cannot inflate fit");
+});
+
+test("stale frames pause easing, resume resets elapsed clock, and explicit stale Reset still snaps", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)]))); h.frame(0);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [20, 0, 0])] })));
+  h.frame(50);
+  const frozen = h.controls.target.x;
+  socket.receive(serverEnvelope({ case: "snapshotResyncRequired", value: {} }));
+  h.frame(10000); h.frame(10000);
+  assert.equal(h.controls.target.x, frozen);
+  assertMeshesContained(h);
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n, [20, 0, 0])]), 6n));
+  h.frame(10000);
+  assert.equal(h.controls.target.x, frozen, "first resumed frame integrates no stale interval");
+  h.frame(25);
+  assert.ok(Math.abs(h.controls.target.x - (frozen + (10 - frozen) * -Math.expm1(-0.025 / 0.25))) < 1e-10);
+  socket.receive(serverEnvelope({ case: "snapshotResyncRequired", value: {} }));
+  resetButton.listeners.click(); h.frame(10000);
+  assertVectorClose(h.controls.target.toArray(), [20, 0, 0]);
+  h.frame(10000); assertVectorClose(h.controls.target.toArray(), [20, 0, 0]);
+  assertMeshesContained(h);
+});
+
+for (const [width, height] of [[1600, 900], [800, 600], [300, 600], [150, 600]]) {
+  test(`guard contains actual interpolated replacement meshes at aspect ${width}/${height} before labels/render`, t => {
+    const h = harness(t), socket = h.handshake();
+    h.canvas.clientWidth = width; h.canvas.clientHeight = height; h.observers[0].callback();
+    socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n, [-100, 0, 0])] ))); h.frame(0);
+    socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [100, 0, 0], [2, 2, 2], [-50, 0, 0])] })));
+    resetButton.listeners.click();
+    let renders = 0;
+    h.renderer.render = () => { assertMeshesContained(h); renders++; };
+    h.frame(0);
+    assert.equal(h.meshes()[0].position.x, -60);
+    assertVectorClose(h.controls.target.toArray(), [50, 0, 0]);
+    assert.ok(h.camera.position.distanceTo(h.controls.target) > 100, "guard uses displayed roots rather than authoritative destinations");
+    for (let index = 0; index < 20; index++) h.frame();
+    assert.equal(renders, 21);
+  });
+}
+
+test("replacement display bounds can cross world limits without rejecting valid applied geometry", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n, [99998, 0, 0])] ))); h.frame(0);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [99940, 0, 0], [2, 2, 2], [50, 0, 0])] })));
+  resetButton.listeners.click(); h.frame();
+  assert.ok(h.meshes()[0].position.x + 50 > 100000, "test reaches transient display coordinates outside canonical world limits");
+  assert.equal(h.requests().length, 0);
+  assert.doesNotMatch(status.textContent, /unavailable/);
+  assertMeshesContained(h);
+});
+
+test("automatic resize snaps through the display guard even stale; manual and follow resize preserve camera authority", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)]))); h.frame(0);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [100, 0, 0], [20, 40, 10])] })));
+  h.frame(1);
+  socket.receive(serverEnvelope({ case: "snapshotResyncRequired", value: {} }));
+  const before = pose(h);
+  h.canvas.clientWidth = 150; h.observers[0].callback(); assertPoseClose(h, before);
+  h.frame(10000); assertVectorClose(h.controls.target.toArray(), [54.5, 0, 0]);
+  assertMeshesContained(h);
+  h.controls.emit("start"); const manual = pose(h);
+  h.canvas.clientWidth = 800; h.observers[0].callback(); h.frame(); assertPoseClose(h, manual);
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n, [100, 0, 0], [20, 40, 10])]), 6n));
+  for (let index = 0; index < 160; index++) h.frame();
+  h.choose(1n); ui["#follow-body"].click(); h.frame(); const followed = pose(h);
+  h.canvas.clientWidth = 1600; h.observers[0].callback(); h.frame(); assertPoseClose(h, followed);
+});
+
+test("new socket clears automatic history, eased state, pending goal and clock", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)]))); h.frame(0);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [20, 0, 0])] })));
+  h.frame(50); socket.close(); h.timers.shift().callback();
+  const next = h.handshake(h.sockets.at(-1), bytes => bytes, new Uint8Array(16).fill(10));
+  next.receive(envelope("fullSnapshot", fullPayload([boxBody(2n, [300, 0, -200])] )));
+  h.frame(10000); assertVectorClose(h.controls.target.toArray(), [300, 0, -200]);
+  assert.ok(Math.abs(h.camera.position.distanceTo(h.controls.target) - 2.3 * Math.sqrt(12)) < 1e-10);
+  assertMeshesContained(h);
+});
+
+test("unexpected pure numerical failure retains pose and pending snap; failed admission cannot leak into later history", t => {
+  const h = harness(t, startInstalledControlsViewer), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)]))); h.frame(0);
+  const previous = pose(h);
+  h.camera.fov = NaN;
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [100, 0, 0])] })));
+  h.frame(50); assertPoseClose(h, previous);
+  const failedGoal = h.cameraCalls.filter(call => call.kind === "step").at(-1).input.goal;
+  assertVectorClose(failedGoal.target.toArray(), [0, 0, 0]);
+  assert.ok(Math.abs(failedGoal.distance - 2.3 * Math.sqrt(12)) < 1e-10,
+    "failed admission cannot install a new goal behind the retained pose");
+  assert.match(status.textContent, /Automatic framing unavailable/);
+  assert.match(sceneState.textContent, /last finite pose/);
+  h.camera.fov = 60;
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n)] })));
+  h.frame(0); assertVectorClose(h.controls.target.toArray(), [0, 0, 0]);
+  assert.deepEqual(h.cameraCalls.filter(call => call.kind === "admit").at(-1).result.history.max.toArray(), [1, 1, 1],
+    "failed goal planning did not commit the enlarged history");
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [20, 0, 0])] })));
+  resetButton.listeners.click(); const beforeSnap = pose(h);
+  h.camera.fov = NaN; h.frame(); assertPoseClose(h, beforeSnap);
+  assert.match(status.textContent, /unavailable/);
+  h.camera.fov = 60; h.frame(0); assertVectorClose(h.controls.target.toArray(), [20, 0, 0]);
+  assert.equal(h.cameraCalls.filter(call => call.kind === "step").at(-1).input.snap, true,
+    "failed automatic computation leaves the explicit snap pending");
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [40, 0, 0])] })));
+  h.frame(50);
+  h.observers[0].callback();
+  const beforeResizeSnap = pose(h);
+  h.camera.fov = NaN; h.frame(); assertPoseClose(h, beforeResizeSnap);
+  assert.equal(h.cameraCalls.filter(call => call.kind === "step").at(-1).input.snap, true);
+  h.camera.fov = 60; h.frame(0);
+  assertVectorClose(h.controls.target.toArray(), [30, 0, 0]);
+  assert.equal(h.cameraCalls.filter(call => call.kind === "step").at(-1).input.snap, true,
+    "failed resize computation retains the pending snap even with an existing eased state");
+  assertMeshesContained(h);
+});
+
+test("installed OrbitControls observes the eased pivot, updates before the only automatic write, and preserves takeover offsets", t => {
+  const h = harness(t, startInstalledControlsViewer), socket = h.handshake();
+  assert.equal(h.controls.constructor.name, "OrbitControls");
+  assert.equal(h.controls._domElementKeyEvents, null, "keyboard orbit remains inactive");
+  const order = [];
+  const update = h.controls.update.bind(h.controls), copy = h.controls.target.copy.bind(h.controls.target);
+  h.controls.update = (...args) => { order.push("controls"); return update(...args); };
+  h.controls.target.copy = value => { order.push("pivot"); return copy(value); };
+  h.renderer.render = () => { order.push("render"); assertMeshesContained(h); };
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)]))); h.frame(0);
+  assert.deepEqual(order, ["controls", "pivot", "render"]);
+  order.length = 0;
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [20, 0, 0])] })));
+  h.frame(50);
+  assert.deepEqual(order, ["controls", "pivot", "render"]);
+  assertVectorClose(h.controls.target.toArray(), [10 * -Math.expm1(-0.05 / 0.25), 0, 0]);
+  assertVectorClose(h.controls.target.toArray(), h.cameraCalls.filter(call => call.kind === "step").at(-1).result.state.target.toArray());
+  const takeover = pose(h); h.controls.emit("start");
+  h.frame(0); assertPoseClose(h, takeover);
+  const offset = h.camera.position.clone().sub(h.controls.target), oldPivot = h.controls.target.clone();
+  h.choose(1n); ui["#follow-body"].click(); assertPoseClose(h, takeover);
+  h.renderer.render = () => {};
+  h.frame(0);
+  const displayCenter = h.meshes()[0].position.clone();
+  const translation = displayCenter.clone().sub(oldPivot);
+  assertVectorClose(h.controls.target.toArray(), displayCenter.toArray());
+  assertVectorClose(h.camera.position.toArray(), new Vector3(...takeover.position).add(translation).toArray());
+  assertVectorClose(h.camera.position.clone().sub(h.controls.target).toArray(), offset.toArray());
+  assertVectorClose(h.camera.quaternion.toArray(), takeover.quaternion);
+});
+
+test("sub-threshold applied growth accumulates against the envelope without repeated padding or idle drift", t => {
+  const h = harness(t, startInstalledControlsViewer), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)]))); h.frame(0);
+  const distance = h.camera.position.distanceTo(h.controls.target);
+  for (const x of [0.1, 0.2]) {
+    socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [x, 0, 0])] })));
+    h.frame(50);
+    assertVectorClose(h.controls.target.toArray(), [0, 0, 0]);
+    assert.ok(Math.abs(h.camera.position.distanceTo(h.controls.target) - distance) < 1e-10);
+  }
+  const small = h.cameraCalls.filter(call => call.kind === "admit").at(-1);
+  assert.equal(small.result.history.max.x, 1.2);
+  assert.equal(small.result.envelope.max.x, 2);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [0.3, 0, 0])] })));
+  h.frame(50);
+  assertVectorClose(h.controls.target.toArray(), [0.15 * -Math.expm1(-0.05 / 0.25), 0, 0]);
+  const admitted = h.cameraCalls.filter(call => call.kind === "admit").at(-1);
+  assert.equal(admitted.result.envelope.max.x, 2.3);
+  for (let index = 0; index < 8; index++) {
+    socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [0.3, 0, 0])] })));
+    h.frame(50);
+  }
+  assert.equal(h.cameraCalls.filter(call => call.kind === "admit").at(-1).result.envelope.max.x, 2.3,
+    "identical observations cannot repad admitted bounds");
+});
+
+test("empty display guard retains finite clip planes and shape-free wording after numerical recovery", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n)]))); h.frame(0);
+  h.camera.fov = NaN; h.frame();
+  assert.match(status.textContent, /Automatic framing unavailable/);
+  socket.receive(envelope("fullSnapshot", fullPayload([entity(2n, { shape: undefined })]), 6n));
+  h.camera.fov = 60; h.frame(0);
+  assert.match(sceneState.textContent, /no shapes to frame/i);
+  assert.ok([h.camera.near, h.camera.far, ...h.camera.position.toArray()].every(Number.isFinite));
+  assert.ok(h.camera.near >= 0.01 && h.camera.far > h.camera.near);
+  socket.receive(envelope("fullSnapshot", fullPayload(), 7n)); h.frame();
+  assert.match(sceneState.textContent, /No bodies/);
+  assert.ok([h.camera.near, h.camera.far].every(Number.isFinite));
+});
+
+test("wide valid journey uses actual displayed depths for clip planes while Reset waits for its remote root", t => {
+  const h = harness(t), socket = h.handshake();
+  socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n, [-90000, 0, 0])] ))); h.frame(0);
+  socket.receive(envelope("snapshotDelta", deltaPayload({ modified: [boxBody(1n, [90000, 0, 0])] })));
+  resetButton.listeners.click(); h.frame(0);
+  assertVectorClose(h.controls.target.toArray(), [90000, 0, 0]);
+  assert.equal(h.meshes()[0].position.x, -54000);
+  assert.ok(h.camera.far > 100000, "the clip planes enclose the interpolated root, not the new small goal sphere");
+  assertMeshesContained(h);
+});
+
+for (const staleReason of ["resync", "disconnect"]) {
+  test(`successful framing recovery preserves ${staleReason} status and last-observation wording`, t => {
+    const h = harness(t), socket = h.handshake();
+    socket.receive(envelope("fullSnapshot", fullPayload([boxBody(1n, [0, 0, 0], [2, 2, 2], [0, 0, 0], { aim: aim() })])));
+    h.frame(0); h.choose(1n);
+    h.camera.fov = NaN; h.frame();
+    assert.match(status.textContent, /Automatic framing unavailable/);
+    if (staleReason === "resync") socket.receive(serverEnvelope({ case: "snapshotResyncRequired", value: {} }));
+    else socket.close();
+    const staleScene = sceneState.textContent, staleStatus = status.textContent;
+    h.camera.fov = 60; h.frame(10000);
+    assert.equal(sceneState.textContent, staleScene, "valid camera math cannot clear the stale observation banner");
+    assert.equal(status.textContent, staleStatus, "valid camera math cannot announce a resumed observation");
+    assert.match(ui["#selected-aim"].textContent, /^Last observed movement target/);
+    assert.equal(ui["#follow-body"].disabled, true);
+    assertMeshesContained(h);
+  });
+}

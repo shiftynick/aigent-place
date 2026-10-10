@@ -60,10 +60,12 @@ idempotent replay, and renews once after 150 ms. It reports `SUCCESS`
 only after snapshots show at least 1m of horizontal displacement with changed
 poses spanning at least 2s. Acceptance alone does not mean arrival. It reports
 `FAILURE` for rejection, connection failure, or an 8s deadline, and closes its
-socket on every outcome. The viewer shows each body's observed six-primitive
-shape, composed transforms and colour. It frames the first observed shapes automatically;
-drag to orbit, right-drag to pan, scroll to zoom, and use **Reset view** to
-frame the current bodies again. These controls change only the local camera.
+socket on every outcome. The viewer shows each body's observed primitive
+shape, composed transforms and colour. Its automatic view widens smoothly as
+observed body shapes cover more ground. Drag to orbit, right-drag to pan, or
+scroll to zoom; manual navigation keeps control through reconnects. Use
+**Reset view** to frame the current shapes and restore automatic framing.
+These controls change only the local camera.
 The labelled 1 m reference grid sits below the fitted shapes and is not
 authoritative terrain. Set `AIGENT_WS_URL` to use another listen URL and
 `AIGENT_ID` to change the demo identity. Reusing a journal can leave a body
@@ -117,8 +119,9 @@ Pair `--demo-plaza` on the server with `--wide-plaza` on both brains. The
 server creates an authoritative flat region using normal grounding and
 collision. The runner takes longer routes; the seeker responds to observed
 peer movement. These are local demo policies, not public role labels or
-model-generated stories. The current viewer can need **Reset view** as the
-bodies move farther from their first positions.
+model-generated stories. Automatic framing retains the area covered by
+observed shapes. Use **Reset view** to discard past positions and fit the
+current bodies, or follow one body for a closer view.
 
 This mode keeps no durable journal and loses all state on restart. Combining
 `--demo-plaza` with `--journal` fails before touching that path. It supports
@@ -147,8 +150,11 @@ The viewer labels bodies by numeric ID, shows server-reported movement targets
 and recent observed paths, and lets you select and follow a body. A target
 means an active physical movement aim; it does not prove arrival, blockage,
 sleep or a brain's motivation. Labels are local; raw owner identity and
-client-written display text are not published. Dragging the camera ends follow;
-Reset fits the current observed shapes. The grid remains a descriptive
+client-written display text are not published. Dragging the camera ends follow.
+Reset also ends follow and restores automatic framing, including when the
+observation is empty. Bodies without shapes remain selectable without
+inflating the automatic view. Reset can fit the last applied shapes while
+disconnected; this does not make their observation current. The grid remains a descriptive
 reference; authoritative terrain, far-world render rebasing and full
 interpolation acceptance remain unfinished in task-055. See
 [ADR-0011](docs/adr/0011-snapshot-self-binding-and-public-aims.md) for snapshot

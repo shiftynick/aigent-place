@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import "./style.css";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { observedBounds, fitObservedBounds, bodyColor } from "./camera.js";
+import { admitObservedBounds, planObservedFit, stepAutomaticFit, observedBounds, bodyColor } from "./camera.js";
 import { createResidentVisual } from "./resident-visuals.js";
 import { prepareShapeTree } from "./shape-visuals.js";
 import { create, toBinary } from "@bufbuild/protobuf";
@@ -32,6 +32,14 @@ const selectedPosition = document.querySelector("#selected-position");
 const observationStatus = document.querySelector("#observation-status");
 const residentCount = document.querySelector("#resident-count");
 const MAX_MESSAGE_IDS = 65_536;
+const FRAMING_TUNING = Object.freeze({
+  paddingMetres: 1, minimumGrowthMetres: 0.25,
+  timeConstantSeconds: 0.25, maxStepSeconds: 0.1,
+  margin: 0.95, minDistance: 0.5, nearMinimum: 0.01, depthFloor: 0.02,
+});
+const AUTOMATIC_DIRECTION = new THREE.Vector3(1, Math.sqrt(6), 1).normalize();
+const EMPTY_SCENE_MESSAGE = "Connected. No bodies in the current observation. Start the scripted aigent or plaza demo to see movement.";
+const SHAPELESS_SCENE_MESSAGE = "Connected. The observed bodies have no shapes to frame. Select a body to inspect its position.";
 const SERVER_BODIES = new Set([
   "commandResult", "protocolError", "percept", "fullSnapshot", "snapshotDelta",
   "snapshotResyncRequired", "orderedEvent", "eventResyncRequired", "eventStreamReset",
@@ -115,7 +123,13 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   let disposed = false;
   let initialFitPending = true;
   let automaticView = true;
-  let fittedBounds = null;
+  let historyBounds = null;
+  let envelopeBounds = null;
+  let fitGoal = null;
+  let fitState = null;
+  let pendingSnap = false;
+  let automaticFrameTime = null;
+  let framingFailure = null;
   let reconnectTimer = null;
   let animationFrame = null;
   let shapeRecoveryAttempts = 0;
@@ -132,7 +146,56 @@ export function startLiveViewer(targetCanvas, wsUrl) {
   }
 
   function currentShapeBounds() {
-    return observedBounds(Array.from(bodies.values(), entry => entry.visual.localBounds.clone().translate(entry.target)));
+    return observedBounds(Array.from(bodies.values())
+      .filter(entry => entry.record.shape !== undefined)
+      .map(entry => entry.visual.localBounds.clone().translate(entry.target)));
+  }
+
+  function displayedShapeBoxes() {
+    // A replacement shape can temporarily extend beyond the world bound at
+    // its interpolated root. Only applied authoritative bounds are world-capped.
+    return Array.from(bodies.values())
+      .filter(entry => entry.record.shape !== undefined)
+      .map(entry => entry.visual.localBounds.clone().translate(entry.mesh.position));
+  }
+
+  function projection() {
+    return { fovDeg: camera.fov, aspect: camera.aspect };
+  }
+
+  function reportFramingFailure(error) {
+    if (!(error instanceof RangeError)) throw error;
+    framingFailure = `Automatic framing unavailable: ${error.message}`;
+    automaticFrameTime = null;
+    setStatus(`viewer: ${framingFailure}`);
+    setSceneState(`${framingFailure}. The camera retains its last finite pose.`);
+  }
+
+  function setObservationStatus(message) {
+    setStatus(framingFailure ? `${message} · ${framingFailure}` : message);
+  }
+
+  function admitShapes(bounds, reset = false) {
+    try {
+      const next = admitObservedBounds(reset ? null : historyBounds,
+        reset ? null : envelopeBounds, bounds, FRAMING_TUNING);
+      const goal = next.envelope && (reset || next.admitted)
+        ? planObservedFit(projection(), next.envelope) : (reset ? null : fitGoal);
+      // Both pure computations must succeed before any admission is committed.
+      historyBounds = next.history;
+      envelopeBounds = next.envelope;
+      fitGoal = goal;
+      return true;
+    } catch (error) {
+      reportFramingFailure(error);
+      return false;
+    }
+  }
+
+  function placeGrid(bounds) {
+    const center = bounds.getCenter(new THREE.Vector3());
+    grid.position.set(center.x, bounds.min.y - 0.05, center.z);
+    grid.visible = true;
   }
 
   // Validate a complete transition before baseline changes, departures or
@@ -210,47 +273,60 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     following = !following;
     if (following) {
       automaticView = false;
-      const center = shapeCenter(entry);
-      camera.position.add(new THREE.Vector3().subVectors(center, controls.target));
-      controls.target.copy(center);
-      controls.update();
+      automaticFrameTime = null;
     }
     refreshInspector();
   }
 
   function markObservation(fresh, message) {
+    if (fresh !== observationFresh) automaticFrameTime = null;
     observationFresh = fresh;
     if (observationStatus) observationStatus.textContent = message;
     refreshInspector();
   }
 
   function resetView() {
+    automaticView = true;
     following = false;
+    automaticFrameTime = null;
     refreshInspector();
     const bounds = currentShapeBounds();
-    if (!bounds) return;
-    automaticView = true;
-    initialFitPending = false;
-    fittedBounds = bounds;
-    fitObservedBounds(camera, controls, bounds);
-    const center = bounds.getCenter(new THREE.Vector3());
-    grid.position.set(center.x, bounds.min.y - 0.05, center.z);
-    grid.visible = true;
+    if (!admitShapes(bounds, true)) return;
+    fitState = null;
+    pendingSnap = bounds !== null;
+    initialFitPending = bounds === null;
+    if (bounds) placeGrid(bounds);
+    else grid.visible = false;
   }
 
   function updateSceneState() {
+    const bounds = currentShapeBounds();
+    const admitted = admitShapes(bounds);
     if (bodies.size === 0) {
       grid.visible = false;
-      setSceneState("Connected. No bodies in the current observation. Start the scripted aigent or plaza demo to see movement.");
+      setSceneState(EMPTY_SCENE_MESSAGE);
+    } else if (!bounds) {
+      grid.visible = false;
+      setSceneState(SHAPELESS_SCENE_MESSAGE);
     } else {
-      if (initialFitPending) resetView();
-      setSceneState("");
+      if (admitted && initialFitPending && automaticView && !following) {
+        pendingSnap = true;
+        automaticFrameTime = null;
+        initialFitPending = false;
+      }
+      if (!grid.visible) placeGrid(bounds);
+      if (!framingFailure) setSceneState("");
     }
-    if (resetButton) resetButton.disabled = bodies.size === 0;
+    if (resetButton) resetButton.disabled = false;
     markObservation(true, bodies.size ? `Observing ${bodies.size} ${bodies.size === 1 ? "body" : "bodies"}` : "Connected · empty observation");
   }
 
-  function manualView() { automaticView = false; following = false; refreshInspector(); }
+  function manualView() {
+    automaticView = false;
+    following = false;
+    automaticFrameTime = null;
+    refreshInspector();
+  }
   controls.addEventListener("start", manualView);
   resetButton?.addEventListener("click", resetView);
   followButton?.addEventListener("click", toggleFollow);
@@ -261,7 +337,14 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    if (automaticView && fittedBounds) fitObservedBounds(camera, controls, fittedBounds);
+    if (automaticView && !following && envelopeBounds) {
+      try {
+        const goal = planObservedFit(projection(), envelopeBounds);
+        fitGoal = goal;
+        pendingSnap = true;
+        automaticFrameTime = null;
+      } catch (error) { reportFramingFailure(error); }
+    }
   }
   const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
   resizeObserver?.observe(targetCanvas);
@@ -408,7 +491,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       }
       shapeRecoveryAttempts = 0;
       updateSceneState();
-      setStatus(
+      setObservationStatus(
         `viewer: full baseline tick=${decoded.tick} bodies=${decoded.bodies.length} (real bodies)`,
       );
       return;
@@ -449,7 +532,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       }
       shapeRecoveryAttempts = 0;
       updateSceneState();
-      setStatus(
+      setObservationStatus(
         `viewer: delta baseline tick=${lastTick} bodies=${bodies.size} (real bodies, +${decoded.entered.length}/~${decoded.modified.length}/-${decoded.leftIds.length})`,
       );
       return;
@@ -469,7 +552,13 @@ export function startLiveViewer(targetCanvas, wsUrl) {
     connectionId = null;
     seenMessageIds.clear();
     initialFitPending = true;
-    fittedBounds = null;
+    historyBounds = null;
+    envelopeBounds = null;
+    fitGoal = null;
+    fitState = null;
+    pendingSnap = false;
+    automaticFrameTime = null;
+    framingFailure = null;
     shapeRecoveryAttempts = 0;
     grid.visible = false;
     // Drop any bodies carried over from a prior connection: a new
@@ -574,7 +663,7 @@ export function startLiveViewer(targetCanvas, wsUrl) {
 
   connect();
 
-  function tick() {
+  function tick(timestamp) {
     if (closed) return;
     for (const entry of bodies.values()) {
       entry.mesh.position.lerp(entry.target, 0.2);
@@ -586,6 +675,37 @@ export function startLiveViewer(targetCanvas, wsUrl) {
       controls.target.copy(center);
     }
     controls.update();
+    if (automaticView && !following && fitGoal) {
+      try {
+        const snap = pendingSnap || fitState === null;
+        const elapsedSeconds = snap || !observationFresh || automaticFrameTime === null
+          ? 0 : Math.max(0, (timestamp - automaticFrameTime) / 1000);
+        const frame = stepAutomaticFit({
+          state: fitState, goal: fitGoal, projection: projection(),
+          displayedBoxes: displayedShapeBoxes(), elapsedSeconds,
+          snap, ease: observationFresh, tuning: FRAMING_TUNING,
+        });
+        // This is the sole automatic pose write, after display interpolation
+        // and OrbitControls.update, before projection of labels and rendering.
+        fitState = frame.state;
+        controls.target.copy(frame.state.target);
+        camera.position.copy(frame.state.target).addScaledVector(AUTOMATIC_DIRECTION, frame.state.distance);
+        camera.lookAt(frame.state.target);
+        camera.near = frame.near;
+        camera.far = frame.far;
+        camera.updateProjectionMatrix();
+        camera.updateMatrixWorld();
+        pendingSnap = false;
+        automaticFrameTime = observationFresh ? timestamp : null;
+        if (framingFailure) {
+          framingFailure = null;
+          if (observationFresh) {
+            setSceneState(currentShapeBounds() ? "" : bodies.size ? SHAPELESS_SCENE_MESSAGE : EMPTY_SCENE_MESSAGE);
+            setStatus("viewer: automatic framing resumed");
+          }
+        }
+      } catch (error) { reportFramingFailure(error); }
+    } else automaticFrameTime = null;
     if (bodyLabels) {
       camera.updateMatrixWorld();
       for (const entry of bodies.values()) {
